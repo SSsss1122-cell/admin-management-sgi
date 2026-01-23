@@ -1,18 +1,17 @@
-import './globals.css'
-import BackHandler from "./back-handler";
+import { Inter } from 'next/font/google';
+import './globals.css';
+
+const inter = Inter({ subsets: ['latin'] });
 
 export const metadata = {
-  title: 'Admin',
-  description: 'admin Management System for Siddaganga Institute of Technology',
+  title: 'Student Management System',
+  description: 'Admin dashboard for student management',
 };
 
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body className="antialiased">
-        <BackHandler />   {/* client component runs back-button logic */}
-        {children}
-      </body>
+      <body className={inter.className}>{children}</body>
     </html>
-  )
+  );
 }

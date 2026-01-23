@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Users, Plus, Edit, Trash2, Search, Mail, Phone, MapPin, UserPlus, X, Save, ArrowLeft, Menu } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { Users, Plus, Edit, Trash2, Search, Mail, Phone, MapPin, UserPlus, X, Save, ArrowLeft, Menu, LogOut, User } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 import { useRouter } from 'next/navigation';
 
 export default function StudentDashboard() {
@@ -13,6 +13,7 @@ export default function StudentDashboard() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingStudent, setEditingStudent] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [adminName, setAdminName] = useState('');
   const [stats, setStats] = useState({
     totalStudents: 0,
     totalBranches: 0
@@ -33,6 +34,11 @@ export default function StudentDashboard() {
 
   useEffect(() => {
     fetchStudents();
+    // Get admin name from localStorage
+    const storedAdminName = localStorage.getItem('adminName');
+    if (storedAdminName) {
+      setAdminName(storedAdminName);
+    }
   }, []);
 
   useEffect(() => {
@@ -197,7 +203,14 @@ export default function StudentDashboard() {
   };
 
   const handleBack = () => {
-    router.back();
+    router.push('/home');
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('isLoggedIn');
+    localStorage.removeItem('adminMobile');
+    localStorage.removeItem('adminName');
+    router.push('/login');
   };
 
   if (loading) {
@@ -219,10 +232,10 @@ export default function StudentDashboard() {
               <button
                 onClick={handleBack}
                 className="flex items-center text-gray-600 hover:text-gray-900 transition-colors p-2 rounded-lg hover:bg-gray-100"
-                title="Go back"
+                title="Go back to Main Dashboard"
               >
                 <ArrowLeft size={20} />
-                <span className="hidden sm:block ml-2 text-sm font-medium">Back</span>
+                <span className="hidden sm:block ml-2 text-sm font-medium">Back to Home</span>
               </button>
               <div>
                 <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">Student Dashboard</h1>
@@ -230,21 +243,49 @@ export default function StudentDashboard() {
               </div>
             </div>
             
-            {/* Desktop Button with Text */}
-            <button
-              onClick={() => setShowAddForm(true)}
-              className="hidden sm:flex bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors items-center"
-            >
-              <UserPlus size={16} className="mr-2" />
-              Add Student
-            </button>
-            {/* Mobile Button with + Icon */}
-            <button
-              onClick={() => setShowAddForm(true)}
-              className="sm:hidden bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center"
-            >
-              <Plus size={20} />
-            </button>
+            <div className="flex items-center gap-4">
+              {/* Admin Info and Logout */}
+              <div className="hidden sm:flex items-center gap-3">
+                <div className="text-right">
+                  <p className="text-sm text-gray-600">Welcome,</p>
+                  <p className="font-semibold text-gray-900">
+                    {adminName || 'Admin'}
+                  </p>
+                </div>
+                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                  <User className="text-blue-600" size={16} />
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                {/* Logout Button */}
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center text-sm bg-red-500 text-white px-3 py-2 rounded-lg hover:bg-red-600 transition-colors"
+                  title="Logout"
+                >
+                  <LogOut size={16} className="mr-2" />
+                  <span className="hidden sm:inline">Logout</span>
+                </button>
+                
+                {/* Desktop Add Student Button with Text */}
+                <button
+                  onClick={() => setShowAddForm(true)}
+                  className="hidden sm:flex bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors items-center"
+                >
+                  <UserPlus size={16} className="mr-2" />
+                  Add Student
+                </button>
+                {/* Mobile Add Button with + Icon */}
+                <button
+                  onClick={() => setShowAddForm(true)}
+                  className="sm:hidden bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center"
+                  title="Add Student"
+                >
+                  <Plus size={20} />
+                </button>
+              </div>
+            </div>
           </div>
 
           {/* Stats - Mobile Optimized */}
