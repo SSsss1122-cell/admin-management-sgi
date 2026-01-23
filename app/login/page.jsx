@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabase';
 import { Lock, Phone, AlertCircle, Eye, EyeOff, Loader2 } from 'lucide-react';
@@ -13,6 +13,34 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
 
+  // Debug: Check database connection on load
+  useEffect(() => {
+    const testConnection = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('admins')
+          .select('*');
+        
+        console.log('Debug: All admins in database:', data);
+        console.log('Debug: Database error:', error);
+        
+        if (data && data.length > 0) {
+          console.log('Debug: First admin details:', {
+            mobile: data[0].mobile_number,
+            password: data[0].password_hash,
+            name: data[0].admin_name
+          });
+        } else {
+          console.log('Debug: No admins found in database');
+        }
+      } catch (error) {
+        console.error('Debug: Connection test error:', error);
+      }
+    };
+    
+    testConnection();
+  }, []);
+
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
@@ -21,6 +49,12 @@ export default function LoginPage() {
     try {
       // Clean mobile number (remove non-digits)
       const cleanMobile = mobileNumber.replace(/\D/g, '');
+      
+      console.log('Login attempt:', {
+        mobile: cleanMobile,
+        password: password,
+        cleanLength: cleanMobile.length
+      });
 
       // Simple validation
       if (cleanMobile.length !== 10) {
@@ -36,30 +70,49 @@ export default function LoginPage() {
       }
 
       // Check if admin exists
+      console.log('Fetching admin from database...');
       const { data: admin, error: adminError } = await supabase
         .from('admins')
         .select('*')
         .eq('mobile_number', cleanMobile)
         .single();
 
+      console.log('Database response:', {
+        admin: admin,
+        error: adminError,
+        hasAdmin: !!admin,
+        adminPassword: admin?.password_hash
+      });
+
       if (adminError || !admin) {
+        console.log('Admin not found or error:', adminError);
         setError('Invalid mobile number or password');
         setLoading(false);
         return;
       }
 
-      // SIMPLE PASSWORD CHECK (for now)
-      // For production, you should use bcrypt comparison
-      if (password === 'admin123') { // Change this to your actual password
+      // Compare with password from database
+      console.log('Comparing passwords:', {
+        entered: password,
+        stored: admin.password_hash,
+        match: password === admin.password_hash
+      });
+
+      if (password === admin.password_hash) {
+        console.log('Password matches! Logging in...');
+        
         // Store login status with admin name
         localStorage.setItem('isLoggedIn', 'true');
         localStorage.setItem('adminMobile', cleanMobile);
-        localStorage.setItem('adminName', admin.admin_name || 'Admin'); // Store admin name
+        localStorage.setItem('adminName', admin.admin_name || 'Admin');
         
-        // Redirect to HOME (main dashboard) instead of /dashboard
+        console.log('Login successful, redirecting to /home');
+        
+        // Redirect to HOME (main dashboard)
         router.push('/home');
         router.refresh();
       } else {
+        console.log('Password mismatch');
         setError('Invalid password');
       }
     } catch (error) {
@@ -76,6 +129,24 @@ export default function LoginPage() {
     // Only allow numbers and limit to 10 digits
     const cleaned = value.replace(/\D/g, '').slice(0, 10);
     setMobileNumber(cleaned);
+  };
+
+  // Temporary debug function
+  const checkDatabase = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('admins')
+        .select('*');
+      
+      console.log('Manual check - All admins:', data);
+      alert(`Admins in database: ${JSON.stringify(data, null, 2)}`);
+      
+      if (data && data.length > 0) {
+        console.log('First admin:', data[0]);
+      }
+    } catch (error) {
+      console.error('Manual check error:', error);
+    }
   };
 
   return (
@@ -174,6 +245,15 @@ export default function LoginPage() {
               ) : (
                 'Sign In'
               )}
+            </button>
+
+            {/* Debug Button (Temporary) */}
+            <button
+              type="button"
+              onClick={checkDatabase}
+              className="w-full bg-gray-200 text-gray-800 py-2 px-4 rounded-lg hover:bg-gray-300 transition-colors text-sm"
+            >
+              Debug: Check Database
             </button>
           </form>
 
