@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Users, Plus, Edit, Trash2, Search, Mail, Phone, MapPin, UserPlus, X, Save, ArrowLeft, Menu, LogOut, User } from 'lucide-react';
+import { Users, Plus, Edit, Trash2, Search, Mail, Phone, MapPin, UserPlus, X, Save, ArrowLeft, Menu, LogOut, User, Key } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useRouter } from 'next/navigation';
 
@@ -19,6 +19,7 @@ export default function StudentDashboard() {
     totalBranches: 0
   });
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
+  const [showPassword, setShowPassword] = useState({});
 
   const router = useRouter();
 
@@ -29,7 +30,8 @@ export default function StudentDashboard() {
     class: '',
     division: '',
     phone: '',
-    email: ''
+    email: '',
+    password: ''
   });
 
   useEffect(() => {
@@ -105,7 +107,8 @@ export default function StudentDashboard() {
           class: newStudent.class,
           division: newStudent.division,
           phone: newStudent.phone,
-          email: newStudent.email
+          email: newStudent.email,
+          password: newStudent.password
         }])
         .select();
 
@@ -119,7 +122,8 @@ export default function StudentDashboard() {
         class: '',
         division: '',
         phone: '',
-        email: ''
+        email: '',
+        password: ''
       });
       setShowAddForm(false);
       fetchStudents();
@@ -132,17 +136,24 @@ export default function StudentDashboard() {
   const handleEditStudent = async (e) => {
     e.preventDefault();
     try {
+      const updateData = {
+        full_name: newStudent.full_name,
+        usn: newStudent.usn.toUpperCase(),
+        branch: newStudent.branch,
+        class: newStudent.class,
+        division: newStudent.division,
+        phone: newStudent.phone,
+        email: newStudent.email
+      };
+
+      // Only update password if it's not empty
+      if (newStudent.password) {
+        updateData.password = newStudent.password;
+      }
+
       const { error } = await supabase
         .from('students')
-        .update({
-          full_name: newStudent.full_name,
-          usn: newStudent.usn.toUpperCase(),
-          branch: newStudent.branch,
-          class: newStudent.class,
-          division: newStudent.division,
-          phone: newStudent.phone,
-          email: newStudent.email
-        })
+        .update(updateData)
         .eq('id', editingStudent.id);
 
       if (error) throw error;
@@ -156,7 +167,8 @@ export default function StudentDashboard() {
         class: '',
         division: '',
         phone: '',
-        email: ''
+        email: '',
+        password: ''
       });
       fetchStudents();
     } catch (error) {
@@ -193,7 +205,8 @@ export default function StudentDashboard() {
       class: student.class || '',
       division: student.division || '',
       phone: student.phone || '',
-      email: student.email || ''
+      email: student.email || '',
+      password: '' // Don't pre-fill password for security
     });
   };
 
@@ -211,6 +224,13 @@ export default function StudentDashboard() {
     localStorage.removeItem('adminMobile');
     localStorage.removeItem('adminName');
     router.push('/login');
+  };
+
+  const togglePasswordVisibility = (studentId) => {
+    setShowPassword(prev => ({
+      ...prev,
+      [studentId]: !prev[studentId]
+    }));
   };
 
   if (loading) {
@@ -411,6 +431,20 @@ export default function StudentDashboard() {
                               <span className="truncate">{student.email}</span>
                             </div>
                           )}
+                          {/* Password Field - Mobile */}
+                          <div className="flex items-center col-span-2 mt-1 border-t pt-1 border-gray-100">
+                            <Key size={12} className="mr-1 text-gray-500" />
+                            <span className="font-medium text-gray-700 mr-1">Password:</span>
+                            <span className="text-gray-600">
+                              {showPassword[student.id] ? student.password || 'Not set' : '••••••••'}
+                            </span>
+                            <button
+                              onClick={() => togglePasswordVisibility(student.id)}
+                              className="ml-1 text-blue-600 hover:text-blue-800 text-xs"
+                            >
+                              {showPassword[student.id] ? 'Hide' : 'Show'}
+                            </button>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -427,6 +461,7 @@ export default function StudentDashboard() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Branch</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Class</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Password</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                   </tr>
                 </thead>
@@ -459,6 +494,20 @@ export default function StudentDashboard() {
                               <span className="truncate">{student.email}</span>
                             </div>
                           )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center text-sm text-gray-900">
+                          <Key size={14} className="mr-1 text-gray-500" />
+                          <span>
+                            {showPassword[student.id] ? student.password || 'Not set' : '••••••••'}
+                          </span>
+                          <button
+                            onClick={() => togglePasswordVisibility(student.id)}
+                            className="ml-2 text-blue-600 hover:text-blue-800 text-xs font-medium"
+                          >
+                            {showPassword[student.id] ? 'Hide' : 'Show'}
+                          </button>
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -526,7 +575,8 @@ export default function StudentDashboard() {
                     class: '',
                     division: '',
                     phone: '',
-                    email: ''
+                    email: '',
+                    password: ''
                   });
                 }}
                 className="text-gray-400 hover:text-gray-600 p-1"
@@ -619,6 +669,25 @@ export default function StudentDashboard() {
                 </div>
               </div>
 
+              {/* Password Field */}
+              <div className="sm:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Password {!editingStudent && '*'}
+                  {editingStudent && <span className="text-xs text-gray-500 ml-2">(Leave blank to keep current password)</span>}
+                </label>
+                <div className="relative">
+                  <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+                  <input
+                    type="password"
+                    required={!editingStudent}
+                    value={newStudent.password}
+                    onChange={(e) => setNewStudent(prev => ({ ...prev, password: e.target.value }))}
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-sm"
+                    placeholder={editingStudent ? "Enter new password (optional)" : "Enter student password"}
+                  />
+                </div>
+              </div>
+
               <div className="flex flex-col sm:flex-row justify-end space-y-2 sm:space-y-0 sm:space-x-3 pt-4 border-t border-gray-200">
                 <button
                   type="button"
@@ -632,7 +701,8 @@ export default function StudentDashboard() {
                       class: '',
                       division: '',
                       phone: '',
-                      email: ''
+                      email: '',
+                      password: ''
                     });
                   }}
                   className="px-4 py-2 text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg w-full sm:w-auto text-sm"
