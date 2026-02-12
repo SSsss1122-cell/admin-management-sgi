@@ -27,7 +27,10 @@ import {
   Eye,
   LogOut,
   User,
-  Truck
+  Truck,
+  BusFront, // Added for Bus Management
+  Gauge, // Added for service metrics
+  FileText // Added for documents/expiry
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
@@ -38,7 +41,10 @@ export default function MainDashboard() {
     dailyComplaints: 0,
     totalComplaints: 0,
     totalCommunityMessages: 0,
-    totalDrivers: 0
+    totalDrivers: 0,
+    totalBuses: 0, // Added for bus count
+    busesWithDriver: 0, // Added for assigned buses
+    expiringDocuments: 0 // Added for expiring bus documents
   });
   const [loading, setLoading] = useState(true);
   const [adminName, setAdminName] = useState('');
@@ -77,20 +83,42 @@ export default function MainDashboard() {
       const totalComplaints = complaintsData.data?.length || 0;
       const totalCommunityMessages = communityData.data?.length || 0;
       const totalDrivers = driversData.data?.length || 0;
+      
+      // Calculate buses with assigned drivers
+      const busesWithDriver = busesData.data?.filter(bus => bus.driver_id).length || 0;
+      
+      // Calculate expiring documents (next 30 days)
+      const today = new Date();
+      const thirtyDaysFromNow = new Date();
+      thirtyDaysFromNow.setDate(today.getDate() + 30);
+      
+      const expiringDocuments = busesData.data?.filter(bus => {
+        const pucExpiry = bus.puc_expiry ? new Date(bus.puc_expiry) : null;
+        const insuranceExpiry = bus.insurance_expiry ? new Date(bus.insurance_expiry) : null;
+        const fitnessExpiry = bus.fitness_expiry ? new Date(bus.fitness_expiry) : null;
+        const permitExpiry = bus.permit_expiry ? new Date(bus.permit_expiry) : null;
+        
+        return [pucExpiry, insuranceExpiry, fitnessExpiry, permitExpiry].some(
+          date => date && date <= thirtyDaysFromNow && date >= today
+        );
+      }).length || 0;
 
       // Calculate today's complaints
-      const today = new Date().toDateString();
+      const today_str = new Date().toDateString();
       const dailyComplaints = complaintsData.data?.filter(complaint => 
-        new Date(complaint.created_at).toDateString() === today
+        new Date(complaint.created_at).toDateString() === today_str
       ).length || 0;
 
       setStats({
         totalStudents,
-        activeBuses: totalBuses,
+        activeBuses: totalBuses, // Using total buses as active buses for now
         dailyComplaints,
         totalComplaints,
         totalCommunityMessages,
-        totalDrivers
+        totalDrivers,
+        totalBuses,
+        busesWithDriver,
+        expiringDocuments
       });
 
     } catch (error) {
@@ -107,10 +135,20 @@ export default function MainDashboard() {
     router.push('/login');
   };
 
+  // ============================================
+  // HOW TO ADD A NEW SECTION:
+  // ============================================
+  // 1. Add a new icon from lucide-react at the top
+  // 2. Add your new category object in the categories array below
+  // 3. Add stats in the quickStats array if needed
+  // 4. Add a quick action button in the Quick Actions section
+  // 5. Create the actual page in the app folder (e.g., /app/buses/page.js)
+  // ============================================
+
   const categories = [
     {
       id: 'student-dashboard',
-      name: 'Student ',
+      name: 'Student Dashboard',
       description: 'Overview of all student activities and statistics',
       icon: Users,
       href: '/dashboard',
@@ -125,6 +163,19 @@ export default function MainDashboard() {
       href: '/drivers',
       color: 'bg-purple-500',
       textColor: 'text-purple-600'
+    },
+    // ============================================
+    // NEW SECTION: BUS MANAGEMENT
+    // Added this section for managing buses
+    // ============================================
+    {
+      id: 'buses',
+      name: 'Bus assign',
+      description: 'Manage bus fleet, documents, services, and driver assignments',
+      icon: BusFront, // Using BusFront icon for buses
+      href: '/buses',
+      color: 'bg-green-600', // Green color for buses
+      textColor: 'text-green-600'
     },
     {
       id: 'fees',
@@ -189,8 +240,27 @@ export default function MainDashboard() {
       color: 'bg-lime-500',
       textColor: 'text-lime-600'
     }
+    // ============================================
+    // TO ADD ANOTHER SECTION:
+    // 1. Copy the object above
+    // 2. Change id, name, description, icon, href, color, textColor
+    // 3. Add comma after previous object
+    // Example:
+    // {
+    //   id: 'your-new-section',
+    //   name: 'Your Section Name',
+    //   description: 'Description of what this section does',
+    //   icon: YourIcon, // Import from lucide-react
+    //   href: '/your-page',
+    //   color: 'bg-indigo-500', // Choose any color
+    //   textColor: 'text-indigo-600'
+    // }
+    // ============================================
   ];
 
+  // ============================================
+  // STATS CARDS - Added Bus related stats
+  // ============================================
   const quickStats = [
     { 
       label: 'Total Students', 
@@ -200,9 +270,9 @@ export default function MainDashboard() {
       bgColor: 'bg-blue-100' 
     },
     { 
-      label: 'Active Buses', 
-      value: stats.activeBuses.toString(), 
-      icon: Bus, 
+      label: 'Total Buses', 
+      value: stats.totalBuses.toString(), 
+      icon: BusFront, 
       color: 'text-green-600', 
       bgColor: 'bg-green-100' 
     },
@@ -214,15 +284,22 @@ export default function MainDashboard() {
       bgColor: 'bg-purple-100' 
     },
     { 
-      label: "Today's Complaints", 
-      value: stats.dailyComplaints.toString(), 
-      icon: AlertTriangle, 
+      label: 'Assigned Buses', 
+      value: stats.busesWithDriver.toString(), 
+      icon: Bus, 
+      color: 'text-emerald-600', 
+      bgColor: 'bg-emerald-100' 
+    },
+    { 
+      label: 'Expiring Docs', 
+      value: stats.expiringDocuments.toString(), 
+      icon: FileText, 
       color: 'text-red-600', 
       bgColor: 'bg-red-100' 
     },
     { 
-      label: 'Total Complaints', 
-      value: stats.totalComplaints.toString(), 
+      label: "Today's Complaints", 
+      value: stats.dailyComplaints.toString(), 
       icon: AlertTriangle, 
       color: 'text-orange-600', 
       bgColor: 'bg-orange-100' 
@@ -285,12 +362,13 @@ export default function MainDashboard() {
           </h2>
           <p className="text-xl text-gray-600 max-w-3xl mx-auto">
             Manage all student activities, track bus locations, handle fees, 
-            manage drivers, and monitor campus operations from one centralized dashboard.
+            manage drivers, monitor bus fleet, and oversee campus operations 
+            from one centralized dashboard.
           </p>
         </div>
 
-        {/* Quick Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-12">
+        {/* Quick Stats - Now includes Bus stats */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-12">
           {quickStats.map((stat, index) => {
             const Icon = stat.icon;
             return (
@@ -346,7 +424,7 @@ export default function MainDashboard() {
           </div>
         </div>
 
-        {/* Quick Actions */}
+        {/* Quick Actions - Added Bus Management Quick Action */}
         <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-xl shadow-lg p-8 text-white">
           <h3 className="text-2xl font-bold mb-6">Quick Actions</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -358,15 +436,44 @@ export default function MainDashboard() {
               <Bell className="w-5 h-5 mr-2" />
               Create Notice
             </Link>
+            {/* ============================================
+               NEW QUICK ACTION: Bus Management
+               Added this button for quick access to buses
+            ============================================ */}
+            <Link href="/buses" className="bg-white text-green-600 hover:bg-green-50 transition-all rounded-lg p-4 text-left border border-white border-opacity-30 font-medium flex items-center">
+              <BusFront className="w-5 h-5 mr-2" />
+              Manage Buses
+            </Link>
             <Link href="/drivers" className="bg-white text-purple-600 hover:bg-purple-50 transition-all rounded-lg p-4 text-left border border-white border-opacity-30 font-medium flex items-center">
               <Truck className="w-5 h-5 mr-2" />
               Manage Drivers
+            </Link>
+            <Link href="/bus-locations" className="bg-white text-blue-600 hover:bg-blue-50 transition-all rounded-lg p-4 text-left border border-white border-opacity-30 font-medium flex items-center">
+              <Map className="w-5 h-5 mr-2" />
+              Track Buses
             </Link>
             <Link href="/complaints" className="bg-white text-blue-600 hover:bg-blue-50 transition-all rounded-lg p-4 text-left border border-white border-opacity-30 font-medium flex items-center">
               <AlertTriangle className="w-5 h-5 mr-2" />
               View Complaints
             </Link>
           </div>
+          
+          {/* ============================================
+             HOW TO ADD MORE QUICK ACTIONS:
+             
+             Copy this template and add above:
+             
+             <Link href="/your-page" className="bg-white text-[color]-600 hover:bg-[color]-50 transition-all rounded-lg p-4 text-left border border-white border-opacity-30 font-medium flex items-center">
+               <YourIcon className="w-5 h-5 mr-2" />
+               Your Button Text
+             </Link>
+             
+             Replace:
+             - /your-page with the actual route
+             - [color] with your chosen color (blue, green, purple, red, etc.)
+             - YourIcon with imported icon
+             - Your Button Text with what users should see
+            ============================================ */}
         </div>
       </main>
 
