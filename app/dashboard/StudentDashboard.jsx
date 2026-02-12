@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Users, Plus, Edit, Trash2, Search, Mail, Phone, MapPin, UserPlus, X, Save, ArrowLeft, Menu, LogOut, User, Key } from 'lucide-react';
+import { Users, Plus, Edit, Trash2, Search, Mail, Phone, MapPin, UserPlus, X, Save, ArrowLeft, Menu, LogOut, User, Key, Bus } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useRouter } from 'next/navigation';
 
@@ -10,13 +10,16 @@ export default function StudentDashboard() {
   const [filteredStudents, setFilteredStudents] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [branchFilter, setBranchFilter] = useState('all');
+  const [routeFilter, setRouteFilter] = useState('all'); // Added route filter
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingStudent, setEditingStudent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [adminName, setAdminName] = useState('');
   const [stats, setStats] = useState({
     totalStudents: 0,
-    totalBranches: 0
+    totalBranches: 0,
+    route1Count: 0,
+    route2Count: 0
   });
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const [showPassword, setShowPassword] = useState({});
@@ -31,8 +34,15 @@ export default function StudentDashboard() {
     division: '',
     phone: '',
     email: '',
-    password: ''
+    password: '',
+    routes: '' // Added routes field
   });
+
+  // Predefined routes
+  const routes = [
+    { id: 'route1', name: 'Route 1 - North Campus' },
+    { id: 'route2', name: 'Route 2 - South Campus' }
+  ];
 
   useEffect(() => {
     fetchStudents();
@@ -45,7 +55,7 @@ export default function StudentDashboard() {
 
   useEffect(() => {
     filterStudents();
-  }, [students, searchTerm, branchFilter]);
+  }, [students, searchTerm, branchFilter, routeFilter]);
 
   const fetchStudents = async () => {
     try {
@@ -67,10 +77,14 @@ export default function StudentDashboard() {
   const updateStats = (studentData) => {
     const totalStudents = studentData.length;
     const branches = [...new Set(studentData.map(student => student.branch).filter(Boolean))];
+    const route1Count = studentData.filter(student => student.routes === 'route1').length;
+    const route2Count = studentData.filter(student => student.routes === 'route2').length;
 
     setStats({
       totalStudents,
-      totalBranches: branches.length
+      totalBranches: branches.length,
+      route1Count,
+      route2Count
     });
   };
 
@@ -81,7 +95,7 @@ export default function StudentDashboard() {
     if (searchTerm) {
       filtered = filtered.filter(student =>
         student.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        student.usn.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        student.usn?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         student.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         student.phone?.includes(searchTerm)
       );
@@ -92,12 +106,29 @@ export default function StudentDashboard() {
       filtered = filtered.filter(student => student.branch === branchFilter);
     }
 
+    // Apply route filter
+    if (routeFilter !== 'all') {
+      filtered = filtered.filter(student => student.routes === routeFilter);
+    }
+
     setFilteredStudents(filtered);
   };
 
   const handleAddStudent = async (e) => {
     e.preventDefault();
     try {
+      // Check if USN already exists
+      const { data: existingStudent } = await supabase
+        .from('students')
+        .select('usn')
+        .eq('usn', newStudent.usn.toUpperCase())
+        .maybeSingle();
+
+      if (existingStudent) {
+        alert('USN already exists. Please use a different USN.');
+        return;
+      }
+
       const { data, error } = await supabase
         .from('students')
         .insert([{
@@ -108,7 +139,8 @@ export default function StudentDashboard() {
           division: newStudent.division,
           phone: newStudent.phone,
           email: newStudent.email,
-          password: newStudent.password
+          password: newStudent.password,
+          routes: newStudent.routes || null
         }])
         .select();
 
@@ -123,7 +155,8 @@ export default function StudentDashboard() {
         division: '',
         phone: '',
         email: '',
-        password: ''
+        password: '',
+        routes: ''
       });
       setShowAddForm(false);
       fetchStudents();
@@ -136,6 +169,20 @@ export default function StudentDashboard() {
   const handleEditStudent = async (e) => {
     e.preventDefault();
     try {
+      // Check if USN is being changed and if it's already taken
+      if (newStudent.usn.toUpperCase() !== editingStudent.usn) {
+        const { data: existingStudent } = await supabase
+          .from('students')
+          .select('usn')
+          .eq('usn', newStudent.usn.toUpperCase())
+          .maybeSingle();
+
+        if (existingStudent) {
+          alert('USN already exists. Please use a different USN.');
+          return;
+        }
+      }
+
       const updateData = {
         full_name: newStudent.full_name,
         usn: newStudent.usn.toUpperCase(),
@@ -143,7 +190,8 @@ export default function StudentDashboard() {
         class: newStudent.class,
         division: newStudent.division,
         phone: newStudent.phone,
-        email: newStudent.email
+        email: newStudent.email,
+        routes: newStudent.routes || null
       };
 
       // Only update password if it's not empty
@@ -168,7 +216,8 @@ export default function StudentDashboard() {
         division: '',
         phone: '',
         email: '',
-        password: ''
+        password: '',
+        routes: ''
       });
       fetchStudents();
     } catch (error) {
@@ -206,13 +255,19 @@ export default function StudentDashboard() {
       division: student.division || '',
       phone: student.phone || '',
       email: student.email || '',
-      password: '' // Don't pre-fill password for security
+      password: '', // Don't pre-fill password for security
+      routes: student.routes || ''
     });
   };
 
   const getBranches = () => {
     const branches = [...new Set(students.map(student => student.branch).filter(Boolean))];
     return branches;
+  };
+
+  const getRouteName = (routeId) => {
+    const route = routes.find(r => r.id === routeId);
+    return route ? route.name : 'Not Assigned';
   };
 
   const handleBack = () => {
@@ -308,8 +363,8 @@ export default function StudentDashboard() {
             </div>
           </div>
 
-          {/* Stats - Mobile Optimized */}
-          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-2 gap-3 sm:gap-4">
+          {/* Stats - Added Route Stats */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
             <div className="bg-white rounded-lg sm:rounded-xl shadow-sm p-4 sm:p-6 border border-gray-200">
               <div className="flex items-center justify-between">
                 <div>
@@ -328,9 +383,27 @@ export default function StudentDashboard() {
                 <MapPin className="text-green-400" size={20} />
               </div>
             </div>
+            <div className="bg-white rounded-lg sm:rounded-xl shadow-sm p-4 sm:p-6 border border-gray-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs sm:text-sm font-medium text-gray-600">Route 1</p>
+                  <p className="text-xl sm:text-2xl font-bold text-amber-600">{stats.route1Count}</p>
+                </div>
+                <Bus className="text-amber-400" size={20} />
+              </div>
+            </div>
+            <div className="bg-white rounded-lg sm:rounded-xl shadow-sm p-4 sm:p-6 border border-gray-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs sm:text-sm font-medium text-gray-600">Route 2</p>
+                  <p className="text-xl sm:text-2xl font-bold text-purple-600">{stats.route2Count}</p>
+                </div>
+                <Bus className="text-purple-400" size={20} />
+              </div>
+            </div>
           </div>
 
-          {/* Filters - Mobile Optimized */}
+          {/* Filters - Added Route Filter */}
           <div className="bg-white rounded-lg sm:rounded-xl shadow-sm p-4 border border-gray-200">
             {/* Mobile Filters Toggle */}
             <button
@@ -365,11 +438,21 @@ export default function StudentDashboard() {
                     <option key={branch} value={branch}>{branch}</option>
                   ))}
                 </select>
+                <select
+                  value={routeFilter}
+                  onChange={(e) => setRouteFilter(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-sm"
+                >
+                  <option value="all">All Routes</option>
+                  <option value="route1">Route 1 - North Campus</option>
+                  <option value="route2">Route 2 - South Campus</option>
+                  <option value="null">Not Assigned</option>
+                </select>
               </div>
             </div>
           </div>
 
-          {/* Students Table - Mobile Optimized */}
+          {/* Students Table - Added Routes Column */}
           <div className="bg-white rounded-lg sm:rounded-xl shadow-sm border border-gray-200">
             <div className="px-4 py-3 border-b border-gray-200">
               <h3 className="text-base sm:text-lg font-semibold text-gray-900">
@@ -419,6 +502,18 @@ export default function StudentDashboard() {
                           <div>
                             <span className="font-medium">Class:</span> {student.class} {student.division}
                           </div>
+                          {/* Route Field - Mobile */}
+                          <div className="flex items-center col-span-2">
+                            <Bus size={12} className="mr-1 text-gray-500" />
+                            <span className="font-medium mr-1">Route:</span>
+                            <span className={
+                              student.routes === 'route1' ? 'text-amber-600' :
+                              student.routes === 'route2' ? 'text-purple-600' :
+                              'text-gray-500'
+                            }>
+                              {getRouteName(student.routes)}
+                            </span>
+                          </div>
                           {student.phone && (
                             <div className="flex items-center col-span-2">
                               <Phone size={12} className="mr-1" />
@@ -460,6 +555,7 @@ export default function StudentDashboard() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Branch</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Class</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Route</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Password</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
@@ -479,6 +575,18 @@ export default function StudentDashboard() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {student.class} {student.division}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          <Bus size={14} className="mr-1 text-gray-500" />
+                          <span className={`text-sm font-medium ${
+                            student.routes === 'route1' ? 'text-amber-600' :
+                            student.routes === 'route2' ? 'text-purple-600' :
+                            'text-gray-500'
+                          }`}>
+                            {getRouteName(student.routes)}
+                          </span>
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-900">
@@ -555,7 +663,7 @@ export default function StudentDashboard() {
         </div>
       </div>
 
-      {/* Add/Edit Student Modal - Mobile Optimized */}
+      {/* Add/Edit Student Modal - Added Route Selection */}
       {(showAddForm || editingStudent) && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-3 sm:p-4 z-50">
           <div className="bg-white rounded-xl w-full max-w-2xl max-h-[95vh] overflow-y-auto">
@@ -576,7 +684,8 @@ export default function StudentDashboard() {
                     division: '',
                     phone: '',
                     email: '',
-                    password: ''
+                    password: '',
+                    routes: ''
                   });
                 }}
                 className="text-gray-400 hover:text-gray-600 p-1"
@@ -608,6 +717,7 @@ export default function StudentDashboard() {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-sm"
                     placeholder="Enter USN"
                   />
+                  <p className="text-xs text-gray-500 mt-1">Must be unique</p>
                 </div>
               </div>
 
@@ -644,6 +754,26 @@ export default function StudentDashboard() {
                     />
                   </div>
                 </div>
+              </div>
+
+              {/* Route Selection */}
+              <div className="sm:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <Bus size={16} className="inline mr-1" />
+                  Bus Route
+                </label>
+                <select
+                  value={newStudent.routes}
+                  onChange={(e) => setNewStudent(prev => ({ ...prev, routes: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-sm"
+                >
+                  <option value="">Not Assigned</option>
+                  {routes.map(route => (
+                    <option key={route.id} value={route.id}>
+                      {route.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -702,7 +832,8 @@ export default function StudentDashboard() {
                       division: '',
                       phone: '',
                       email: '',
-                      password: ''
+                      password: '',
+                      routes: ''
                     });
                   }}
                   className="px-4 py-2 text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg w-full sm:w-auto text-sm"
