@@ -26,7 +26,8 @@ import {
   MessageSquare,
   Eye,
   LogOut,
-  User
+  User,
+  Truck
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
@@ -36,7 +37,8 @@ export default function MainDashboard() {
     activeBuses: 0,
     dailyComplaints: 0,
     totalComplaints: 0,
-    totalCommunityMessages: 0
+    totalCommunityMessages: 0,
+    totalDrivers: 0
   });
   const [loading, setLoading] = useState(true);
   const [adminName, setAdminName] = useState('');
@@ -60,18 +62,21 @@ export default function MainDashboard() {
         studentsData,
         busesData,
         complaintsData,
-        communityData
+        communityData,
+        driversData
       ] = await Promise.all([
         supabase.from('students').select('*'),
         supabase.from('buses').select('*'),
         supabase.from('complaints').select('*'),
-        supabase.from('community_messages').select('*')
+        supabase.from('community_messages').select('*'),
+        supabase.from('drivers').select('*')
       ]);
 
       const totalStudents = studentsData.data?.length || 0;
       const totalBuses = busesData.data?.length || 0;
       const totalComplaints = complaintsData.data?.length || 0;
       const totalCommunityMessages = communityData.data?.length || 0;
+      const totalDrivers = driversData.data?.length || 0;
 
       // Calculate today's complaints
       const today = new Date().toDateString();
@@ -84,7 +89,8 @@ export default function MainDashboard() {
         activeBuses: totalBuses,
         dailyComplaints,
         totalComplaints,
-        totalCommunityMessages
+        totalCommunityMessages,
+        totalDrivers
       });
 
     } catch (error) {
@@ -110,6 +116,15 @@ export default function MainDashboard() {
       href: '/dashboard',
       color: 'bg-blue-500',
       textColor: 'text-blue-600'
+    },
+    {
+      id: 'drivers',
+      name: 'Drivers Management',
+      description: 'Manage driver details, licenses, and assignments',
+      icon: Truck,
+      href: '/drivers',
+      color: 'bg-purple-500',
+      textColor: 'text-purple-600'
     },
     {
       id: 'fees',
@@ -192,6 +207,13 @@ export default function MainDashboard() {
       bgColor: 'bg-green-100' 
     },
     { 
+      label: 'Total Drivers', 
+      value: stats.totalDrivers.toString(), 
+      icon: Truck, 
+      color: 'text-purple-600', 
+      bgColor: 'bg-purple-100' 
+    },
+    { 
       label: "Today's Complaints", 
       value: stats.dailyComplaints.toString(), 
       icon: AlertTriangle, 
@@ -204,13 +226,6 @@ export default function MainDashboard() {
       icon: AlertTriangle, 
       color: 'text-orange-600', 
       bgColor: 'bg-orange-100' 
-    },
-    { 
-      label: 'Community Messages', 
-      value: stats.totalCommunityMessages.toString(), 
-      icon: MessageCircle, 
-      color: 'text-indigo-600', 
-      bgColor: 'bg-indigo-100' 
     }
   ];
 
@@ -270,7 +285,7 @@ export default function MainDashboard() {
           </h2>
           <p className="text-xl text-gray-600 max-w-3xl mx-auto">
             Manage all student activities, track bus locations, handle fees, 
-            and monitor campus operations from one centralized dashboard.
+            manage drivers, and monitor campus operations from one centralized dashboard.
           </p>
         </div>
 
@@ -343,9 +358,9 @@ export default function MainDashboard() {
               <Bell className="w-5 h-5 mr-2" />
               Create Notice
             </Link>
-            <Link href="/bus-locations" className="bg-white text-blue-600 hover:bg-blue-50 transition-all rounded-lg p-4 text-left border border-white border-opacity-30 font-medium flex items-center">
-              <Map className="w-5 h-5 mr-2" />
-              Track Buses
+            <Link href="/drivers" className="bg-white text-purple-600 hover:bg-purple-50 transition-all rounded-lg p-4 text-left border border-white border-opacity-30 font-medium flex items-center">
+              <Truck className="w-5 h-5 mr-2" />
+              Manage Drivers
             </Link>
             <Link href="/complaints" className="bg-white text-blue-600 hover:bg-blue-50 transition-all rounded-lg p-4 text-left border border-white border-opacity-30 font-medium flex items-center">
               <AlertTriangle className="w-5 h-5 mr-2" />
