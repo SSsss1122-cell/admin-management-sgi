@@ -110,7 +110,7 @@ export default function MainDashboard() {
   const categories = [
     {
       id: 'student-dashboard',
-      name: 'Student Dashboard',
+      name: 'Student ',
       description: 'Overview of all student activities and statistics',
       icon: Users,
       href: '/dashboard',
@@ -119,7 +119,7 @@ export default function MainDashboard() {
     },
     {
       id: 'drivers',
-      name: 'Drivers Management',
+      name: 'Drivers ',
       description: 'Manage driver details, licenses, and assignments',
       icon: Truck,
       href: '/drivers',
