@@ -528,6 +528,27 @@ export default function DriversDashboard() {
                         {driver.address}
                       </div>
                     )}
+
+                    {/* 🔥 Password Field - Mobile */}
+                    <div className="mt-3 pt-2 border-t border-gray-200">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center text-sm">
+                          <Key size={14} className="mr-2 text-gray-500" />
+                          <span className="text-gray-600">Password:</span>
+                        </div>
+                        <div className="flex items-center">
+                          <span className="text-sm font-mono text-gray-900 mr-2">
+                            {showPassword[driver.id] ? driver.password || '—' : '••••••••'}
+                          </span>
+                          <button
+                            onClick={() => togglePasswordVisibility(driver.id)}
+                            className="text-purple-600 hover:text-purple-800"
+                          >
+                            {showPassword[driver.id] ? <EyeOff size={16} /> : <Eye size={16} />}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 ))
               )}
@@ -542,13 +563,14 @@ export default function DriversDashboard() {
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">License</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assigned Bus</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Password</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {filteredDrivers.length === 0 ? (
                   <tr>
-                    <td colSpan="6" className="px-4 py-8 text-center text-gray-500">
+                    <td colSpan="7" className="px-4 py-8 text-center text-gray-500">
                       No drivers found
                     </td>
                   </tr>
@@ -589,6 +611,22 @@ export default function DriversDashboard() {
                             );
                           })}
                         </select>
+                      </td>
+
+                      {/* 🔥 Password Field - Desktop */}
+                      <td className="px-4 py-3">
+                        <div className="flex items-center space-x-2">
+                          <span className="text-sm font-mono text-gray-900">
+                            {showPassword[driver.id] ? driver.password || '—' : '••••••••'}
+                          </span>
+                          <button
+                            onClick={() => togglePasswordVisibility(driver.id)}
+                            className="text-purple-600 hover:text-purple-800"
+                            title={showPassword[driver.id] ? 'Hide Password' : 'Show Password'}
+                          >
+                            {showPassword[driver.id] ? <EyeOff size={16} /> : <Eye size={16} />}
+                          </button>
+                        </div>
                       </td>
 
                       <td className="px-4 py-3">
@@ -716,9 +754,12 @@ export default function DriversDashboard() {
                     </p>
                   </div>
                   
+                  {/* 🔥 Password Field */}
                   <div className="col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <Key size={16} className="inline mr-1" />
                       Password {!editingDriver && '*'}
+                      {editingDriver && <span className="text-xs text-gray-500 ml-2">(Leave blank to keep current)</span>}
                     </label>
                     <input
                       type="password"
@@ -726,7 +767,7 @@ export default function DriversDashboard() {
                       value={newDriver.password}
                       onChange={(e) => setNewDriver({...newDriver, password: e.target.value})}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
-                      placeholder={editingDriver ? "Leave blank to keep current" : "Enter password"}
+                      placeholder={editingDriver ? "Enter new password (optional)" : "Enter password"}
                     />
                   </div>
                 </div>
@@ -790,6 +831,26 @@ export default function DriversDashboard() {
                   <div className="p-3 bg-gray-50 rounded-lg">
                     <p className="text-xs text-gray-500">License</p>
                     <p className="font-medium text-gray-900">{selectedDriver.license_no || '—'}</p>
+                  </div>
+                </div>
+
+                {/* 🔥 Password in Details Modal */}
+                <div className="p-3 bg-gray-50 rounded-lg">
+                  <p className="text-xs text-gray-500 mb-1">Password</p>
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-gray-900">
+                      {showPassword[selectedDriver.id] ? selectedDriver.password || '—' : '••••••••'}
+                    </span>
+                    <button
+                      onClick={() => togglePasswordVisibility(selectedDriver.id)}
+                      className="text-purple-600 hover:text-purple-800 flex items-center"
+                    >
+                      {showPassword[selectedDriver.id] ? (
+                        <><EyeOff size={16} className="mr-1" /> Hide</>
+                      ) : (
+                        <><Eye size={16} className="mr-1" /> Show</>
+                      )}
+                    </button>
                   </div>
                 </div>
 
