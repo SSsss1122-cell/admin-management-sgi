@@ -14,14 +14,13 @@ import {
   Wrench,
   Clock,
   ArrowLeft,
-  User,
   ChevronDown,
-  ChevronUp,
-  Phone
+  ChevronUp
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import withAuth from '../../components/withAuth';
 
-export default function BusDetails() {
+function BusDetails() {
   const [buses, setBuses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -34,24 +33,17 @@ export default function BusDetails() {
     fetchBuses();
   }, []);
 
+  // 🔥 SIMPLIFIED: Fetch only bus details (no driver info)
   const fetchBuses = async () => {
     try {
       setLoading(true);
       setError(null);
       
-      console.log('Fetching buses with drivers...');
+      console.log('Fetching buses...');
       
       const { data, error } = await supabase
         .from('buses')
-        .select(`
-          *,
-          drivers (
-            id,
-            name,
-            contact,
-            license_no
-          )
-        `)
+        .select('*')
         .order('bus_number');
 
       if (error) {
@@ -59,7 +51,7 @@ export default function BusDetails() {
         throw error;
       }
 
-      console.log('Fetched buses with drivers:', data);
+      console.log('Fetched buses:', data);
       setBuses(data || []);
       
     } catch (error) {
@@ -209,8 +201,7 @@ export default function BusDetails() {
   // Filter buses based on search term
   const filteredBuses = buses.filter(bus =>
     bus.bus_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    bus.route_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    bus.drivers?.name?.toLowerCase().includes(searchTerm.toLowerCase())
+    bus.route_name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   // Calculate stats
@@ -324,7 +315,7 @@ export default function BusDetails() {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
             <input
               type="text"
-              placeholder="Search by bus number, route, or driver..."
+              placeholder="Search by bus number or route..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-sm"
@@ -423,12 +414,6 @@ export default function BusDetails() {
                       <div className="flex-1">
                         <h3 className="font-bold text-gray-900 text-lg">Bus {bus.bus_number}</h3>
                         <p className="text-gray-600 text-sm">{bus.route_name || 'No route set'}</p>
-                        {bus.drivers && (
-                          <div className="flex items-center mt-1">
-                            <User size={14} className="mr-2 text-blue-600" />
-                            <span className="text-sm font-medium text-gray-900">{bus.drivers.name}</span>
-                          </div>
-                        )}
                       </div>
                       <div className="flex items-center space-x-2">
                         <span className={`text-xs px-2 py-1 rounded-full ${
@@ -449,35 +434,9 @@ export default function BusDetails() {
                     </div>
                   </div>
 
-                  {/* Expandable Content */}
+                  {/* Expandable Content - Bus Details Only */}
                   {expandedBus === bus.id && (
                     <div className="p-4 space-y-4">
-                      {/* Driver Information */}
-                      <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
-                        <h4 className="font-medium text-gray-900 text-sm mb-2">Driver Information</h4>
-                        {bus.drivers ? (
-                          <div className="space-y-2 text-sm">
-                            <div className="flex items-center">
-                              <User size={14} className="mr-2 text-blue-600" />
-                              <span className="font-semibold text-gray-900">{bus.drivers.name}</span>
-                            </div>
-                            {bus.drivers.contact && (
-                              <div className="flex items-center">
-                                <Phone size={14} className="mr-2 text-green-600" />
-                                <span className="text-gray-700">{bus.drivers.contact}</span>
-                              </div>
-                            )}
-                            {bus.drivers.license_no && (
-                              <div className="text-xs text-gray-600 bg-gray-100 px-2 py-1 rounded border border-gray-300">
-                                License: {bus.drivers.license_no}
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <p className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded border border-gray-300">No driver assigned</p>
-                        )}
-                      </div>
-
                       {/* Document Expiry */}
                       <div>
                         <h4 className="font-medium text-gray-900 text-sm mb-3">Document Expiry</h4>
@@ -542,7 +501,7 @@ export default function BusDetails() {
               ))}
             </div>
 
-            {/* Desktop Table View */}
+            {/* Desktop Table View - Bus Details Only */}
             <div className="hidden lg:block bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="p-6 border-b border-gray-200">
                 <h2 className="text-lg font-semibold text-gray-900">Buses List</h2>
@@ -555,9 +514,6 @@ export default function BusDetails() {
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Bus Details
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Driver
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Document Expiry
@@ -585,31 +541,6 @@ export default function BusDetails() {
                               </div>
                             )}
                           </div>
-                        </td>
-
-                        {/* Driver Information */}
-                        <td className="px-6 py-4">
-                          {bus.drivers ? (
-                            <div className="space-y-2">
-                              <div className="flex items-center">
-                                <User size={16} className="mr-2 text-blue-600" />
-                                <span className="text-sm font-semibold text-gray-900">{bus.drivers.name}</span>
-                              </div>
-                              {bus.drivers.contact && (
-                                <div className="flex items-center text-sm text-gray-700">
-                                  <Phone size={14} className="mr-2 text-green-600" />
-                                  {bus.drivers.contact}
-                                </div>
-                              )}
-                              {bus.drivers.license_no && (
-                                <div className="text-xs text-gray-600 bg-gray-100 px-2 py-1 rounded border border-gray-300">
-                                  License: {bus.drivers.license_no}
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded border border-gray-300">Not assigned</span>
-                          )}
                         </td>
 
                         {/* Document Expiry */}
@@ -697,3 +628,5 @@ export default function BusDetails() {
     </div>
   );
 }
+
+export default withAuth(BusDetails);

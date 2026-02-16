@@ -4,12 +4,13 @@ import { useState, useEffect } from 'react';
 import { CreditCard, Search, Filter, Download, CheckCircle, XCircle, IndianRupee, Plus, Edit, Trash2, Mail, Phone, X, Calendar, ArrowLeft, Menu } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useRouter } from 'next/navigation';
+import withAuth from '../../components/withAuth'
 
-export default function FeesManagement() {
+function FeesManagement() {
   const [students, setStudents] = useState([]);
   const [filteredStudents, setFilteredStudents] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [feeFilter, setFeeFilter] = useState('all');
+  const [feeFilter, setFeeFilter] = useState('all'); // 'all', 'paid', 'half', 'due'
   const [showFeeForm, setShowFeeForm] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [feeData, setFeeData] = useState({
@@ -63,9 +64,25 @@ export default function FeesManagement() {
 
     // Apply fee status filter
     if (feeFilter === 'paid') {
-      filtered = filtered.filter(student => !student.fees_due);
+      // Fully paid - no due amount
+      filtered = filtered.filter(student => 
+        !student.fees_due && 
+        parseFloat(student.due_amount || 0) === 0 &&
+        parseFloat(student.total_fees || 0) > 0
+      );
+    } else if (feeFilter === 'half') {
+      // 🔥 NEW: Half paid - partially paid but still due
+      filtered = filtered.filter(student => 
+        student.fees_due && 
+        parseFloat(student.paid_amount || 0) > 0 && 
+        parseFloat(student.due_amount || 0) > 0
+      );
     } else if (feeFilter === 'due') {
-      filtered = filtered.filter(student => student.fees_due);
+      // Fully due - no payment made
+      filtered = filtered.filter(student => 
+        student.fees_due && 
+        (parseFloat(student.paid_amount || 0) === 0 || !student.paid_amount)
+      );
     }
 
     setFilteredStudents(filtered);
@@ -147,12 +164,28 @@ export default function FeesManagement() {
     }));
   };
 
-  const getFeesStatusColor = (status) => {
-    return status ? 'bg-red-100 text-red-800 border border-red-200' : 'bg-green-100 text-green-800 border border-green-200';
+  const getFeesStatusColor = (student) => {
+    if (!student.fees_due && parseFloat(student.due_amount || 0) === 0 && parseFloat(student.total_fees || 0) > 0) {
+      return 'bg-green-100 text-green-800 border border-green-200'; // Paid
+    } else if (student.fees_due && parseFloat(student.paid_amount || 0) > 0 && parseFloat(student.due_amount || 0) > 0) {
+      return 'bg-yellow-100 text-yellow-800 border border-yellow-200'; // Half Paid
+    } else if (student.fees_due && (parseFloat(student.paid_amount || 0) === 0 || !student.paid_amount)) {
+      return 'bg-red-100 text-red-800 border border-red-200'; // Due
+    } else {
+      return 'bg-gray-100 text-gray-800 border border-gray-200'; // Not set
+    }
   };
 
-  const getFeesStatusText = (status) => {
-    return status ? 'Due' : 'Paid';
+  const getFeesStatusText = (student) => {
+    if (!student.fees_due && parseFloat(student.due_amount || 0) === 0 && parseFloat(student.total_fees || 0) > 0) {
+      return 'Paid';
+    } else if (student.fees_due && parseFloat(student.paid_amount || 0) > 0 && parseFloat(student.due_amount || 0) > 0) {
+      return 'Half Paid';
+    } else if (student.fees_due && (parseFloat(student.paid_amount || 0) === 0 || !student.paid_amount)) {
+      return 'Due';
+    } else {
+      return 'Not Set';
+    }
   };
 
   const formatDate = (dateString) => {
@@ -179,7 +212,7 @@ export default function FeesManagement() {
       student.total_fees || '0',
       student.paid_amount || '0',
       student.due_amount || '0',
-      student.fees_due ? 'Due' : 'Paid',
+      getFeesStatusText(student),
       student.last_payment_date || 'N/A',
       student.next_payment_date || 'N/A',
       student.payment_mode || 'N/A'
@@ -204,8 +237,15 @@ export default function FeesManagement() {
   };
 
   const totalStudents = students.length;
-  const paidStudents = students.filter(student => !student.fees_due).length;
-  const dueStudents = students.filter(student => student.fees_due).length;
+  const paidStudents = students.filter(student => 
+    !student.fees_due && parseFloat(student.due_amount || 0) === 0 && parseFloat(student.total_fees || 0) > 0
+  ).length;
+  const halfPaidStudents = students.filter(student => 
+    student.fees_due && parseFloat(student.paid_amount || 0) > 0 && parseFloat(student.due_amount || 0) > 0
+  ).length;
+  const dueStudents = students.filter(student => 
+    student.fees_due && (parseFloat(student.paid_amount || 0) === 0 || !student.paid_amount)
+  ).length;
   
   const totalFees = students.reduce((sum, student) => sum + (parseFloat(student.total_fees) || 0), 0);
   const totalPaid = students.reduce((sum, student) => sum + (parseFloat(student.paid_amount) || 0), 0);
@@ -253,7 +293,7 @@ export default function FeesManagement() {
           </div>
 
           {/* Fees Summary - Mobile Optimized */}
-          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 lg:gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-2 sm:gap-3 lg:gap-4">
             <div className="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6 border border-gray-200">
               <div className="flex items-center justify-between">
                 <div>
@@ -266,7 +306,7 @@ export default function FeesManagement() {
             <div className="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6 border border-gray-200">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs sm:text-sm font-medium text-gray-600">Fees Paid</p>
+                  <p className="text-xs sm:text-sm font-medium text-gray-600">Fully Paid</p>
                   <p className="text-lg sm:text-xl lg:text-2xl font-bold text-green-600">{paidStudents}</p>
                 </div>
                 <CheckCircle className="text-green-400" size={18} />
@@ -275,7 +315,16 @@ export default function FeesManagement() {
             <div className="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6 border border-gray-200">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs sm:text-sm font-medium text-gray-600">Fees Due</p>
+                  <p className="text-xs sm:text-sm font-medium text-gray-600">Half Paid</p>
+                  <p className="text-lg sm:text-xl lg:text-2xl font-bold text-yellow-600">{halfPaidStudents}</p>
+                </div>
+                <CreditCard className="text-yellow-400" size={18} />
+              </div>
+            </div>
+            <div className="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6 border border-gray-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs sm:text-sm font-medium text-gray-600">Fully Due</p>
                   <p className="text-lg sm:text-xl lg:text-2xl font-bold text-red-600">{dueStudents}</p>
                 </div>
                 <XCircle className="text-red-400" size={18} />
@@ -295,7 +344,7 @@ export default function FeesManagement() {
             </div>
           </div>
 
-          {/* Financial Summary - Mobile Optimized */}
+          {/* Financial Summary */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 lg:gap-4">
             <div className="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6 border border-green-200">
               <div className="flex items-center justify-between">
@@ -366,8 +415,9 @@ export default function FeesManagement() {
                   className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-sm"
                 >
                   <option value="all">All Students</option>
-                  <option value="paid">Fees Paid</option>
-                  <option value="due">Fees Due</option>
+                  <option value="paid">Fully Paid</option>
+                  <option value="half">Half Paid</option>
+                  <option value="due">Fully Due</option>
                 </select>
               </div>
             </div>
@@ -400,8 +450,8 @@ export default function FeesManagement() {
                             <p className="text-gray-500 text-xs mt-1">{student.branch}</p>
                           </div>
                           <div className="flex flex-col items-end space-y-2">
-                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getFeesStatusColor(student.fees_due)}`}>
-                              {getFeesStatusText(student.fees_due)}
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getFeesStatusColor(student)}`}>
+                              {getFeesStatusText(student)}
                             </span>
                             <div className="flex space-x-1">
                               <button 
@@ -411,14 +461,6 @@ export default function FeesManagement() {
                               >
                                 <Edit size={16} />
                               </button>
-                              <select
-                                value={student.fees_due ? 'due' : 'paid'}
-                                onChange={(e) => updateFeeStatus(student.id, e.target.value === 'due')}
-                                className="text-xs border border-gray-300 rounded px-1 py-0.5 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white"
-                              >
-                                <option value="paid">Paid</option>
-                                <option value="due">Due</option>
-                              </select>
                             </div>
                           </div>
                         </div>
@@ -534,8 +576,8 @@ export default function FeesManagement() {
                         {student.due_amount || '0'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex px-3 py-1 text-xs font-semibold rounded-full ${getFeesStatusColor(student.fees_due)}`}>
-                          {getFeesStatusText(student.fees_due)}
+                        <span className={`inline-flex px-3 py-1 text-xs font-semibold rounded-full ${getFeesStatusColor(student)}`}>
+                          {getFeesStatusText(student)}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -556,14 +598,6 @@ export default function FeesManagement() {
                           >
                             <Edit size={16} />
                           </button>
-                          <select
-                            value={student.fees_due ? 'due' : 'paid'}
-                            onChange={(e) => updateFeeStatus(student.id, e.target.value === 'due')}
-                            className="text-xs border border-gray-300 rounded px-2 py-1 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white"
-                          >
-                            <option value="paid">Paid</option>
-                            <option value="due">Due</option>
-                          </select>
                         </div>
                       </td>
                     </tr>
@@ -699,3 +733,5 @@ export default function FeesManagement() {
     </div>
   );
 }
+
+export default withAuth(FeesManagement);

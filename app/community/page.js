@@ -16,8 +16,9 @@ import {
   ArrowLeft // Added back arrow icon
 } from "lucide-react";
 import { useRouter } from "next/navigation"; // Added for navigation
+import withAuth from "../components/withAuth";
 
-export default function AdminMessages() {
+ function AdminMessages() {
   const router = useRouter();
   const [messages, setMessages] = useState([]);
   const [filteredMessages, setFilteredMessages] = useState([]);
@@ -560,3 +561,4 @@ export default function AdminMessages() {
     </div>
   );
 }
+export default withAuth(AdminMessages);

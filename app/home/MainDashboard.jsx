@@ -2,39 +2,19 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import withAuth from '../../components/withAuth';
 import { useRouter } from 'next/navigation';
 import { 
-  Users, 
-  MapPin, 
-  Calendar, 
-  BookOpen, 
-  CreditCard, 
-  BarChart3, 
-  AlertTriangle, 
-  Megaphone, 
-  Bell, 
-  MessageCircle, 
-  Shield,
-  School,
-  Bus,
-  BookCheck,
-  Wallet,
-  ChartBar,
-  Map,
-  CalendarDays,
-  GraduationCap,
-  MessageSquare,
-  Eye,
-  LogOut,
-  User,
-  Truck,
-  BusFront, // Added for Bus Management
-  Gauge, // Added for service metrics
-  FileText // Added for documents/expiry
+  Users, MapPin, Calendar, BookOpen, CreditCard, BarChart3, 
+  AlertTriangle, Megaphone, Bell, MessageCircle, Shield,
+  School, Bus, BookCheck, Wallet, ChartBar, Map,
+  CalendarDays, GraduationCap, MessageSquare, Eye,
+  LogOut, User, Truck
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
-export default function MainDashboard() {
+
+function HomePage() {
   const [stats, setStats] = useState({
     totalStudents: 0,
     activeBuses: 0,
@@ -42,9 +22,9 @@ export default function MainDashboard() {
     totalComplaints: 0,
     totalCommunityMessages: 0,
     totalDrivers: 0,
-    totalBuses: 0, // Added for bus count
-    busesWithDriver: 0, // Added for assigned buses
-    expiringDocuments: 0 // Added for expiring bus documents
+    totalBuses: 0,
+    busesWithDriver: 0,
+    expiringDocuments: 0
   });
   const [loading, setLoading] = useState(true);
   const [adminName, setAdminName] = useState('');
@@ -57,7 +37,6 @@ export default function MainDashboard() {
     if (storedAdminName) {
       setAdminName(storedAdminName);
     } else {
-      // If not in localStorage, set default
       setAdminName('Admin');
     }
   }, []);
@@ -75,7 +54,7 @@ export default function MainDashboard() {
         supabase.from('buses').select('*'),
         supabase.from('complaints').select('*'),
         supabase.from('community_messages').select('*'),
-        supabase.from('drivers').select('*')
+        supabase.from('drivers_new').select('*')
       ]);
 
       const totalStudents = studentsData.data?.length || 0;
@@ -84,13 +63,17 @@ export default function MainDashboard() {
       const totalCommunityMessages = communityData.data?.length || 0;
       const totalDrivers = driversData.data?.length || 0;
       
-      // Calculate buses with assigned drivers
-      const busesWithDriver = busesData.data?.filter(bus => bus.driver_id).length || 0;
+      const busesWithDriver = driversData.data?.filter(d => d.bus_id).length || 0;
       
+      const today = new Date().toDateString();
+      const dailyComplaints = complaintsData.data?.filter(complaint => 
+        new Date(complaint.created_at).toDateString() === today
+      ).length || 0;
+
       // Calculate expiring documents (next 30 days)
-      const today = new Date();
+      const today_date = new Date();
       const thirtyDaysFromNow = new Date();
-      thirtyDaysFromNow.setDate(today.getDate() + 30);
+      thirtyDaysFromNow.setDate(today_date.getDate() + 30);
       
       const expiringDocuments = busesData.data?.filter(bus => {
         const pucExpiry = bus.puc_expiry ? new Date(bus.puc_expiry) : null;
@@ -99,19 +82,13 @@ export default function MainDashboard() {
         const permitExpiry = bus.permit_expiry ? new Date(bus.permit_expiry) : null;
         
         return [pucExpiry, insuranceExpiry, fitnessExpiry, permitExpiry].some(
-          date => date && date <= thirtyDaysFromNow && date >= today
+          date => date && date <= thirtyDaysFromNow && date >= today_date
         );
       }).length || 0;
 
-      // Calculate today's complaints
-      const today_str = new Date().toDateString();
-      const dailyComplaints = complaintsData.data?.filter(complaint => 
-        new Date(complaint.created_at).toDateString() === today_str
-      ).length || 0;
-
       setStats({
         totalStudents,
-        activeBuses: totalBuses, // Using total buses as active buses for now
+        activeBuses: totalBuses,
         dailyComplaints,
         totalComplaints,
         totalCommunityMessages,
@@ -135,16 +112,6 @@ export default function MainDashboard() {
     router.push('/login');
   };
 
-  // ============================================
-  // HOW TO ADD A NEW SECTION:
-  // ============================================
-  // 1. Add a new icon from lucide-react at the top
-  // 2. Add your new category object in the categories array below
-  // 3. Add stats in the quickStats array if needed
-  // 4. Add a quick action button in the Quick Actions section
-  // 5. Create the actual page in the app folder (e.g., /app/buses/page.js)
-  // ============================================
-
   const categories = [
     {
       id: 'student-dashboard',
@@ -157,24 +124,20 @@ export default function MainDashboard() {
     },
     {
       id: 'drivers',
-      name: 'Drivers ',
+      name: 'Drivers Management',
       description: 'Manage driver details, licenses, and assignments',
       icon: Truck,
       href: '/drivers',
       color: 'bg-purple-500',
       textColor: 'text-purple-600'
     },
-    // ============================================
-    // NEW SECTION: BUS MANAGEMENT
-    // Added this section for managing buses
-    // ============================================
     {
       id: 'buses',
-      name: 'Bus assign',
+      name: 'Bus Management',
       description: 'Manage bus fleet, documents, services, and driver assignments',
-      icon: BusFront, // Using BusFront icon for buses
+      icon: Bus,
       href: '/buses',
-      color: 'bg-green-600', // Green color for buses
+      color: 'bg-green-600',
       textColor: 'text-green-600'
     },
     {
@@ -240,27 +203,8 @@ export default function MainDashboard() {
       color: 'bg-lime-500',
       textColor: 'text-lime-600'
     }
-    // ============================================
-    // TO ADD ANOTHER SECTION:
-    // 1. Copy the object above
-    // 2. Change id, name, description, icon, href, color, textColor
-    // 3. Add comma after previous object
-    // Example:
-    // {
-    //   id: 'your-new-section',
-    //   name: 'Your Section Name',
-    //   description: 'Description of what this section does',
-    //   icon: YourIcon, // Import from lucide-react
-    //   href: '/your-page',
-    //   color: 'bg-indigo-500', // Choose any color
-    //   textColor: 'text-indigo-600'
-    // }
-    // ============================================
   ];
 
-  // ============================================
-  // STATS CARDS - Added Bus related stats
-  // ============================================
   const quickStats = [
     { 
       label: 'Total Students', 
@@ -272,7 +216,7 @@ export default function MainDashboard() {
     { 
       label: 'Total Buses', 
       value: stats.totalBuses.toString(), 
-      icon: BusFront, 
+      icon: Bus, 
       color: 'text-green-600', 
       bgColor: 'bg-green-100' 
     },
@@ -293,7 +237,7 @@ export default function MainDashboard() {
     { 
       label: 'Expiring Docs', 
       value: stats.expiringDocuments.toString(), 
-      icon: FileText, 
+      icon: AlertTriangle, 
       color: 'text-red-600', 
       bgColor: 'bg-red-100' 
     },
@@ -355,7 +299,7 @@ export default function MainDashboard() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Welcome Section with Admin Name */}
+        {/* Welcome Section */}
         <div className="text-center mb-12">
           <h2 className="text-4xl font-bold text-gray-900 mb-4">
             Welcome back, {adminName || 'Admin'}!
@@ -367,7 +311,7 @@ export default function MainDashboard() {
           </p>
         </div>
 
-        {/* Quick Stats - Now includes Bus stats */}
+        {/* Quick Stats */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-12">
           {quickStats.map((stat, index) => {
             const Icon = stat.icon;
@@ -424,7 +368,7 @@ export default function MainDashboard() {
           </div>
         </div>
 
-        {/* Quick Actions - Added Bus Management Quick Action */}
+        {/* Quick Actions */}
         <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-xl shadow-lg p-8 text-white">
           <h3 className="text-2xl font-bold mb-6">Quick Actions</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -436,12 +380,8 @@ export default function MainDashboard() {
               <Bell className="w-5 h-5 mr-2" />
               Create Notice
             </Link>
-            {/* ============================================
-               NEW QUICK ACTION: Bus Management
-               Added this button for quick access to buses
-            ============================================ */}
             <Link href="/buses" className="bg-white text-green-600 hover:bg-green-50 transition-all rounded-lg p-4 text-left border border-white border-opacity-30 font-medium flex items-center">
-              <BusFront className="w-5 h-5 mr-2" />
+              <Bus className="w-5 h-5 mr-2" />
               Manage Buses
             </Link>
             <Link href="/drivers" className="bg-white text-purple-600 hover:bg-purple-50 transition-all rounded-lg p-4 text-left border border-white border-opacity-30 font-medium flex items-center">
@@ -457,23 +397,6 @@ export default function MainDashboard() {
               View Complaints
             </Link>
           </div>
-          
-          {/* ============================================
-             HOW TO ADD MORE QUICK ACTIONS:
-             
-             Copy this template and add above:
-             
-             <Link href="/your-page" className="bg-white text-[color]-600 hover:bg-[color]-50 transition-all rounded-lg p-4 text-left border border-white border-opacity-30 font-medium flex items-center">
-               <YourIcon className="w-5 h-5 mr-2" />
-               Your Button Text
-             </Link>
-             
-             Replace:
-             - /your-page with the actual route
-             - [color] with your chosen color (blue, green, purple, red, etc.)
-             - YourIcon with imported icon
-             - Your Button Text with what users should see
-            ============================================ */}
         </div>
       </main>
 
@@ -496,3 +419,5 @@ export default function MainDashboard() {
     </div>
   );
 }
+
+export default withAuth(HomePage);

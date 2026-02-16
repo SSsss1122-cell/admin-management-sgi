@@ -9,8 +9,9 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useRouter } from 'next/navigation';
+import withAuth from '../../components/withAuth';
 
-export default function DriversDashboard() {
+ function DriversDashboard() {
   const [drivers, setDrivers] = useState([]);
   const [buses, setBuses] = useState([]);
   const [filteredDrivers, setFilteredDrivers] = useState([]);
@@ -933,3 +934,4 @@ function Users2(props) {
     </svg>
   );
 }
+export default withAuth(DriversDashboard);

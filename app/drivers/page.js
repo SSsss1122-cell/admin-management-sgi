@@ -1,12 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Users, Plus, Edit, Trash2, Search, Mail, Phone, MapPin, UserPlus, X, Save, ArrowLeft, Menu, LogOut, User, Key, Truck, IdCard, CreditCard, Home } from 'lucide-react';
+import { Users, Plus, Edit, Trash2, Search, Mail, Phone, MapPin, UserPlus, X, Save, ArrowLeft, Menu, LogOut, User, Key, Truck, IdCard, CreditCard, Home, Bus } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useRouter } from 'next/navigation';
+import withAuth from '../../components/withAuth';
 
-export default function DriversDashboard() {
+function DriversDashboard() {
   const [drivers, setDrivers] = useState([]);
+  const [buses, setBuses] = useState([]); // 🔥 NEW: Store buses for assignment
   const [filteredDrivers, setFilteredDrivers] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
@@ -15,7 +17,8 @@ export default function DriversDashboard() {
   const [adminName, setAdminName] = useState('');
   const [stats, setStats] = useState({
     totalDrivers: 0,
-    totalWithLicense: 0
+    totalWithLicense: 0,
+    assignedDrivers: 0
   });
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const [showPassword, setShowPassword] = useState({});
@@ -28,11 +31,13 @@ export default function DriversDashboard() {
     password: '',
     driver_code: '',
     license_no: '',
-    address: ''
+    address: '',
+    bus_id: '' // 🔥 NEW: Bus assignment field
   });
 
   useEffect(() => {
     fetchDrivers();
+    fetchBuses(); // 🔥 NEW: Fetch buses for dropdown
     // Get admin name from localStorage
     const storedAdminName = localStorage.getItem('adminName');
     if (storedAdminName) {
@@ -44,11 +49,19 @@ export default function DriversDashboard() {
     filterDrivers();
   }, [drivers, searchTerm]);
 
+  // 🔥 UPDATED: Fetch from drivers_new table with bus info
   const fetchDrivers = async () => {
     try {
       const { data, error } = await supabase
-        .from('drivers')
-        .select('*')
+        .from('drivers_new')
+        .select(`
+          *,
+          bus:buses!drivers_new_bus_id_fkey (
+            id,
+            bus_number,
+            route_name
+          )
+        `)
         .order('name');
 
       if (error) throw error;
@@ -61,13 +74,30 @@ export default function DriversDashboard() {
     }
   };
 
+  // 🔥 NEW: Fetch buses for dropdown
+  const fetchBuses = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('buses')
+        .select('id, bus_number, route_name')
+        .order('bus_number');
+
+      if (error) throw error;
+      setBuses(data || []);
+    } catch (error) {
+      console.error('Error fetching buses:', error);
+    }
+  };
+
   const updateStats = (driverData) => {
     const totalDrivers = driverData.length;
     const totalWithLicense = driverData.filter(driver => driver.license_no).length;
+    const assignedDrivers = driverData.filter(driver => driver.bus_id).length;
 
     setStats({
       totalDrivers,
-      totalWithLicense
+      totalWithLicense,
+      assignedDrivers
     });
   };
 
@@ -80,7 +110,8 @@ export default function DriversDashboard() {
         driver.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         driver.driver_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         driver.license_no?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        driver.contact?.includes(searchTerm)
+        driver.contact?.includes(searchTerm) ||
+        driver.bus?.bus_number?.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
@@ -92,7 +123,7 @@ export default function DriversDashboard() {
     try {
       // Check if driver code already exists
       const { data: existingDriver } = await supabase
-        .from('drivers')
+        .from('drivers_new')
         .select('driver_code')
         .eq('driver_code', newDriver.driver_code.toUpperCase())
         .maybeSingle();
@@ -103,7 +134,7 @@ export default function DriversDashboard() {
       }
 
       const { data, error } = await supabase
-        .from('drivers')
+        .from('drivers_new')
         .insert([{
           name: newDriver.name,
           contact: newDriver.contact,
@@ -111,6 +142,7 @@ export default function DriversDashboard() {
           driver_code: newDriver.driver_code.toUpperCase(),
           license_no: newDriver.license_no,
           address: newDriver.address,
+          bus_id: newDriver.bus_id || null, // 🔥 NEW: Include bus assignment
           updated_at: new Date().toISOString()
         }])
         .select();
@@ -124,10 +156,12 @@ export default function DriversDashboard() {
         password: '',
         driver_code: '',
         license_no: '',
-        address: ''
+        address: '',
+        bus_id: ''
       });
       setShowAddForm(false);
       fetchDrivers();
+      fetchBuses(); // Refresh buses to update assignment status
     } catch (error) {
       console.error('Error adding driver:', error);
       alert('Error adding driver: ' + error.message);
@@ -140,7 +174,7 @@ export default function DriversDashboard() {
       // Check if driver code is being changed and if it's already taken
       if (newDriver.driver_code.toUpperCase() !== editingDriver.driver_code) {
         const { data: existingDriver } = await supabase
-          .from('drivers')
+          .from('drivers_new')
           .select('driver_code')
           .eq('driver_code', newDriver.driver_code.toUpperCase())
           .maybeSingle();
@@ -157,6 +191,7 @@ export default function DriversDashboard() {
         driver_code: newDriver.driver_code.toUpperCase(),
         license_no: newDriver.license_no,
         address: newDriver.address,
+        bus_id: newDriver.bus_id || null, // 🔥 NEW: Update bus assignment
         updated_at: new Date().toISOString()
       };
 
@@ -166,7 +201,7 @@ export default function DriversDashboard() {
       }
 
       const { error } = await supabase
-        .from('drivers')
+        .from('drivers_new')
         .update(updateData)
         .eq('id', editingDriver.id);
 
@@ -180,9 +215,11 @@ export default function DriversDashboard() {
         password: '',
         driver_code: '',
         license_no: '',
-        address: ''
+        address: '',
+        bus_id: ''
       });
       fetchDrivers();
+      fetchBuses(); // Refresh buses to update assignment status
     } catch (error) {
       console.error('Error updating driver:', error);
       alert('Error updating driver: ' + error.message);
@@ -194,7 +231,7 @@ export default function DriversDashboard() {
     
     try {
       const { error } = await supabase
-        .from('drivers')
+        .from('drivers_new')
         .delete()
         .eq('id', driverId);
 
@@ -202,6 +239,7 @@ export default function DriversDashboard() {
 
       alert('Driver deleted successfully!');
       fetchDrivers();
+      fetchBuses(); // Refresh buses to update assignment status
     } catch (error) {
       console.error('Error deleting driver:', error);
       alert('Error deleting driver: ' + error.message);
@@ -216,7 +254,8 @@ export default function DriversDashboard() {
       password: '', // Don't pre-fill password for security
       driver_code: driver.driver_code || '',
       license_no: driver.license_no || '',
-      address: driver.address || ''
+      address: driver.address || '',
+      bus_id: driver.bus_id || '' // 🔥 NEW: Include current bus assignment
     });
   };
 
@@ -236,6 +275,13 @@ export default function DriversDashboard() {
       ...prev,
       [driverId]: !prev[driverId]
     }));
+  };
+
+  // 🔥 NEW: Get bus number by ID
+  const getBusNumber = (busId) => {
+    if (!busId) return null;
+    const bus = buses.find(b => b.id === busId);
+    return bus ? bus.bus_number : null;
   };
 
   if (loading) {
@@ -313,8 +359,8 @@ export default function DriversDashboard() {
             </div>
           </div>
 
-          {/* Stats Cards */}
-          <div className="grid grid-cols-2 gap-3 sm:gap-4">
+          {/* Stats Cards - Updated with assigned drivers */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
             <div className="bg-white rounded-lg sm:rounded-xl shadow-sm p-4 sm:p-6 border border-gray-200">
               <div className="flex items-center justify-between">
                 <div>
@@ -331,6 +377,15 @@ export default function DriversDashboard() {
                   <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.totalWithLicense}</p>
                 </div>
                 <IdCard className="text-green-400" size={20} />
+              </div>
+            </div>
+            <div className="bg-white rounded-lg sm:rounded-xl shadow-sm p-4 sm:p-6 border border-gray-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs sm:text-sm font-medium text-gray-600">Assigned to Bus</p>
+                  <p className="text-xl sm:text-2xl font-bold text-blue-600">{stats.assignedDrivers}</p>
+                </div>
+                <Bus className="text-blue-400" size={20} />
               </div>
             </div>
           </div>
@@ -413,6 +468,16 @@ export default function DriversDashboard() {
                           <div>
                             <span className="font-medium">Code:</span> {driver.driver_code || 'N/A'}
                           </div>
+                          {/* 🔥 NEW: Show assigned bus */}
+                          {driver.bus && (
+                            <div className="flex items-center col-span-2">
+                              <Bus size={12} className="mr-1 text-blue-500" />
+                              <span className="text-blue-600 font-medium">Bus: {driver.bus.bus_number}</span>
+                              {driver.bus.route_name && (
+                                <span className="text-gray-500 text-xs ml-1">({driver.bus.route_name})</span>
+                              )}
+                            </div>
+                          )}
                           {driver.contact && (
                             <div className="flex items-center col-span-2">
                               <Phone size={12} className="mr-1" />
@@ -454,6 +519,7 @@ export default function DriversDashboard() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">License No</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assigned Bus</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Password</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                   </tr>
@@ -485,6 +551,20 @@ export default function DriversDashboard() {
                             </div>
                           ) : 'N/A'}
                         </div>
+                      </td>
+                      {/* 🔥 NEW: Assigned Bus Column */}
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {driver.bus ? (
+                          <div className="flex items-center">
+                            <Bus size={14} className="mr-1 text-blue-500" />
+                            <span className="text-sm font-medium text-blue-600">{driver.bus.bus_number}</span>
+                            {driver.bus.route_name && (
+                              <span className="text-xs text-gray-500 ml-1">({driver.bus.route_name})</span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-500">Not Assigned</span>
+                        )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center text-sm text-gray-900">
@@ -564,7 +644,8 @@ export default function DriversDashboard() {
                     password: '',
                     driver_code: '',
                     license_no: '',
-                    address: ''
+                    address: '',
+                    bus_id: ''
                   });
                 }}
                 className="text-gray-400 hover:text-gray-600 p-1"
@@ -628,6 +709,41 @@ export default function DriversDashboard() {
                     placeholder="Enter complete address"
                   />
                 </div>
+                
+                {/* 🔥 NEW: Bus Assignment Dropdown */}
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <Bus size={16} className="inline mr-1 text-purple-600" />
+                    Assign Bus (Optional)
+                  </label>
+                  <select
+                    value={newDriver.bus_id}
+                    onChange={(e) => setNewDriver(prev => ({ ...prev, bus_id: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500 text-gray-900 bg-white text-sm"
+                  >
+                    <option value="">No Bus Assigned</option>
+                    {buses.map(bus => {
+                      // Check if bus is already assigned to another driver
+                      const isAssigned = drivers.some(d => 
+                        d.bus_id === bus.id && 
+                        (!editingDriver || d.id !== editingDriver.id)
+                      );
+                      return (
+                        <option 
+                          key={bus.id} 
+                          value={bus.id}
+                          disabled={isAssigned}
+                          className={isAssigned ? 'text-gray-400' : ''}
+                        >
+                          {bus.bus_number} - {bus.route_name || 'No Route'}
+                          {isAssigned ? ' (Already Assigned)' : ''}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">Each bus can be assigned to only one driver</p>
+                </div>
+
                 <div className="sm:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Password {!editingDriver && '*'}
@@ -659,7 +775,8 @@ export default function DriversDashboard() {
                       password: '',
                       driver_code: '',
                       license_no: '',
-                      address: ''
+                      address: '',
+                      bus_id: ''
                     });
                   }}
                   className="px-4 py-2 text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg w-full sm:w-auto text-sm"
@@ -681,3 +798,5 @@ export default function DriversDashboard() {
     </div>
   );
 }
+
+export default withAuth(DriversDashboard);

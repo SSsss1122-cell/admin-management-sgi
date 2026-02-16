@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Bell, Send, User, Mail, Calendar, Plus, X, Users, FileText, Target, ArrowLeft } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import withAuth from '../../components/withAuth';
 
-export default function Notices() {
+ function Notices() {
   const [students, setStudents] = useState([]);
   const [selectedStudent, setSelectedStudent] = useState("");
   const [title, setTitle] = useState("");
@@ -370,3 +371,4 @@ export default function Notices() {
     </div>
   );
 }
+export default withAuth(Notices);

@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { MapPin, Navigation, Plus, Edit, Trash2, Users, Phone, AlertTriangle, Menu, X, ArrowLeft } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import withAuth from '../../components/withAuth';
 
-export default function BusManagement() {
+ function BusManagement() {
   const [buses, setBuses] = useState([]);
   const [busLocations, setBusLocations] = useState([]);
   const [selectedBus, setSelectedBus] = useState(null);
@@ -476,3 +477,4 @@ export default function BusManagement() {
     </div>
   );
 }
+export default withAuth(BusManagement);

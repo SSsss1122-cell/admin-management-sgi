@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../lib/supabase';
+
 import { 
   AlertTriangle, 
   Search, 
@@ -20,8 +21,9 @@ import {
   ChevronDown,
   ArrowLeft
 } from 'lucide-react';
+import withAuth from '../../components/withAuth';
 
-export default function AdminComplaints() {
+ function AdminComplaints() {
   const [complaints, setComplaints] = useState([]);
   const [filteredComplaints, setFilteredComplaints] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -489,3 +491,4 @@ export default function AdminComplaints() {
     </div>
   );
 }
+export default withAuth(AdminComplaints);
