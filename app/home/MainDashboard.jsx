@@ -13,14 +13,12 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
-
 function HomePage() {
   const [stats, setStats] = useState({
     totalStudents: 0,
     activeBuses: 0,
     dailyComplaints: 0,
     totalComplaints: 0,
-    totalCommunityMessages: 0,
     totalDrivers: 0,
     totalBuses: 0,
     busesWithDriver: 0,
@@ -47,20 +45,17 @@ function HomePage() {
         studentsData,
         busesData,
         complaintsData,
-        communityData,
         driversData
       ] = await Promise.all([
         supabase.from('students').select('*'),
         supabase.from('buses').select('*'),
         supabase.from('complaints').select('*'),
-        supabase.from('community_messages').select('*'),
         supabase.from('drivers_new').select('*')
       ]);
 
       const totalStudents = studentsData.data?.length || 0;
       const totalBuses = busesData.data?.length || 0;
       const totalComplaints = complaintsData.data?.length || 0;
-      const totalCommunityMessages = communityData.data?.length || 0;
       const totalDrivers = driversData.data?.length || 0;
       
       const busesWithDriver = driversData.data?.filter(d => d.bus_id).length || 0;
@@ -91,7 +86,6 @@ function HomePage() {
         activeBuses: totalBuses,
         dailyComplaints,
         totalComplaints,
-        totalCommunityMessages,
         totalDrivers,
         totalBuses,
         busesWithDriver,
@@ -194,15 +188,6 @@ function HomePage() {
       color: 'bg-teal-500',
       textColor: 'text-teal-600'
     },
-    {
-      id: 'community',
-      name: 'Community',
-      description: 'Student community and discussions',
-      icon: MessageCircle,
-      href: '/community',
-      color: 'bg-lime-500',
-      textColor: 'text-lime-600'
-    }
   ];
 
   const quickStats = [
