@@ -10,7 +10,7 @@ function FeesManagement() {
   const [students, setStudents] = useState([]);
   const [filteredStudents, setFilteredStudents] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [feeFilter, setFeeFilter] = useState('all'); // 'all', 'paid', 'half', 'due'
+  const [feeFilter, setFeeFilter] = useState('all');
   const [showFeeForm, setShowFeeForm] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [feeData, setFeeData] = useState({
@@ -50,6 +50,7 @@ function FeesManagement() {
     }
   };
 
+  // 🔥 FIXED: Better filter logic
   const filterStudents = () => {
     let filtered = students;
 
@@ -64,61 +65,53 @@ function FeesManagement() {
 
     // Apply fee status filter
     if (feeFilter === 'paid') {
-      // Fully paid - no due amount
-      filtered = filtered.filter(student => 
-        !student.fees_due && 
-        parseFloat(student.due_amount || 0) === 0 &&
-        parseFloat(student.total_fees || 0) > 0
-      );
-    } else if (feeFilter === 'half') {
-      // 🔥 NEW: Half paid - partially paid but still due
-      filtered = filtered.filter(student => 
-        student.fees_due && 
-        parseFloat(student.paid_amount || 0) > 0 && 
-        parseFloat(student.due_amount || 0) > 0
-      );
-    } else if (feeFilter === 'due') {
-      // Fully due - no payment made
-      filtered = filtered.filter(student => 
-        student.fees_due && 
-        (parseFloat(student.paid_amount || 0) === 0 || !student.paid_amount)
-      );
+      filtered = filtered.filter(student => {
+        const total = parseFloat(student.total_fees) || 0;
+        const paid = parseFloat(student.paid_amount) || 0;
+        const due = parseFloat(student.due_amount) || 0;
+        return total > 0 && due === 0 && paid > 0;
+      });
+    } 
+    else if (feeFilter === 'half') {
+      filtered = filtered.filter(student => {
+        const total = parseFloat(student.total_fees) || 0;
+        const paid = parseFloat(student.paid_amount) || 0;
+        const due = parseFloat(student.due_amount) || 0;
+        return total > 0 && paid > 0 && due > 0;
+      });
+    } 
+    else if (feeFilter === 'due') {
+      filtered = filtered.filter(student => {
+        const total = parseFloat(student.total_fees) || 0;
+        const paid = parseFloat(student.paid_amount) || 0;
+        const due = parseFloat(student.due_amount) || 0;
+        return total > 0 && paid === 0 && due > 0;
+      });
     }
 
     setFilteredStudents(filtered);
   };
 
-  const updateFeeStatus = async (studentId, newStatus) => {
-    try {
-      const { error } = await supabase
-        .from('students')
-        .update({ fees_due: newStatus })
-        .eq('id', studentId);
-
-      if (error) throw error;
-
-      alert('Fee status updated successfully!');
-      fetchStudents();
-    } catch (error) {
-      console.error('Error updating fee status:', error);
-      alert('Error updating fee status: ' + error.message);
-    }
-  };
-
   const handleFeeSubmit = async (e) => {
     e.preventDefault();
     try {
+      const total = parseFloat(feeData.total_fees) || 0;
+      const paid = parseFloat(feeData.paid_amount) || 0;
+      const due = total - paid;
+
+      const updateData = {
+        total_fees: total,
+        paid_amount: paid,
+        due_amount: due > 0 ? due : 0,
+        fees_due: due > 0,
+        last_payment_date: feeData.last_payment_date || null,
+        next_payment_date: feeData.next_payment_date || null,
+        payment_mode: feeData.payment_mode || null
+      };
+
       const { error } = await supabase
         .from('students')
-        .update({
-          total_fees: feeData.total_fees,
-          paid_amount: feeData.paid_amount,
-          due_amount: feeData.due_amount,
-          fees_due: parseInt(feeData.due_amount) > 0,
-          last_payment_date: feeData.last_payment_date || null,
-          next_payment_date: feeData.next_payment_date || null,
-          payment_mode: feeData.payment_mode || null
-        })
+        .update(updateData)
         .eq('id', selectedStudent.id);
 
       if (error) throw error;
@@ -165,27 +158,33 @@ function FeesManagement() {
   };
 
   const getFeesStatusColor = (student) => {
-    if (!student.fees_due && parseFloat(student.due_amount || 0) === 0 && parseFloat(student.total_fees || 0) > 0) {
-      return 'bg-green-100 text-green-800 border border-green-200'; // Paid
-    } else if (student.fees_due && parseFloat(student.paid_amount || 0) > 0 && parseFloat(student.due_amount || 0) > 0) {
-      return 'bg-yellow-100 text-yellow-800 border border-yellow-200'; // Half Paid
-    } else if (student.fees_due && (parseFloat(student.paid_amount || 0) === 0 || !student.paid_amount)) {
-      return 'bg-red-100 text-red-800 border border-red-200'; // Due
+    const total = parseFloat(student.total_fees) || 0;
+    const paid = parseFloat(student.paid_amount) || 0;
+    const due = parseFloat(student.due_amount) || 0;
+
+    if (total === 0) return 'bg-gray-100 text-gray-800 border border-gray-200';
+    
+    if (due === 0 && paid > 0) {
+      return 'bg-green-100 text-green-800 border border-green-200';
+    } else if (paid > 0 && due > 0) {
+      return 'bg-yellow-100 text-yellow-800 border border-yellow-200';
+    } else if (due > 0 && paid === 0) {
+      return 'bg-red-100 text-red-800 border border-red-200';
     } else {
-      return 'bg-gray-100 text-gray-800 border border-gray-200'; // Not set
+      return 'bg-gray-100 text-gray-800 border border-gray-200';
     }
   };
 
   const getFeesStatusText = (student) => {
-    if (!student.fees_due && parseFloat(student.due_amount || 0) === 0 && parseFloat(student.total_fees || 0) > 0) {
-      return 'Paid';
-    } else if (student.fees_due && parseFloat(student.paid_amount || 0) > 0 && parseFloat(student.due_amount || 0) > 0) {
-      return 'Half Paid';
-    } else if (student.fees_due && (parseFloat(student.paid_amount || 0) === 0 || !student.paid_amount)) {
-      return 'Due';
-    } else {
-      return 'Not Set';
-    }
+    const total = parseFloat(student.total_fees) || 0;
+    const paid = parseFloat(student.paid_amount) || 0;
+    const due = parseFloat(student.due_amount) || 0;
+
+    if (total === 0) return 'Not Set';
+    if (due === 0 && paid > 0) return 'Paid';
+    if (paid > 0 && due > 0) return 'Half Paid';
+    if (due > 0 && paid === 0) return 'Due';
+    return 'Not Set';
   };
 
   const formatDate = (dateString) => {
@@ -236,16 +235,29 @@ function FeesManagement() {
     router.back();
   };
 
+  // Calculate stats based on actual amounts
   const totalStudents = students.length;
-  const paidStudents = students.filter(student => 
-    !student.fees_due && parseFloat(student.due_amount || 0) === 0 && parseFloat(student.total_fees || 0) > 0
-  ).length;
-  const halfPaidStudents = students.filter(student => 
-    student.fees_due && parseFloat(student.paid_amount || 0) > 0 && parseFloat(student.due_amount || 0) > 0
-  ).length;
-  const dueStudents = students.filter(student => 
-    student.fees_due && (parseFloat(student.paid_amount || 0) === 0 || !student.paid_amount)
-  ).length;
+  
+  const paidStudents = students.filter(student => {
+    const total = parseFloat(student.total_fees) || 0;
+    const paid = parseFloat(student.paid_amount) || 0;
+    const due = parseFloat(student.due_amount) || 0;
+    return total > 0 && due === 0 && paid > 0;
+  }).length;
+
+  const halfPaidStudents = students.filter(student => {
+    const total = parseFloat(student.total_fees) || 0;
+    const paid = parseFloat(student.paid_amount) || 0;
+    const due = parseFloat(student.due_amount) || 0;
+    return total > 0 && paid > 0 && due > 0;
+  }).length;
+
+  const dueStudents = students.filter(student => {
+    const total = parseFloat(student.total_fees) || 0;
+    const paid = parseFloat(student.paid_amount) || 0;
+    const due = parseFloat(student.due_amount) || 0;
+    return total > 0 && paid === 0 && due > 0;
+  }).length;
   
   const totalFees = students.reduce((sum, student) => sum + (parseFloat(student.total_fees) || 0), 0);
   const totalPaid = students.reduce((sum, student) => sum + (parseFloat(student.paid_amount) || 0), 0);
@@ -266,7 +278,6 @@ function FeesManagement() {
           {/* Header */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
             <div className="flex items-center gap-3">
-              {/* Back Button */}
               <button
                 onClick={handleBack}
                 className="flex items-center text-gray-600 hover:text-gray-900 transition-colors p-2 rounded-lg hover:bg-gray-100"
@@ -292,7 +303,7 @@ function FeesManagement() {
             </div>
           </div>
 
-          {/* Fees Summary - Mobile Optimized */}
+          {/* Fees Summary */}
           <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-2 sm:gap-3 lg:gap-4">
             <div className="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6 border border-gray-200">
               <div className="flex items-center justify-between">
@@ -335,8 +346,7 @@ function FeesManagement() {
                 <div>
                   <p className="text-xs sm:text-sm font-medium text-gray-600">Total Due</p>
                   <p className="text-lg sm:text-xl lg:text-2xl font-bold text-orange-600">
-                    <IndianRupee size={14} className="inline" />
-                    {totalDue.toLocaleString('en-IN')}
+                    ₹{totalDue.toLocaleString('en-IN')}
                   </p>
                 </div>
                 <IndianRupee className="text-orange-400" size={18} />
@@ -351,8 +361,7 @@ function FeesManagement() {
                 <div>
                   <p className="text-xs sm:text-sm font-medium text-gray-600">Total Fees</p>
                   <p className="text-base sm:text-lg lg:text-xl font-bold text-green-700">
-                    <IndianRupee size={12} className="inline" />
-                    {totalFees.toLocaleString('en-IN')}
+                    ₹{totalFees.toLocaleString('en-IN')}
                   </p>
                 </div>
                 <CreditCard className="text-green-500" size={16} />
@@ -363,8 +372,7 @@ function FeesManagement() {
                 <div>
                   <p className="text-xs sm:text-sm font-medium text-gray-600">Collected</p>
                   <p className="text-base sm:text-lg lg:text-xl font-bold text-blue-700">
-                    <IndianRupee size={12} className="inline" />
-                    {totalPaid.toLocaleString('en-IN')}
+                    ₹{totalPaid.toLocaleString('en-IN')}
                   </p>
                 </div>
                 <CheckCircle className="text-blue-500" size={16} />
@@ -375,8 +383,7 @@ function FeesManagement() {
                 <div>
                   <p className="text-xs sm:text-sm font-medium text-gray-600">Pending</p>
                   <p className="text-base sm:text-lg lg:text-xl font-bold text-red-700">
-                    <IndianRupee size={12} className="inline" />
-                    {totalDue.toLocaleString('en-IN')}
+                    ₹{totalDue.toLocaleString('en-IN')}
                   </p>
                 </div>
                 <XCircle className="text-red-500" size={16} />
@@ -384,9 +391,8 @@ function FeesManagement() {
             </div>
           </div>
 
-          {/* Filters - Mobile Optimized */}
+          {/* Filters */}
           <div className="bg-white rounded-lg sm:rounded-xl shadow-sm p-4 border border-gray-200">
-            {/* Mobile Filters Toggle */}
             <button
               onClick={() => setIsFiltersOpen(!isFiltersOpen)}
               className="lg:hidden w-full flex items-center justify-between p-2 bg-gray-50 rounded-lg mb-3"
@@ -423,7 +429,7 @@ function FeesManagement() {
             </div>
           </div>
 
-          {/* Students Table - Mobile Optimized */}
+          {/* Students Table */}
           <div className="bg-white rounded-lg sm:rounded-xl shadow-sm border border-gray-200">
             <div className="px-4 py-3 border-b border-gray-200">
               <h3 className="text-base sm:text-lg font-semibold text-gray-900">
@@ -465,32 +471,21 @@ function FeesManagement() {
                           </div>
                         </div>
                         
-                        {/* Fee Details */}
                         <div className="grid grid-cols-3 gap-2 text-xs mb-2">
                           <div className="text-center">
                             <p className="text-gray-600">Total</p>
-                            <p className="font-semibold text-gray-900">
-                              <IndianRupee size={10} className="inline" />
-                              {student.total_fees || '0'}
-                            </p>
+                            <p className="font-semibold text-gray-900">₹{student.total_fees || '0'}</p>
                           </div>
                           <div className="text-center">
                             <p className="text-gray-600">Paid</p>
-                            <p className="font-semibold text-green-600">
-                              <IndianRupee size={10} className="inline" />
-                              {student.paid_amount || '0'}
-                            </p>
+                            <p className="font-semibold text-green-600">₹{student.paid_amount || '0'}</p>
                           </div>
                           <div className="text-center">
                             <p className="text-gray-600">Due</p>
-                            <p className="font-semibold text-red-600">
-                              <IndianRupee size={10} className="inline" />
-                              {student.due_amount || '0'}
-                            </p>
+                            <p className="font-semibold text-red-600">₹{student.due_amount || '0'}</p>
                           </div>
                         </div>
 
-                        {/* Contact and Payment Info */}
                         <div className="text-xs text-gray-600 space-y-1">
                           {student.email && (
                             <div className="flex items-center">
@@ -538,149 +533,99 @@ function FeesManagement() {
                 <tbody className="divide-y divide-gray-200">
                   {filteredStudents.map((student) => (
                     <tr key={student.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{student.usn}</td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">{student.usn}</div>
+                        <div className="text-sm font-medium text-gray-900">{student.full_name}</div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">{student.full_name}</div>
-                          <div className="flex flex-col sm:flex-row sm:space-x-2 text-xs text-gray-500 mt-1">
-                            {student.email && (
-                              <div className="flex items-center">
-                                <Mail size={12} className="mr-1" />
-                                {student.email}
-                              </div>
-                            )}
-                            {student.phone && (
-                              <div className="flex items-center">
-                                <Phone size={12} className="mr-1" />
-                                {student.phone}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {student.branch}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
-                        <IndianRupee size={14} className="inline mr-1" />
-                        {student.total_fees || '0'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600 font-medium">
-                        <IndianRupee size={14} className="inline mr-1" />
-                        {student.paid_amount || '0'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600 font-medium">
-                        <IndianRupee size={14} className="inline mr-1" />
-                        {student.due_amount || '0'}
-                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{student.branch}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">₹{student.total_fees || '0'}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600 font-medium">₹{student.paid_amount || '0'}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600 font-medium">₹{student.due_amount || '0'}</td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`inline-flex px-3 py-1 text-xs font-semibold rounded-full ${getFeesStatusColor(student)}`}>
                           {getFeesStatusText(student)}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className={`flex items-center text-sm ${isUpcomingPayment(student.next_payment_date) ? 'text-orange-600 font-semibold' : 'text-gray-500'}`}>
-                          <Calendar size={12} className="mr-1" />
-                          {formatDate(student.next_payment_date)}
-                          {isUpcomingPayment(student.next_payment_date) && (
-                            <span className="ml-1 text-xs bg-orange-100 text-orange-800 px-1 rounded">Soon</span>
-                          )}
-                        </div>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        {formatDate(student.next_payment_date)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <div className="flex space-x-2">
-                          <button 
-                            onClick={() => openFeeForm(student)}
-                            className="text-blue-600 hover:text-blue-900"
-                            title="Edit Fee Details"
-                          >
-                            <Edit size={16} />
-                          </button>
-                        </div>
+                        <button 
+                          onClick={() => openFeeForm(student)}
+                          className="text-blue-600 hover:text-blue-900"
+                          title="Edit Fee Details"
+                        >
+                          <Edit size={16} />
+                        </button>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            {filteredStudents.length === 0 && (
-              <div className="hidden lg:block text-center py-12">
-                <CreditCard className="mx-auto text-gray-400 mb-4" size={48} />
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">No Students Found</h3>
-                <p className="text-gray-600">Try adjusting your search criteria.</p>
-              </div>
-            )}
           </div>
         </div>
       </div>
 
-      {/* Fee Details Modal - Mobile Optimized */}
+      {/* Fee Details Modal */}
       {showFeeForm && selectedStudent && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-3 sm:p-4 z-50">
-          <div className="bg-white rounded-xl w-full max-w-md max-h-[95vh] overflow-y-auto">
-            {/* Sticky Modal Header */}
-            <div className="sticky top-0 bg-white border-b border-gray-200 px-4 py-3 sm:px-6 sm:py-4 flex justify-between items-center">
-              <h3 className="text-lg font-semibold text-gray-900">Update Fee Details</h3>
-              <button 
-                onClick={() => setShowFeeForm(false)} 
-                className="text-gray-400 hover:text-gray-600 p-1"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            
-            <div className="p-4 sm:p-6">
-              <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                <h4 className="font-medium text-gray-900 text-sm">{selectedStudent.full_name}</h4>
-                <p className="text-xs text-gray-600">{selectedStudent.usn} • {selectedStudent.branch}</p>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-semibold text-gray-900">Update Fee Details</h3>
+                <button onClick={() => setShowFeeForm(false)} className="text-gray-400 hover:text-gray-600">
+                  <X size={20} />
+                </button>
+              </div>
+              
+              <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+                <p className="font-medium text-gray-900">{selectedStudent.full_name}</p>
+                <p className="text-sm text-gray-600">{selectedStudent.usn} - {selectedStudent.branch}</p>
               </div>
 
               <form onSubmit={handleFeeSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Total Fees</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Total Fees (₹)</label>
                     <input
                       type="number"
                       value={feeData.total_fees}
-                      onChange={(e) => setFeeData(prev => ({ ...prev, total_fees: e.target.value }))}
+                      onChange={(e) => setFeeData({...feeData, total_fees: e.target.value})}
                       onBlur={calculateDue}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-sm"
-                      placeholder="0"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Amount Paid</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Paid Amount (₹)</label>
                     <input
                       type="number"
                       value={feeData.paid_amount}
-                      onChange={(e) => setFeeData(prev => ({ ...prev, paid_amount: e.target.value }))}
+                      onChange={(e) => setFeeData({...feeData, paid_amount: e.target.value})}
                       onBlur={calculateDue}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-sm"
-                      placeholder="0"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Due Amount</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Due Amount (₹)</label>
                   <input
                     type="number"
                     value={feeData.due_amount}
                     readOnly
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 text-sm"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-700"
                   />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Last Payment Date</label>
                     <input
                       type="date"
                       value={feeData.last_payment_date}
-                      onChange={(e) => setFeeData(prev => ({ ...prev, last_payment_date: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-sm"
+                      onChange={(e) => setFeeData({...feeData, last_payment_date: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
                     />
                   </div>
                   <div>
@@ -688,8 +633,8 @@ function FeesManagement() {
                     <input
                       type="date"
                       value={feeData.next_payment_date}
-                      onChange={(e) => setFeeData(prev => ({ ...prev, next_payment_date: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-sm"
+                      onChange={(e) => setFeeData({...feeData, next_payment_date: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
                     />
                   </div>
                 </div>
@@ -698,8 +643,8 @@ function FeesManagement() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Payment Mode</label>
                   <select
                     value={feeData.payment_mode}
-                    onChange={(e) => setFeeData(prev => ({ ...prev, payment_mode: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-sm"
+                    onChange={(e) => setFeeData({...feeData, payment_mode: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
                   >
                     <option value="">Select Mode</option>
                     <option value="Cash">Cash</option>
@@ -710,17 +655,17 @@ function FeesManagement() {
                   </select>
                 </div>
 
-                <div className="flex flex-col sm:flex-row justify-end space-y-2 sm:space-y-0 sm:space-x-3 pt-4 border-t border-gray-200">
+                <div className="flex justify-end space-x-3 pt-4">
                   <button
                     type="button"
                     onClick={() => setShowFeeForm(false)}
-                    className="px-4 py-2 text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg w-full sm:w-auto text-sm"
+                    className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors w-full sm:w-auto text-sm"
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                   >
                     Update Fees
                   </button>
