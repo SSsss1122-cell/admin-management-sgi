@@ -1,86 +1,46 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { 
-  Users, Plus, Edit, Trash2, Search, Mail, Phone, MapPin, 
-  UserPlus, X, Save, ArrowLeft, Menu, LogOut, User, Key, 
-  Truck, IdCard, Home, BusFront, RefreshCw, Eye, EyeOff,
-  Shield, Settings, Download, Upload, Filter
-} from 'lucide-react';
-import { supabase } from '../../lib/supabase';
 import { useRouter } from 'next/navigation';
-import withAuth from '../../components/withAuth';
+import { 
+  Bus, ArrowLeft, Search, Loader2, Plus, 
+  X, Save, AlertCircle, Edit, Trash2 
+} from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
- function DriversDashboard() {
-  const [drivers, setDrivers] = useState([]);
-  const [buses, setBuses] = useState([]);
-  const [filteredDrivers, setFilteredDrivers] = useState([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [editingDriver, setEditingDriver] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [adminName, setAdminName] = useState('');
-  const [stats, setStats] = useState({
-    totalDrivers: 0,
-    assignedDrivers: 0,
-    availableDrivers: 0,
-    totalBuses: 0,
-    busesWithDrivers: 0
-  });
-  const [isFiltersOpen, setIsFiltersOpen] = useState(false);
-  const [showPassword, setShowPassword] = useState({});
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [selectedDriver, setSelectedDriver] = useState(null);
-  const [showDetailsModal, setShowDetailsModal] = useState(false);
-
+export default function BusesPage() {
   const router = useRouter();
-
-  const [newDriver, setNewDriver] = useState({
-    name: '',
-    contact: '',
-    password: '',
-    driver_code: '',
-    license_no: '',
-    address: '',
-    bus_id: ''
+  const [buses, setBuses] = useState([]);
+  const [filteredBuses, setFilteredBuses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  // Add bus modal state
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newBus, setNewBus] = useState({
+    bus_number: '',
+    route_name: ''
   });
+  
+  // Edit bus modal state
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingBus, setEditingBus] = useState(null);
+  const [editForm, setEditForm] = useState({
+    id: '',
+    bus_number: '',
+    route_name: ''
+  });
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    fetchDrivers();
     fetchBuses();
-    const storedAdminName = localStorage.getItem('adminName');
-    if (storedAdminName) {
-      setAdminName(storedAdminName);
-    }
   }, []);
 
   useEffect(() => {
-    filterDrivers();
-  }, [drivers, searchTerm, filterStatus]);
-
-  const fetchDrivers = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('drivers_new')
-        .select(`
-          *,
-          bus:buses!drivers_new_bus_id_fkey (
-            id,
-            bus_number,
-            route_name
-          )
-        `)
-        .order('name');
-
-      if (error) throw error;
-      setDrivers(data || []);
-      updateStats(data || []);
-    } catch (error) {
-      console.error('Error fetching drivers:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    filterBuses();
+  }, [searchTerm, buses]);
 
   const fetchBuses = async () => {
     try {
@@ -91,847 +51,469 @@ import withAuth from '../../components/withAuth';
 
       if (error) throw error;
       setBuses(data || []);
+      setFilteredBuses(data || []);
     } catch (error) {
       console.error('Error fetching buses:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const updateStats = (driverData) => {
-    const totalDrivers = driverData.length;
-    const assignedDrivers = driverData.filter(driver => driver.bus_id).length;
-    const availableDrivers = totalDrivers - assignedDrivers;
-    
-    const uniqueBusesWithDrivers = new Set(
-      driverData.filter(d => d.bus_id).map(d => d.bus_id)
-    ).size;
-
-    setStats({
-      totalDrivers,
-      assignedDrivers,
-      availableDrivers,
-      totalBuses: buses.length,
-      busesWithDrivers: uniqueBusesWithDrivers
-    });
-  };
-
-  const filterDrivers = () => {
-    let filtered = drivers;
-
-    if (searchTerm) {
-      filtered = filtered.filter(driver =>
-        driver.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        driver.driver_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        driver.license_no?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        driver.contact?.includes(searchTerm) ||
-        driver.bus?.bus_number?.toLowerCase().includes(searchTerm.toLowerCase())
-      );
+  const filterBuses = () => {
+    if (!searchTerm.trim()) {
+      setFilteredBuses(buses);
+      return;
     }
 
-    if (filterStatus === 'assigned') {
-      filtered = filtered.filter(driver => driver.bus_id);
-    } else if (filterStatus === 'unassigned') {
-      filtered = filtered.filter(driver => !driver.bus_id);
-    }
-
-    setFilteredDrivers(filtered);
+    const filtered = buses.filter(bus =>
+      bus.bus_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      bus.route_name?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+    setFilteredBuses(filtered);
   };
 
-  // Get ALL buses - no restrictions
-  const getAllBuses = () => {
-    return buses;
-  };
-
-  // Get driver count for a bus
-  const getDriverCountForBus = (busId) => {
-    return drivers.filter(d => d.bus_id === busId).length;
-  };
-
-  const handleAddDriver = async (e) => {
+  // ADD BUS
+  const handleAddBus = async (e) => {
     e.preventDefault();
+    
+    if (!newBus.bus_number.trim()) {
+      setError('Bus number is required');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError('');
+
     try {
-      const { data: existingDriver } = await supabase
-        .from('drivers_new')
-        .select('driver_code')
-        .eq('driver_code', newDriver.driver_code.toUpperCase())
+      // Check if bus number already exists
+      const { data: existing } = await supabase
+        .from('buses')
+        .select('bus_number')
+        .eq('bus_number', newBus.bus_number.toUpperCase())
         .maybeSingle();
 
-      if (existingDriver) {
-        alert('Driver code already exists. Please use a different code.');
+      if (existing) {
+        setError('Bus number already exists');
+        setIsSubmitting(false);
         return;
       }
 
-      // ✅ MULTIPLE DRIVERS ALLOWED - No bus uniqueness check
-      const { data, error } = await supabase
-        .from('drivers_new')
+      const { error } = await supabase
+        .from('buses')
         .insert([{
-          name: newDriver.name,
-          contact: newDriver.contact,
-          password: newDriver.password,
-          driver_code: newDriver.driver_code.toUpperCase(),
-          license_no: newDriver.license_no,
-          address: newDriver.address,
-          bus_id: newDriver.bus_id || null
-        }])
-        .select();
+          bus_number: newBus.bus_number.toUpperCase(),
+          route_name: newBus.route_name || null
+        }]);
 
       if (error) throw error;
 
-      alert('Driver added successfully!');
-      resetForm();
-      setShowAddForm(false);
-      fetchDrivers();
-      fetchBuses();
+      // Reset and close modal
+      setNewBus({ bus_number: '', route_name: '' });
+      setShowAddModal(false);
+      
+      // Refresh list
+      await fetchBuses();
+
     } catch (error) {
-      console.error('Error adding driver:', error);
-      alert('Error adding driver: ' + error.message);
+      console.error('Error adding bus:', error);
+      setError(error.message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const handleEditDriver = async (e) => {
+  // EDIT BUS
+  const openEditModal = (bus) => {
+    setEditingBus(bus);
+    setEditForm({
+      id: bus.id,
+      bus_number: bus.bus_number,
+      route_name: bus.route_name || ''
+    });
+    setShowEditModal(true);
+    setError('');
+  };
+
+  const handleEditBus = async (e) => {
     e.preventDefault();
-    try {
-      if (newDriver.driver_code.toUpperCase() !== editingDriver.driver_code) {
-        const { data: existingDriver } = await supabase
-          .from('drivers_new')
-          .select('driver_code')
-          .eq('driver_code', newDriver.driver_code.toUpperCase())
-          .maybeSingle();
-
-        if (existingDriver) {
-          alert('Driver code already exists.');
-          return;
-        }
-      }
-
-      // ✅ MULTIPLE DRIVERS ALLOWED - No bus uniqueness check
-      const updateData = {
-        name: newDriver.name,
-        contact: newDriver.contact,
-        driver_code: newDriver.driver_code.toUpperCase(),
-        license_no: newDriver.license_no,
-        address: newDriver.address,
-        bus_id: newDriver.bus_id || null
-      };
-
-      if (newDriver.password) {
-        updateData.password = newDriver.password;
-      }
-
-      const { error } = await supabase
-        .from('drivers_new')
-        .update(updateData)
-        .eq('id', editingDriver.id);
-
-      if (error) throw error;
-
-      alert('Driver updated successfully!');
-      setEditingDriver(null);
-      resetForm();
-      fetchDrivers();
-    } catch (error) {
-      console.error('Error updating driver:', error);
-      alert('Error updating driver: ' + error.message);
-    }
-  };
-
-  // Quick assign - no restrictions
-  const handleQuickAssign = async (driverId, busId) => {
-    try {
-      const { error } = await supabase
-        .from('drivers_new')
-        .update({ bus_id: busId || null })
-        .eq('id', driverId);
-
-      if (error) throw error;
-
-      alert(busId ? 'Bus assigned successfully!' : 'Bus unassigned successfully!');
-      fetchDrivers();
-    } catch (error) {
-      console.error('Error assigning bus:', error);
-      alert('Error assigning bus: ' + error.message);
-    }
-  };
-
-  const deleteDriver = async (driverId) => {
-    if (!confirm('Are you sure you want to delete this driver? This action cannot be undone.')) return;
     
+    if (!editForm.bus_number.trim()) {
+      setError('Bus number is required');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError('');
+
     try {
+      // Check if bus number already exists (excluding current bus)
+      const { data: existing } = await supabase
+        .from('buses')
+        .select('bus_number')
+        .eq('bus_number', editForm.bus_number.toUpperCase())
+        .neq('id', editForm.id)
+        .maybeSingle();
+
+      if (existing) {
+        setError('Bus number already exists');
+        setIsSubmitting(false);
+        return;
+      }
+
       const { error } = await supabase
-        .from('drivers_new')
-        .delete()
-        .eq('id', driverId);
+        .from('buses')
+        .update({
+          bus_number: editForm.bus_number.toUpperCase(),
+          route_name: editForm.route_name || null
+        })
+        .eq('id', editForm.id);
 
       if (error) throw error;
 
-      alert('Driver deleted successfully!');
-      fetchDrivers();
+      setShowEditModal(false);
+      await fetchBuses();
+
     } catch (error) {
-      console.error('Error deleting driver:', error);
-      alert('Error deleting driver: ' + error.message);
+      console.error('Error updating bus:', error);
+      setError(error.message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const openEditForm = (driver) => {
-    setEditingDriver(driver);
-    setNewDriver({
-      name: driver.name || '',
-      contact: driver.contact || '',
-      password: '',
-      driver_code: driver.driver_code || '',
-      license_no: driver.license_no || '',
-      address: driver.address || '',
-      bus_id: driver.bus_id || ''
-    });
+  // DELETE BUS
+  const handleDeleteBus = async (busId, busNumber) => {
+    if (!confirm(`Are you sure you want to delete Bus ${busNumber}?`)) return;
+
+    try {
+      const { error } = await supabase
+        .from('buses')
+        .delete()
+        .eq('id', busId);
+
+      if (error) throw error;
+
+      await fetchBuses();
+
+    } catch (error) {
+      console.error('Error deleting bus:', error);
+      alert('Error deleting bus: ' + error.message);
+    }
   };
 
-  const viewDriverDetails = (driver) => {
-    setSelectedDriver(driver);
-    setShowDetailsModal(true);
-  };
-
-  const resetForm = () => {
-    setNewDriver({
-      name: '',
-      contact: '',
-      password: '',
-      driver_code: '',
-      license_no: '',
-      address: '',
-      bus_id: ''
-    });
-  };
-
-  const handleBack = () => {
-    router.push('/home');
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('isLoggedIn');
-    localStorage.removeItem('adminMobile');
-    localStorage.removeItem('adminName');
-    router.push('/login');
-  };
-
-  const togglePasswordVisibility = (driverId) => {
-    setShowPassword(prev => ({
-      ...prev,
-      [driverId]: !prev[driverId]
-    }));
+  const goBack = () => {
+    router.back();
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-blue-600 mx-auto mb-4" />
+          <p className="text-gray-600">Loading buses...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 py-4 lg:py-8">
-        <div className="space-y-4 lg:space-y-6">
-          {/* Header */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-            <div className="flex items-center gap-3">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      {/* Header */}
+      <div className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-10">
+        <div className="max-w-4xl mx-auto px-4">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center">
               <button
-                onClick={handleBack}
-                className="flex items-center text-gray-600 hover:text-gray-900 transition-colors p-2 rounded-lg hover:bg-gray-100"
-                title="Go back to Main Dashboard"
+                onClick={goBack}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors mr-3"
               >
-                <ArrowLeft size={20} />
-                <span className="hidden sm:block ml-2 text-sm font-medium text-gray-700">Dashboard</span>
+                <ArrowLeft className="text-gray-600" size={20} />
               </button>
               <div>
-                <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">
-                  <Shield className="inline mr-2 text-purple-600" size={28} />
-                  Drivers Management
-                </h1>
-                <p className="text-gray-600 text-xs sm:text-sm mt-1">
-                  Multiple drivers can share the same bus ✓
-                </p>
+                <h1 className="text-xl font-bold text-gray-900">Buses</h1>
+                <p className="text-sm text-gray-500">Total {buses.length} buses</p>
               </div>
             </div>
             
-            <div className="flex items-center gap-4">
-              <div className="hidden sm:flex items-center gap-3 bg-purple-50 px-4 py-2 rounded-lg">
-                <div className="text-right">
-                  <p className="text-xs text-gray-600">Administrator</p>
-                  <p className="font-semibold text-gray-900">
-                    {adminName || 'Super Admin'}
-                  </p>
-                </div>
-                <div className="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center">
-                  <Shield className="text-white" size={20} />
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleLogout}
-                  className="flex items-center text-sm bg-red-500 text-white px-3 py-2 rounded-lg hover:bg-red-600 transition-colors"
-                >
-                  <LogOut size={16} className="mr-2" />
-                  <span className="hidden sm:inline text-white">Logout</span>
-                </button>
-                
-                <button
-                  onClick={() => setShowAddForm(true)}
-                  className="hidden sm:flex bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors items-center"
-                >
-                  <UserPlus size={16} className="mr-2 text-white" />
-                  <span className="text-white">Add Driver</span>
-                </button>
-                <button
-                  onClick={() => setShowAddForm(true)}
-                  className="sm:hidden bg-purple-600 text-white p-3 rounded-lg hover:bg-purple-700 transition-colors"
-                >
-                  <Plus size={20} className="text-white" />
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Stats Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
-            <StatCard 
-              label="Total Drivers" 
-              value={stats.totalDrivers} 
-              icon={Users} 
-              color="purple" 
-            />
-            <StatCard 
-              label="Assigned" 
-              value={stats.assignedDrivers} 
-              icon={Truck} 
-              color="green" 
-            />
-            <StatCard 
-              label="Available" 
-              value={stats.availableDrivers} 
-              icon={User} 
-              color="blue" 
-            />
-            <StatCard 
-              label="Total Buses" 
-              value={stats.totalBuses} 
-              icon={BusFront} 
-              color="orange" 
-            />
-            <StatCard 
-              label="Buses with Drivers" 
-              value={stats.busesWithDrivers} 
-              icon={Users2} 
-              color="indigo" 
-            />
-          </div>
-
-          {/* Filters */}
-          <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="flex-1">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
-                  <input
-                    type="text"
-                    placeholder="Search drivers..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500 text-gray-900"
-                  />
-                </div>
-              </div>
-              <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500 text-gray-900"
-              >
-                <option value="all" className="text-gray-900">All Drivers</option>
-                <option value="assigned" className="text-gray-900">With Bus</option>
-                <option value="unassigned" className="text-gray-900">Without Bus</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Drivers Table */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-            <div className="px-4 py-3 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900">
-                Drivers List ({filteredDrivers.length})
-              </h3>
-            </div>
-
-            {/* Mobile View */}
-            <div className="lg:hidden">
-              {filteredDrivers.length === 0 ? (
-                <div className="text-center py-8">
-                  <Users className="mx-auto text-gray-400 mb-3" size={48} />
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">No Drivers Found</h3>
-                  <p className="text-gray-600">Click "Add Driver" to get started</p>
-                </div>
-              ) : (
-                filteredDrivers.map((driver) => (
-                  <div key={driver.id} className="p-4 border-b hover:bg-gray-50">
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <h4 className="font-semibold text-gray-900">{driver.name}</h4>
-                        <p className="text-sm text-gray-600">{driver.driver_code}</p>
-                      </div>
-                      <div className="flex gap-1">
-                        <button onClick={() => openEditForm(driver)} className="p-1 text-blue-600 hover:text-blue-800">
-                          <Edit size={16} />
-                        </button>
-                        <button onClick={() => deleteDriver(driver.id)} className="p-1 text-red-600 hover:text-red-800">
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Bus Assignment */}
-                    <div className="mt-3 bg-purple-50 p-3 rounded-lg">
-                      <label className="block text-sm font-medium text-purple-700 mb-2">
-                        <BusFront size={14} className="inline mr-1" />
-                        Assign Bus
-                      </label>
-                      <select
-                        className="w-full px-3 py-2 border border-purple-200 rounded-lg text-gray-900"
-                        onChange={(e) => handleQuickAssign(driver.id, e.target.value)}
-                        value={driver.bus_id || ''}
-                      >
-                        <option value="" className="text-gray-900">— No Bus —</option>
-                        {buses.map(bus => {
-                          const driverCount = drivers.filter(d => d.bus_id === bus.id).length;
-                          return (
-                            <option key={bus.id} value={bus.id} className="text-gray-900">
-                              {bus.bus_number} - {bus.route_name || 'No Route'} 
-                              {driverCount > 0 ? ` (${driverCount} driver${driverCount > 1 ? 's' : ''})` : ''}
-                            </option>
-                          );
-                        })}
-                      </select>
-                    </div>
-
-                    {/* Other details */}
-                    <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
-                      <div>
-                        <span className="text-gray-500">License:</span>{' '}
-                        <span className="text-gray-900">{driver.license_no || '—'}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Contact:</span>{' '}
-                        <span className="text-gray-900">{driver.contact || '—'}</span>
-                      </div>
-                    </div>
-                    
-                    {driver.address && (
-                      <div className="mt-1 text-xs text-gray-600">
-                        <Home size={12} className="inline mr-1" />
-                        {driver.address}
-                      </div>
-                    )}
-
-                    {/* 🔥 Password Field - Mobile */}
-                    <div className="mt-3 pt-2 border-t border-gray-200">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center text-sm">
-                          <Key size={14} className="mr-2 text-gray-500" />
-                          <span className="text-gray-600">Password:</span>
-                        </div>
-                        <div className="flex items-center">
-                          <span className="text-sm font-mono text-gray-900 mr-2">
-                            {showPassword[driver.id] ? driver.password || '—' : '••••••••'}
-                          </span>
-                          <button
-                            onClick={() => togglePasswordVisibility(driver.id)}
-                            className="text-purple-600 hover:text-purple-800"
-                          >
-                            {showPassword[driver.id] ? <EyeOff size={16} /> : <Eye size={16} />}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            {/* Desktop Table View */}
-            <table className="hidden lg:table w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Code</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">License</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assigned Bus</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Password</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {filteredDrivers.length === 0 ? (
-                  <tr>
-                    <td colSpan="7" className="px-4 py-8 text-center text-gray-500">
-                      No drivers found
-                    </td>
-                  </tr>
-                ) : (
-                  filteredDrivers.map((driver) => (
-                    <tr key={driver.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-gray-900">{driver.driver_code}</td>
-                      <td className="px-4 py-3">
-                        <div className="font-medium text-gray-900">{driver.name}</div>
-                        {driver.address && (
-                          <div className="text-xs text-gray-500 flex items-center mt-1">
-                            <Home size={10} className="mr-1" />
-                            {driver.address.substring(0, 30)}...
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-gray-900">{driver.license_no || '—'}</td>
-                      <td className="px-4 py-3 text-gray-900">{driver.contact || '—'}</td>
-                      
-                      {/* Bus Assignment Dropdown */}
-                      <td className="px-4 py-3">
-                        <select
-                          className="w-48 px-2 py-1.5 border border-gray-300 rounded-lg text-gray-900"
-                          onChange={(e) => handleQuickAssign(driver.id, e.target.value)}
-                          value={driver.bus_id || ''}
-                        >
-                          <option value="" className="text-gray-900">— Not Assigned —</option>
-                          {buses.map(bus => {
-                            const driverCount = drivers.filter(d => d.bus_id === bus.id).length;
-                            const isCurrent = driver.bus_id === bus.id;
-                            
-                            return (
-                              <option key={bus.id} value={bus.id} className="text-gray-900">
-                                {bus.bus_number} - {bus.route_name || 'No Route'}
-                                {driverCount > 0 ? ` (${driverCount} driver${driverCount > 1 ? 's' : ''})` : ''}
-                                {isCurrent ? ' (Current)' : ''}
-                              </option>
-                            );
-                          })}
-                        </select>
-                      </td>
-
-                      {/* 🔥 Password Field - Desktop */}
-                      <td className="px-4 py-3">
-                        <div className="flex items-center space-x-2">
-                          <span className="text-sm font-mono text-gray-900">
-                            {showPassword[driver.id] ? driver.password || '—' : '••••••••'}
-                          </span>
-                          <button
-                            onClick={() => togglePasswordVisibility(driver.id)}
-                            className="text-purple-600 hover:text-purple-800"
-                            title={showPassword[driver.id] ? 'Hide Password' : 'Show Password'}
-                          >
-                            {showPassword[driver.id] ? <EyeOff size={16} /> : <Eye size={16} />}
-                          </button>
-                        </div>
-                      </td>
-
-                      <td className="px-4 py-3">
-                        <div className="flex gap-2">
-                          <button 
-                            onClick={() => openEditForm(driver)}
-                            className="text-blue-600 hover:text-blue-900 p-1"
-                            title="Edit"
-                          >
-                            <Edit size={16} />
-                          </button>
-                          <button 
-                            onClick={() => viewDriverDetails(driver)}
-                            className="text-purple-600 hover:text-purple-900 p-1"
-                            title="View Details"
-                          >
-                            <Eye size={16} />
-                          </button>
-                          <button 
-                            onClick={() => deleteDriver(driver.id)}
-                            className="text-red-600 hover:text-red-900 p-1"
-                            title="Delete"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+            {/* Add Bus Button */}
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+            >
+              <Plus size={18} />
+              <span className="hidden sm:inline">Add Bus</span>
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Add/Edit Modal */}
-      {(showAddForm || editingDriver) && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
-              <h3 className="text-xl font-bold text-gray-900 mb-4">
-                {editingDriver ? 'Edit Driver' : 'Add New Driver'}
-              </h3>
-              
-              <form onSubmit={editingDriver ? handleEditDriver : handleAddDriver}>
-                {/* Form fields */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
-                    <input
-                      type="text"
-                      required
-                      value={newDriver.name}
-                      onChange={(e) => setNewDriver({...newDriver, name: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
-                    />
+      {/* Search Bar */}
+      <div className="max-w-4xl mx-auto px-4 py-4">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+          <input
+            type="text"
+            placeholder="Search by bus number or route..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-gray-900"
+          />
+        </div>
+      </div>
+
+      {/* Buses List */}
+      <div className="max-w-4xl mx-auto px-4 pb-8">
+        {filteredBuses.length === 0 ? (
+          <div className="text-center py-12 bg-white rounded-xl shadow-sm">
+            <Bus className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-gray-700 mb-2">No buses found</h3>
+            <p className="text-gray-500 mb-4">Try adjusting your search or add a new bus</p>
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg inline-flex items-center space-x-2"
+            >
+              <Plus size={18} />
+              <span>Add Your First Bus</span>
+            </button>
+          </div>
+        ) : (
+          <div className="grid gap-3">
+            {filteredBuses.map((bus) => (
+              <div
+                key={bus.id}
+                className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 hover:shadow-md transition-shadow"
+              >
+                <div className="flex items-start">
+                  <div className="bg-blue-100 p-3 rounded-xl mr-4">
+                    <Bus className="text-blue-600" size={24} />
                   </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Driver Code *</label>
-                    <input
-                      type="text"
-                      required
-                      value={newDriver.driver_code}
-                      onChange={(e) => setNewDriver({...newDriver, driver_code: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">License</label>
-                    <input
-                      type="text"
-                      value={newDriver.license_no}
-                      onChange={(e) => setNewDriver({...newDriver, license_no: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Contact</label>
-                    <input
-                      type="text"
-                      value={newDriver.contact}
-                      onChange={(e) => setNewDriver({...newDriver, contact: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
-                    />
-                  </div>
-                  
-                  <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
-                    <textarea
-                      value={newDriver.address}
-                      onChange={(e) => setNewDriver({...newDriver, address: e.target.value})}
-                      rows="2"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
-                    />
-                  </div>
-                  
-                  {/* Bus Assignment */}
-                  <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      <BusFront size={16} className="inline mr-1" />
-                      Assign Bus (Optional)
-                    </label>
-                    <select
-                      value={newDriver.bus_id}
-                      onChange={(e) => setNewDriver({...newDriver, bus_id: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
-                    >
-                      <option value="" className="text-gray-900">— No Bus —</option>
-                      {buses.map(bus => {
-                        const driverCount = drivers.filter(d => d.bus_id === bus.id).length;
-                        return (
-                          <option key={bus.id} value={bus.id} className="text-gray-900">
-                            {bus.bus_number} - {bus.route_name || 'No Route'}
-                            {driverCount > 0 ? ` (${driverCount} driver${driverCount > 1 ? 's' : ''})` : ''}
-                          </option>
-                        );
-                      })}
-                    </select>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Multiple drivers can share the same bus
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-1">
+                      Bus {bus.bus_number}
+                    </h3>
+                    <p className="text-gray-600">
+                      {bus.route_name || 'No route assigned'}
                     </p>
                   </div>
                   
-                  {/* 🔥 Password Field */}
-                  <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      <Key size={16} className="inline mr-1" />
-                      Password {!editingDriver && '*'}
-                      {editingDriver && <span className="text-xs text-gray-500 ml-2">(Leave blank to keep current)</span>}
-                    </label>
-                    <input
-                      type="password"
-                      required={!editingDriver}
-                      value={newDriver.password}
-                      onChange={(e) => setNewDriver({...newDriver, password: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
-                      placeholder={editingDriver ? "Enter new password (optional)" : "Enter password"}
-                    />
+                  {/* Action Buttons */}
+                  <div className="flex items-center space-x-2 ml-4">
+                    <button
+                      onClick={() => openEditModal(bus)}
+                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                      title="Edit Bus"
+                    >
+                      <Edit size={18} />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteBus(bus.id, bus.bus_number)}
+                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      title="Delete Bus"
+                    >
+                      <Trash2 size={18} />
+                    </button>
                   </div>
                 </div>
-                
-                <div className="flex justify-end gap-3 mt-6">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowAddForm(false);
-                      setEditingDriver(null);
-                      resetForm();
-                    }}
-                    className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
-                  >
-                    {editingDriver ? 'Update' : 'Create'}
-                  </button>
-                </div>
-              </form>
-            </div>
+              </div>
+            ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Driver Details Modal */}
-      {showDetailsModal && selectedDriver && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl max-w-lg w-full">
-            <div className="p-6">
-              <div className="flex justify-between items-start mb-4">
-                <h3 className="text-xl font-bold text-gray-900">Driver Details</h3>
+      {/* Add Bus Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-md w-full shadow-2xl">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-4 rounded-t-xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="bg-white/20 p-2 rounded-lg">
+                    <Bus className="text-white" size={20} />
+                  </div>
+                  <h2 className="text-lg font-semibold text-white">Add New Bus</h2>
+                </div>
                 <button
-                  onClick={() => setShowDetailsModal(false)}
-                  className="text-gray-400 hover:text-gray-600"
+                  onClick={() => setShowAddModal(false)}
+                  className="text-white/70 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors"
                 >
                   <X size={20} />
                 </button>
               </div>
+            </div>
 
+            {/* Modal Form */}
+            <form onSubmit={handleAddBus} className="p-5">
               <div className="space-y-4">
-                <div className="flex items-center gap-4 p-4 bg-purple-50 rounded-lg">
-                  <div className="w-16 h-16 bg-purple-600 rounded-full flex items-center justify-center">
-                    <User className="text-white" size={32} />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-lg text-gray-900">{selectedDriver.name}</h4>
-                    <p className="text-sm text-gray-600">Code: {selectedDriver.driver_code}</p>
-                  </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Bus Number <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={newBus.bus_number}
+                    onChange={(e) => setNewBus({ ...newBus, bus_number: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-gray-900 bg-white"
+                    placeholder="e.g., BUS001"
+                    autoFocus
+                  />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="p-3 bg-gray-50 rounded-lg">
-                    <p className="text-xs text-gray-500">Contact</p>
-                    <p className="font-medium text-gray-900">{selectedDriver.contact || '—'}</p>
-                  </div>
-                  <div className="p-3 bg-gray-50 rounded-lg">
-                    <p className="text-xs text-gray-500">License</p>
-                    <p className="font-medium text-gray-900">{selectedDriver.license_no || '—'}</p>
-                  </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Route Name
+                  </label>
+                  <input
+                    type="text"
+                    value={newBus.route_name}
+                    onChange={(e) => setNewBus({ ...newBus, route_name: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-gray-900 bg-white"
+                    placeholder="e.g., City Route - North"
+                  />
                 </div>
 
-                {/* 🔥 Password in Details Modal */}
-                <div className="p-3 bg-gray-50 rounded-lg">
-                  <p className="text-xs text-gray-500 mb-1">Password</p>
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono text-gray-900">
-                      {showPassword[selectedDriver.id] ? selectedDriver.password || '—' : '••••••••'}
-                    </span>
-                    <button
-                      onClick={() => togglePasswordVisibility(selectedDriver.id)}
-                      className="text-purple-600 hover:text-purple-800 flex items-center"
-                    >
-                      {showPassword[selectedDriver.id] ? (
-                        <><EyeOff size={16} className="mr-1" /> Hide</>
-                      ) : (
-                        <><Eye size={16} className="mr-1" /> Show</>
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {selectedDriver.bus && (
-                  <div className="p-4 bg-green-50 rounded-lg">
-                    <p className="text-sm font-medium text-green-700 mb-2">Assigned Bus</p>
-                    <div className="flex justify-between">
-                      <span className="text-lg font-bold text-gray-900">{selectedDriver.bus.bus_number}</span>
-                      <span className="text-sm text-gray-600">{selectedDriver.bus.route_name || 'No Route'}</span>
+                {error && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                    <div className="flex items-start space-x-2">
+                      <AlertCircle className="text-red-500 flex-shrink-0" size={18} />
+                      <p className="text-sm text-red-700">{error}</p>
                     </div>
                   </div>
                 )}
+              </div>
 
-                {selectedDriver.address && (
-                  <div className="p-3 bg-gray-50 rounded-lg">
-                    <p className="text-xs text-gray-500">Address</p>
-                    <p className="text-sm text-gray-900">{selectedDriver.address}</p>
+              <div className="flex justify-end space-x-3 mt-6 pt-4 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddModal(false);
+                    setError('');
+                  }}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      <span>Adding...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save size={16} />
+                      <span>Add Bus</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Bus Modal - FIXED */}
+      {showEditModal && editingBus && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-md w-full shadow-2xl">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-green-600 to-teal-600 p-4 rounded-t-xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="bg-white/20 p-2 rounded-lg">
+                    <Edit className="text-white" size={20} />
                   </div>
-                )}
-
-                <div className="text-xs text-gray-400 pt-2 border-t">
-                  Created: {new Date(selectedDriver.created_at).toLocaleString()}
+                  <h2 className="text-lg font-semibold text-white">Edit Bus</h2>
                 </div>
+                <button
+                  onClick={() => {
+                    setShowEditModal(false);
+                    setError('');
+                  }}
+                  className="text-white/70 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors"
+                >
+                  <X size={20} />
+                </button>
               </div>
             </div>
+
+            {/* Modal Form */}
+            <form onSubmit={handleEditBus} className="p-5">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Bus Number <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={editForm.bus_number}
+                    onChange={(e) => setEditForm({ ...editForm, bus_number: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none text-gray-900 bg-white"
+                    placeholder="e.g., BUS001"
+                    autoFocus
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Route Name
+                  </label>
+                  <input
+                    type="text"
+                    value={editForm.route_name}
+                    onChange={(e) => setEditForm({ ...editForm, route_name: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none text-gray-900 bg-white"
+                    placeholder="e.g., City Route - North"
+                  />
+                </div>
+
+                {error && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                    <div className="flex items-start space-x-2">
+                      <AlertCircle className="text-red-500 flex-shrink-0" size={18} />
+                      <p className="text-sm text-red-700">{error}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end space-x-3 mt-6 pt-4 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditModal(false);
+                    setError('');
+                  }}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      <span>Updating...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save size={16} />
+                      <span>Update Bus</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
     </div>
   );
 }
-
-// Stat Card Component
-function StatCard({ label, value, icon: Icon, color }) {
-  const colors = {
-    purple: 'text-purple-600 bg-purple-100',
-    green: 'text-green-600 bg-green-100',
-    blue: 'text-blue-600 bg-blue-100',
-    orange: 'text-orange-600 bg-orange-100',
-    indigo: 'text-indigo-600 bg-indigo-100'
-  };
-
-  return (
-    <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs text-gray-500">{label}</p>
-          <p className="text-2xl font-bold text-gray-900">{value}</p>
-        </div>
-        <div className={`p-3 rounded-lg ${colors[color]}`}>
-          <Icon size={20} className={color === 'purple' ? 'text-purple-600' : 
-                                         color === 'green' ? 'text-green-600' :
-                                         color === 'blue' ? 'text-blue-600' :
-                                         color === 'orange' ? 'text-orange-600' :
-                                         'text-indigo-600'} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Users2 Icon for stats
-function Users2(props) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M14 19a6 6 0 0 0-12 0" />
-      <circle cx="8" cy="9" r="4" />
-      <path d="M22 19a6 6 0 0 0-6-6 4 4 0 1 0 0-8" />
-    </svg>
-  );
-}
-export default withAuth(DriversDashboard);

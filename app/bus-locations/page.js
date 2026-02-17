@@ -6,44 +6,62 @@ import { MapPin, Navigation, Plus, Edit, Trash2, Users, Phone, AlertTriangle, Me
 import { supabase } from '../lib/supabase';
 import withAuth from '../../components/withAuth';
 
- function BusManagement() {
+function BusManagement() {
   const [buses, setBuses] = useState([]);
+  const [drivers, setDrivers] = useState([]);
   const [busLocations, setBusLocations] = useState([]);
   const [selectedBus, setSelectedBus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   const router = useRouter();
 
+  // Fix hydration error
   useEffect(() => {
-    fetchBuses();
-    fetchBusLocations();
-    
-    // Refresh bus locations every 10 seconds
-    const interval = setInterval(fetchBusLocations, 10000);
-    
-    return () => clearInterval(interval);
+    setMounted(true);
   }, []);
 
+  useEffect(() => {
+    if (mounted) {
+      fetchBuses();
+      fetchDrivers();
+      fetchBusLocations();
+      
+      // Refresh bus locations every 10 seconds
+      const interval = setInterval(fetchBusLocations, 10000);
+      
+      return () => clearInterval(interval);
+    }
+  }, [mounted]);
+
+  // 🔥 FIXED: Fetch buses without join
   const fetchBuses = async () => {
     try {
       const { data, error } = await supabase
         .from('buses')
-        .select(`
-          *,
-          drivers (
-            id,
-            name,
-            contact,
-            license_no
-          )
-        `)
+        .select('*')
         .order('bus_number');
 
       if (error) throw error;
       setBuses(data || []);
     } catch (error) {
       console.error('Error fetching buses:', error);
+    }
+  };
+
+  // 🔥 NEW: Fetch drivers separately
+  const fetchDrivers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('drivers_new')
+        .select('id, name, contact, license_no')
+        .order('name');
+
+      if (error) throw error;
+      setDrivers(data || []);
+    } catch (error) {
+      console.error('Error fetching drivers:', error);
     }
   };
 
@@ -73,6 +91,11 @@ import withAuth from '../../components/withAuth';
       console.error('Error fetching bus locations:', error);
       setLoading(false);
     }
+  };
+
+  // 🔥 Helper to get driver by ID
+  const getDriverById = (driverId) => {
+    return drivers.find(d => d.id === driverId);
   };
 
   const deleteBus = async (busId) => {
@@ -109,11 +132,11 @@ import withAuth from '../../components/withAuth';
     return status === 'active' ? 'bg-green-100 text-green-800 border border-green-200' : 'bg-gray-100 text-gray-800 border border-gray-200';
   };
 
-  const getGoogleMapsUrl = (coordinates) => {
-    if (!coordinates) {
+  const getGoogleMapsUrl = (location) => {
+    if (!location) {
       return "https://www.google.com/maps/embed/v1/view?key=AIzaSyBFw0Qbyq9zTFTd-tUY6dZWTgaQzuU17R8&center=17.3616,78.4747&zoom=12&maptype=roadmap";
     }
-    return `https://www.google.com/maps/embed/v1/place?key=AIzaSyBFw0Qbyq9zTFTd-tUY6dZWTgaQzuU17R8&q=${coordinates.latitude},${coordinates.longitude}&zoom=15&maptype=roadmap`;
+    return `https://www.google.com/maps/embed/v1/place?key=AIzaSyBFw0Qbyq9zTFTd-tUY6dZWTgaQzuU17R8&q=${location.latitude},${location.longitude}&zoom=15&maptype=roadmap`;
   };
 
   const openInGoogleMaps = (lat, lng) => {
@@ -134,7 +157,8 @@ import withAuth from '../../components/withAuth';
     router.back();
   };
 
-  if (loading) {
+  // Show loading until mounted
+  if (!mounted || loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
@@ -195,7 +219,7 @@ import withAuth from '../../components/withAuth';
           </button>
         </div>
 
-        {/* Stats - Mobile Optimized */}
+        {/* Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 lg:gap-4 mb-4 lg:mb-6">
           <div className="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6 border border-gray-200">
             <div className="flex items-center justify-between">
@@ -242,9 +266,8 @@ import withAuth from '../../components/withAuth';
         </div>
 
         <div className="flex flex-col lg:grid lg:grid-cols-2 gap-4 lg:gap-6">
-          {/* Bus List - Mobile Sidebar/Drawer */}
+          {/* Bus List */}
           <div className={`lg:block ${isSidebarOpen ? 'block fixed inset-0 z-50 bg-white' : 'hidden'}`}>
-            {/* Mobile Sidebar Header */}
             {isSidebarOpen && (
               <div className="lg:hidden flex items-center justify-between p-4 border-b border-gray-200">
                 <h3 className="text-lg font-semibold text-gray-900">All Buses ({buses.length})</h3>
@@ -267,7 +290,7 @@ import withAuth from '../../components/withAuth';
                 {buses.map((bus) => {
                   const status = getBusStatus(bus.id);
                   const location = busLocations.find(loc => loc.bus_id === bus.id);
-                  const driver = bus.drivers;
+                  const driver = bus.driver_id ? getDriverById(bus.driver_id) : null;
                   
                   return (
                     <div 
@@ -277,7 +300,7 @@ import withAuth from '../../components/withAuth';
                       }`}
                       onClick={() => {
                         setSelectedBus(bus);
-                        setIsSidebarOpen(false); // Close sidebar on mobile when bus is selected
+                        setIsSidebarOpen(false);
                       }}
                     >
                       <div className="flex justify-between items-start mb-2">
@@ -314,15 +337,13 @@ import withAuth from '../../components/withAuth';
                         {location && (
                           <>
                             <div className="flex justify-between items-center">
-                              <span className="text-gray-600">Location:</span>
-                              <span className="text-gray-900 font-medium text-right text-xs truncate ml-2 max-w-[120px] sm:max-w-none">
-                                {location.current_location || 'Unknown'}
-                              </span>
+                              <span className="text-gray-600">Speed:</span>
+                              <span className="text-gray-900 font-medium">{location.speed?.toFixed(1) || '0'} km/h</span>
                             </div>
-                            {location.speed > 0 && (
+                            {location.driver_name && (
                               <div className="flex justify-between items-center">
-                                <span className="text-gray-600">Speed:</span>
-                                <span className="text-gray-900 font-medium">{location.speed} km/h</span>
+                                <span className="text-gray-600">Current Driver:</span>
+                                <span className="text-gray-900 font-medium">{location.driver_name}</span>
                               </div>
                             )}
                           </>
@@ -410,19 +431,19 @@ import withAuth from '../../components/withAuth';
                   <div>
                     <p className="text-gray-600 text-xs sm:text-sm">Driver</p>
                     <p className="font-medium text-gray-900 text-sm sm:text-base">
-                      {selectedBus.drivers ? selectedBus.drivers.name : 'Not assigned'}
+                      {selectedBus.driver_id ? getDriverById(selectedBus.driver_id)?.name || 'Not assigned' : 'Not assigned'}
                     </p>
                   </div>
                   <div>
                     <p className="text-gray-600 text-xs sm:text-sm">Driver Contact</p>
                     <p className="font-medium text-gray-900 text-sm sm:text-base">
-                      {selectedBus.drivers ? (selectedBus.drivers.contact || 'N/A') : 'N/A'}
+                      {selectedBus.driver_id ? getDriverById(selectedBus.driver_id)?.contact || 'N/A' : 'N/A'}
                     </p>
                   </div>
                   <div>
                     <p className="text-gray-600 text-xs sm:text-sm">License No</p>
                     <p className="font-medium text-gray-900 text-sm sm:text-base">
-                      {selectedBus.drivers ? (selectedBus.drivers.license_no || 'N/A') : 'N/A'}
+                      {selectedBus.driver_id ? getDriverById(selectedBus.driver_id)?.license_no || 'N/A' : 'N/A'}
                     </p>
                   </div>
                   <div>

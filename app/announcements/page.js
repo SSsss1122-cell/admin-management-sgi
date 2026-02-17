@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Megaphone, Plus, X, Send, Trash2, Edit, ArrowLeft } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import withAuth from '../components/withAuth';
+import withAuth from '../../components/withAuth';
 
 function Announcements() {
   const [announcements, setAnnouncements] = useState([]);
