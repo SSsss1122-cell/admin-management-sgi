@@ -13,34 +13,6 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
 
-  // Debug: Check database connection on load
-  useEffect(() => {
-    const testConnection = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('admins')
-          .select('*');
-        
-        console.log('Debug: All admins in database:', data);
-        console.log('Debug: Database error:', error);
-        
-        if (data && data.length > 0) {
-          console.log('Debug: First admin details:', {
-            mobile: data[0].mobile_number,
-            password: data[0].password_hash,
-            name: data[0].admin_name
-          });
-        } else {
-          console.log('Debug: No admins found in database');
-        }
-      } catch (error) {
-        console.error('Debug: Connection test error:', error);
-      }
-    };
-    
-    testConnection();
-  }, []);
-
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
@@ -52,7 +24,6 @@ export default function LoginPage() {
       
       console.log('Login attempt:', {
         mobile: cleanMobile,
-        password: password,
         cleanLength: cleanMobile.length
       });
 
@@ -70,49 +41,29 @@ export default function LoginPage() {
       }
 
       // Check if admin exists
-      console.log('Fetching admin from database...');
       const { data: admin, error: adminError } = await supabase
         .from('admins')
         .select('*')
         .eq('mobile_number', cleanMobile)
         .single();
 
-      console.log('Database response:', {
-        admin: admin,
-        error: adminError,
-        hasAdmin: !!admin,
-        adminPassword: admin?.password_hash
-      });
-
       if (adminError || !admin) {
-        console.log('Admin not found or error:', adminError);
         setError('Invalid mobile number or password');
         setLoading(false);
         return;
       }
 
-      // Compare with password from database
-      console.log('Comparing passwords:', {
-        entered: password,
-        stored: admin.password_hash,
-        match: password === admin.password_hash
-      });
-
+      // Compare passwords
       if (password === admin.password_hash) {
-        console.log('Password matches! Logging in...');
-        
         // Store login status with admin name
         localStorage.setItem('isLoggedIn', 'true');
         localStorage.setItem('adminMobile', cleanMobile);
         localStorage.setItem('adminName', admin.admin_name || 'Admin');
         
-        console.log('Login successful, redirecting to /home');
-        
         // Redirect to HOME (main dashboard)
         router.push('/home');
         router.refresh();
       } else {
-        console.log('Password mismatch');
         setError('Invalid password');
       }
     } catch (error) {
@@ -129,24 +80,6 @@ export default function LoginPage() {
     // Only allow numbers and limit to 10 digits
     const cleaned = value.replace(/\D/g, '').slice(0, 10);
     setMobileNumber(cleaned);
-  };
-
-  // Temporary debug function
-  const checkDatabase = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('admins')
-        .select('*');
-      
-      console.log('Manual check - All admins:', data);
-      alert(`Admins in database: ${JSON.stringify(data, null, 2)}`);
-      
-      if (data && data.length > 0) {
-        console.log('First admin:', data[0]);
-      }
-    } catch (error) {
-      console.error('Manual check error:', error);
-    }
   };
 
   return (
@@ -186,7 +119,7 @@ export default function LoginPage() {
                 />
               </div>
               <p className="text-xs text-gray-500 mt-1">
-                Enter 10-digit mobile number without any spaces or special characters
+                Enter 10-digit mobile number without spaces or special characters
               </p>
             </div>
 
@@ -246,24 +179,7 @@ export default function LoginPage() {
                 'Sign In'
               )}
             </button>
-
-            {/* Debug Button (Temporary) */}
-            <button
-              type="button"
-              onClick={checkDatabase}
-              className="w-full bg-gray-200 text-gray-800 py-2 px-4 rounded-lg hover:bg-gray-300 transition-colors text-sm"
-            >
-              Debug: Check Database
-            </button>
           </form>
-
-          {/* Demo Credentials */}
-          <div className="mt-6 pt-6 border-t border-gray-200">
-           
-            <p className="text-xs text-gray-500 text-center mt-1">
-              After login, you'll be redirected to the main dashboard
-            </p>
-          </div>
         </div>
       </div>
     </div>
