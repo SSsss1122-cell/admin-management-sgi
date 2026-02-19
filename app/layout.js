@@ -11,7 +11,8 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body className={inter.className}>
+      {/* Add suppressHydrationWarning to body to ignore browser extension attributes */}
+      <body className={inter.className} suppressHydrationWarning={true}>
         {children}
       </body>
     </html>

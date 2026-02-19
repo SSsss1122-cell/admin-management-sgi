@@ -50,17 +50,23 @@ function FeesManagement() {
     }
   };
 
-  // 🔥 FIXED: Better filter logic
+  // 🔥 FIXED: Added null checks for all fields in search filter
   const filterStudents = () => {
     let filtered = students;
 
-    // Apply search filter
-    if (searchTerm) {
-      filtered = filtered.filter(student =>
-        student.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        student.usn.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        student.branch?.toLowerCase().includes(searchTerm.toLowerCase())
-      );
+    // Apply search filter - FIXED with null checks
+    if (searchTerm && searchTerm.trim() !== '') {
+      const searchLower = searchTerm.toLowerCase();
+      filtered = filtered.filter(student => {
+        // Add null checks for each field before calling toLowerCase
+        const fullName = student.full_name ? student.full_name.toLowerCase() : '';
+        const usn = student.usn ? student.usn.toLowerCase() : '';
+        const branch = student.branch ? student.branch.toLowerCase() : '';
+        
+        return fullName.includes(searchLower) ||
+               usn.includes(searchLower) ||
+               branch.includes(searchLower);
+      });
     }
 
     // Apply fee status filter
@@ -204,8 +210,8 @@ function FeesManagement() {
   const exportToCSV = () => {
     const headers = ['USN', 'Name', 'Branch', 'Class', 'Total Fees', 'Paid Amount', 'Due Amount', 'Fee Status', 'Last Payment Date', 'Next Payment Date', 'Payment Mode'];
     const csvData = students.map(student => [
-      student.usn,
-      student.full_name,
+      student.usn || '',
+      student.full_name || '',
       student.branch || 'N/A',
       `${student.class || ''} ${student.division || ''}`.trim(),
       student.total_fees || '0',

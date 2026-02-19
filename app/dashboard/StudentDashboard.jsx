@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Users, Plus, Edit, Trash2, Search, Mail, Phone, MapPin, UserPlus, X, Save, ArrowLeft, Menu, LogOut, User, Key, Bus } from 'lucide-react';
+import { Users, Plus, Edit, Trash2, Search, MapPin, UserPlus, X, Save, ArrowLeft, Menu, LogOut, User, Key, Bus, CheckCircle, AlertCircle, Phone } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useRouter } from 'next/navigation';
 
@@ -10,11 +10,12 @@ export default function StudentDashboard() {
   const [filteredStudents, setFilteredStudents] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [branchFilter, setBranchFilter] = useState('all');
-  const [routeFilter, setRouteFilter] = useState('all'); // Added route filter
+  const [routeFilter, setRouteFilter] = useState('all');
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingStudent, setEditingStudent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [adminName, setAdminName] = useState('');
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
   const [stats, setStats] = useState({
     totalStudents: 0,
     totalBranches: 0,
@@ -30,18 +31,15 @@ export default function StudentDashboard() {
     full_name: '',
     usn: '',
     branch: '',
-    class: '',
-    division: '',
     phone: '',
-    email: '',
     password: '',
-    routes: '' // Added routes field
+    routes: ''
   });
 
   // Predefined routes
   const routes = [
-    { id: 'route1', name: 'Route 1 - North Campus' },
-    { id: 'route2', name: 'Route 2 - South Campus' }
+    { id: 'route1', name: 'Route 1 - router am mandir' },
+    { id: 'route2', name: 'Route 2 - in city' }
   ];
 
   useEffect(() => {
@@ -57,6 +55,16 @@ export default function StudentDashboard() {
     filterStudents();
   }, [students, searchTerm, branchFilter, routeFilter]);
 
+  // Auto-hide toast after 3 seconds
+  useEffect(() => {
+    if (toast.show) {
+      const timer = setTimeout(() => {
+        setToast({ show: false, message: '', type: 'success' });
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast.show]);
+
   const fetchStudents = async () => {
     try {
       const { data, error } = await supabase
@@ -69,9 +77,14 @@ export default function StudentDashboard() {
       updateStats(data || []);
     } catch (error) {
       console.error('Error fetching students:', error);
+      showToast('Error fetching students', 'error');
     } finally {
       setLoading(false);
     }
+  };
+
+  const showToast = (message, type = 'success') => {
+    setToast({ show: true, message, type });
   };
 
   const updateStats = (studentData) => {
@@ -96,7 +109,6 @@ export default function StudentDashboard() {
       filtered = filtered.filter(student =>
         student.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         student.usn?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        student.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         student.phone?.includes(searchTerm)
       );
     }
@@ -125,36 +137,35 @@ export default function StudentDashboard() {
         .maybeSingle();
 
       if (existingStudent) {
-        alert('USN already exists. Please use a different USN.');
+        showToast('USN already exists. Please use a different USN.', 'error');
         return;
       }
 
+      // Prepare data - REMOVED division field completely
+      const studentData = {
+        full_name: newStudent.full_name,
+        usn: newStudent.usn.toUpperCase(),
+        branch: newStudent.branch || null,
+        phone: newStudent.phone || null,
+        password: newStudent.password || null,
+        routes: newStudent.routes || null
+      };
+
       const { data, error } = await supabase
         .from('students')
-        .insert([{
-          full_name: newStudent.full_name,
-          usn: newStudent.usn.toUpperCase(),
-          branch: newStudent.branch,
-          class: newStudent.class,
-          division: newStudent.division,
-          phone: newStudent.phone,
-          email: newStudent.email,
-          password: newStudent.password,
-          routes: newStudent.routes || null
-        }])
+        .insert([studentData])
         .select();
 
       if (error) throw error;
 
-      alert('Student added successfully!');
+      showToast('Student added successfully!', 'success');
+      
+      // Reset form
       setNewStudent({
         full_name: '',
         usn: '',
         branch: '',
-        class: '',
-        division: '',
         phone: '',
-        email: '',
         password: '',
         routes: ''
       });
@@ -162,7 +173,7 @@ export default function StudentDashboard() {
       fetchStudents();
     } catch (error) {
       console.error('Error adding student:', error);
-      alert('Error adding student: ' + error.message);
+      showToast('Error adding student: ' + error.message, 'error');
     }
   };
 
@@ -178,23 +189,21 @@ export default function StudentDashboard() {
           .maybeSingle();
 
         if (existingStudent) {
-          alert('USN already exists. Please use a different USN.');
+          showToast('USN already exists. Please use a different USN.', 'error');
           return;
         }
       }
 
+      // Prepare update data - REMOVED division field
       const updateData = {
         full_name: newStudent.full_name,
         usn: newStudent.usn.toUpperCase(),
-        branch: newStudent.branch,
-        class: newStudent.class,
-        division: newStudent.division,
-        phone: newStudent.phone,
-        email: newStudent.email,
+        branch: newStudent.branch || null,
+        phone: newStudent.phone || null,
         routes: newStudent.routes || null
       };
 
-      // Only update password if it's not empty
+      // Only update password if it's provided (not empty)
       if (newStudent.password) {
         updateData.password = newStudent.password;
       }
@@ -206,28 +215,26 @@ export default function StudentDashboard() {
 
       if (error) throw error;
 
-      alert('Student updated successfully!');
+      showToast('Student updated successfully!', 'success');
+      
       setEditingStudent(null);
       setNewStudent({
         full_name: '',
         usn: '',
         branch: '',
-        class: '',
-        division: '',
         phone: '',
-        email: '',
         password: '',
         routes: ''
       });
       fetchStudents();
     } catch (error) {
       console.error('Error updating student:', error);
-      alert('Error updating student: ' + error.message);
+      showToast('Error updating student: ' + error.message, 'error');
     }
   };
 
   const deleteStudent = async (studentId) => {
-    if (!confirm('Are you sure you want to delete this student? This action cannot be undone.')) return;
+    if (!window.confirm('⚠️ Are you sure you want to delete this student?\n\nThis action cannot be undone.')) return;
     
     try {
       const { error } = await supabase
@@ -237,11 +244,11 @@ export default function StudentDashboard() {
 
       if (error) throw error;
 
-      alert('Student deleted successfully!');
+      showToast('Student deleted successfully!', 'success');
       fetchStudents();
     } catch (error) {
       console.error('Error deleting student:', error);
-      alert('Error deleting student: ' + error.message);
+      showToast('Error deleting student: ' + error.message, 'error');
     }
   };
 
@@ -251,10 +258,7 @@ export default function StudentDashboard() {
       full_name: student.full_name || '',
       usn: student.usn || '',
       branch: student.branch || '',
-      class: student.class || '',
-      division: student.division || '',
       phone: student.phone || '',
-      email: student.email || '',
       password: '', // Don't pre-fill password for security
       routes: student.routes || ''
     });
@@ -298,6 +302,40 @@ export default function StudentDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Toast Notification */}
+      {toast.show && (
+        <div className="fixed top-4 right-4 z-50 animate-slide-in">
+          <div className={`flex items-center p-4 rounded-lg shadow-lg ${
+            toast.type === 'success' ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'
+          }`}>
+            <div className={`flex-shrink-0 ${
+              toast.type === 'success' ? 'text-green-400' : 'text-red-400'
+            }`}>
+              {toast.type === 'success' ? (
+                <CheckCircle className="h-5 w-5" />
+              ) : (
+                <AlertCircle className="h-5 w-5" />
+              )}
+            </div>
+            <div className="ml-3">
+              <p className={`text-sm font-medium ${
+                toast.type === 'success' ? 'text-green-800' : 'text-red-800'
+              }`}>
+                {toast.message}
+              </p>
+            </div>
+            <button
+              onClick={() => setToast({ show: false, message: '', type: 'success' })}
+              className={`ml-4 inline-flex flex-shrink-0 ${
+                toast.type === 'success' ? 'text-green-400 hover:text-green-600' : 'text-red-400 hover:text-red-600'
+              }`}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 py-4 lg:py-8">
         <div className="space-y-4 lg:space-y-6">
           {/* Header */}
@@ -343,7 +381,7 @@ export default function StudentDashboard() {
                   <span className="hidden sm:inline">Logout</span>
                 </button>
                 
-                {/* Desktop Add Student Button with Text */}
+                {/* Desktop Add Student Button */}
                 <button
                   onClick={() => setShowAddForm(true)}
                   className="hidden sm:flex bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors items-center"
@@ -351,7 +389,7 @@ export default function StudentDashboard() {
                   <UserPlus size={16} className="mr-2" />
                   Add Student
                 </button>
-                {/* Mobile Add Button with + Icon */}
+                {/* Mobile Add Button */}
                 <button
                   onClick={() => setShowAddForm(true)}
                   className="sm:hidden bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center"
@@ -363,7 +401,7 @@ export default function StudentDashboard() {
             </div>
           </div>
 
-          {/* Stats - Added Route Stats */}
+          {/* Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
             <div className="bg-white rounded-lg sm:rounded-xl shadow-sm p-4 sm:p-6 border border-gray-200">
               <div className="flex items-center justify-between">
@@ -403,7 +441,7 @@ export default function StudentDashboard() {
             </div>
           </div>
 
-          {/* Filters - Added Route Filter */}
+          {/* Filters */}
           <div className="bg-white rounded-lg sm:rounded-xl shadow-sm p-4 border border-gray-200">
             {/* Mobile Filters Toggle */}
             <button
@@ -421,7 +459,7 @@ export default function StudentDashboard() {
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
                     <input
                       type="text"
-                      placeholder="Search by name, USN, email, or phone..."
+                      placeholder="Search by name, USN, or phone..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-sm"
@@ -444,15 +482,15 @@ export default function StudentDashboard() {
                   className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-sm"
                 >
                   <option value="all">All Routes</option>
-                  <option value="route1">Route 1 - North Campus</option>
-                  <option value="route2">Route 2 - South Campus</option>
+                  <option value="route1">Route 1 -router am mandir  </option>
+                  <option value="route2">Route 2 - in city</option>
                   <option value="null">Not Assigned</option>
                 </select>
               </div>
             </div>
           </div>
 
-          {/* Students Table - Added Routes Column */}
+          {/* Students Table */}
           <div className="bg-white rounded-lg sm:rounded-xl shadow-sm border border-gray-200">
             <div className="px-4 py-3 border-b border-gray-200">
               <h3 className="text-base sm:text-lg font-semibold text-gray-900">
@@ -472,73 +510,79 @@ export default function StudentDashboard() {
                   <div className="divide-y divide-gray-200">
                     {filteredStudents.map((student) => (
                       <div key={student.id} className="p-4 hover:bg-gray-50">
-                        <div className="flex justify-between items-start mb-2">
-                          <div className="flex-1">
-                            <h4 className="font-semibold text-gray-900 text-base">{student.full_name}</h4>
+                        {/* Student Info and Actions */}
+                        <div className="flex justify-between items-start mb-3">
+                          <div className="flex-1 min-w-0 pr-2">
+                            <h4 className="font-semibold text-gray-900 text-base truncate">{student.full_name}</h4>
                             <p className="text-gray-600 text-sm">{student.usn}</p>
                           </div>
-                          <div className="flex space-x-1 ml-2">
+                          {/* Actions */}
+                          <div className="flex space-x-2 flex-shrink-0">
                             <button 
                               onClick={() => openEditForm(student)}
-                              className="text-blue-600 hover:text-blue-900 p-1"
+                              className="text-blue-600 hover:text-blue-900 bg-blue-50 p-2 rounded-lg"
                               title="Edit Student"
                             >
-                              <Edit size={16} />
+                              <Edit size={18} />
                             </button>
                             <button 
                               onClick={() => deleteStudent(student.id)}
-                              className="text-red-600 hover:text-red-900 p-1"
+                              className="text-red-600 hover:text-red-900 bg-red-50 p-2 rounded-lg"
                               title="Delete Student"
                             >
-                              <Trash2 size={16} />
+                              <Trash2 size={18} />
                             </button>
                           </div>
                         </div>
                         
-                        <div className="grid grid-cols-2 gap-2 text-sm text-gray-600">
-                          <div>
-                            <span className="font-medium">Branch:</span> {student.branch || 'N/A'}
+                        {/* Student Details */}
+                        <div className="grid grid-cols-2 gap-3 text-sm">
+                          {/* Branch */}
+                          <div className="bg-gray-50 p-2 rounded-lg">
+                            <span className="text-gray-500 text-xs block">Branch</span>
+                            <span className="font-medium text-gray-900">{student.branch || 'N/A'}</span>
                           </div>
-                          <div>
-                            <span className="font-medium">Class:</span> {student.class} {student.division}
-                          </div>
-                          {/* Route Field - Mobile */}
-                          <div className="flex items-center col-span-2">
-                            <Bus size={12} className="mr-1 text-gray-500" />
-                            <span className="font-medium mr-1">Route:</span>
-                            <span className={
+                          
+                          {/* Route */}
+                          <div className="bg-gray-50 p-2 rounded-lg">
+                            <span className="text-gray-500 text-xs block flex items-center">
+                              <Bus size={12} className="mr-1" /> Route
+                            </span>
+                            <span className={`font-medium ${
                               student.routes === 'route1' ? 'text-amber-600' :
                               student.routes === 'route2' ? 'text-purple-600' :
                               'text-gray-500'
-                            }>
+                            }`}>
                               {getRouteName(student.routes)}
                             </span>
                           </div>
+                          
+                          {/* Phone */}
                           {student.phone && (
-                            <div className="flex items-center col-span-2">
-                              <Phone size={12} className="mr-1" />
-                              {student.phone}
+                            <div className="bg-gray-50 p-2 rounded-lg col-span-2">
+                              <span className="text-gray-500 text-xs block flex items-center">
+                                <Phone size={12} className="mr-1" /> Phone
+                              </span>
+                              <span className="font-medium text-gray-900">{student.phone}</span>
                             </div>
                           )}
-                          {student.email && (
-                            <div className="flex items-center col-span-2">
-                              <Mail size={12} className="mr-1" />
-                              <span className="truncate">{student.email}</span>
-                            </div>
-                          )}
-                          {/* Password Field - Mobile */}
-                          <div className="flex items-center col-span-2 mt-1 border-t pt-1 border-gray-100">
-                            <Key size={12} className="mr-1 text-gray-500" />
-                            <span className="font-medium text-gray-700 mr-1">Password:</span>
-                            <span className="text-gray-600">
-                              {showPassword[student.id] ? student.password || 'Not set' : '••••••••'}
+                          
+                          {/* Password */}
+                          <div className="bg-gray-50 p-2 rounded-lg col-span-2">
+                            <span className="text-gray-500 text-xs block flex items-center">
+                              <Key size={12} className="mr-1" /> Password
                             </span>
-                            <button
-                              onClick={() => togglePasswordVisibility(student.id)}
-                              className="ml-1 text-blue-600 hover:text-blue-800 text-xs"
-                            >
-                              {showPassword[student.id] ? 'Hide' : 'Show'}
-                            </button>
+                            <div className="flex items-center">
+                              <span className="font-medium text-gray-900 mr-2">
+                                {showPassword[student.id] ? student.password || 'Not set' : '••••••••'}
+                              </span>
+                              <button
+                                onClick={() => togglePasswordVisibility(student.id)}
+                                className="text-blue-600 hover:text-blue-800 text-xs bg-white px-2 py-1 rounded border border-blue-200"
+                              >
+                                {showPassword[student.id] ? 'Hide' : 'Show'}
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -547,23 +591,22 @@ export default function StudentDashboard() {
                 )}
               </div>
 
-              {/* Desktop Table View */}
+              {/* Desktop Table View - FIXED HYDRATION ERROR AND REMOVED DIVISION COLUMN */}
               <table className="hidden lg:table w-full">
                 <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">USN</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                  <tr>{/* NO WHITESPACE BETWEEN TAGS */}
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">USN *</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name *</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Branch</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Class</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Route</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Password</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Phone</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Password *</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {filteredStudents.map((student) => (
-                    <tr key={student.id} className="hover:bg-gray-50">
+                    <tr key={student.id} className="hover:bg-gray-50">{/* NO WHITESPACE BETWEEN TAGS */}
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-medium text-gray-900">{student.usn}</div>
                       </td>
@@ -571,10 +614,7 @@ export default function StudentDashboard() {
                         <div className="text-sm font-medium text-gray-900">{student.full_name}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {student.branch}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {student.class} {student.division}
+                        {student.branch || '-'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
@@ -588,21 +628,15 @@ export default function StudentDashboard() {
                           </span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
-                          {student.phone && (
-                            <div className="flex items-center">
-                              <Phone size={12} className="mr-1" />
-                              {student.phone}
-                            </div>
-                          )}
-                          {student.email && (
-                            <div className="flex items-center mt-1">
-                              <Mail size={12} className="mr-1" />
-                              <span className="truncate">{student.email}</span>
-                            </div>
-                          )}
-                        </div>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {student.phone ? (
+                          <div className="flex items-center">
+                            <Phone size={12} className="mr-1" />
+                            {student.phone}
+                          </div>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center text-sm text-gray-900">
@@ -663,7 +697,7 @@ export default function StudentDashboard() {
         </div>
       </div>
 
-      {/* Add/Edit Student Modal - Added Route Selection */}
+      {/* Add/Edit Student Modal - REMOVED division field */}
       {(showAddForm || editingStudent) && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-3 sm:p-4 z-50">
           <div className="bg-white rounded-xl w-full max-w-2xl max-h-[95vh] overflow-y-auto">
@@ -680,10 +714,7 @@ export default function StudentDashboard() {
                     full_name: '',
                     usn: '',
                     branch: '',
-                    class: '',
-                    division: '',
                     phone: '',
-                    email: '',
                     password: '',
                     routes: ''
                   });
@@ -695,9 +726,21 @@ export default function StudentDashboard() {
             </div>
 
             <form onSubmit={editingStudent ? handleEditStudent : handleAddStudent} className="p-4 sm:p-6 space-y-4">
+              {/* Required Fields Section */}
+              <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 mb-4">
+                <h4 className="text-sm font-semibold text-blue-800 mb-2 flex items-center">
+                  <AlertCircle size={16} className="mr-1" />
+                  Required Information
+                </h4>
+                <p className="text-xs text-blue-600">Fields marked with * are mandatory</p>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Full Name - Required */}
                 <div className="sm:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Full Name <span className="text-red-500">*</span>
+                  </label>
                   <input
                     type="text"
                     required
@@ -707,8 +750,12 @@ export default function StudentDashboard() {
                     placeholder="Enter full name"
                   />
                 </div>
+                
+                {/* USN - Required */}
                 <div className="sm:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">USN *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    USN <span className="text-red-500">*</span>
+                  </label>
                   <input
                     type="text"
                     required
@@ -721,100 +768,75 @@ export default function StudentDashboard() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Branch</label>
-                  <input
-                    type="text"
-                    value={newStudent.branch}
-                    onChange={(e) => setNewStudent(prev => ({ ...prev, branch: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-sm"
-                    placeholder="e.g., Computer Science"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-2">
+              {/* Optional Fields Section */}
+              <div className="border-t border-gray-200 pt-4">
+                <h4 className="text-sm font-semibold text-gray-700 mb-3">Optional Information</h4>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Class</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Branch</label>
                     <input
                       type="text"
-                      value={newStudent.class}
-                      onChange={(e) => setNewStudent(prev => ({ ...prev, class: e.target.value }))}
+                      value={newStudent.branch}
+                      onChange={(e) => setNewStudent(prev => ({ ...prev, branch: e.target.value }))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-sm"
-                      placeholder="e.g., 3rd Year"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Division</label>
-                    <input
-                      type="text"
-                      value={newStudent.division}
-                      onChange={(e) => setNewStudent(prev => ({ ...prev, division: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-sm"
-                      placeholder="e.g., A"
+                      placeholder="e.g., Computer Science"
                     />
                   </div>
                 </div>
-              </div>
 
-              {/* Route Selection */}
-              <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  <Bus size={16} className="inline mr-1" />
-                  Bus Route
-                </label>
-                <select
-                  value={newStudent.routes}
-                  onChange={(e) => setNewStudent(prev => ({ ...prev, routes: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-sm"
-                >
-                  <option value="">Not Assigned</option>
-                  {routes.map(route => (
-                    <option key={route.id} value={route.id}>
-                      {route.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                  <input
-                    type="tel"
-                    value={newStudent.phone}
-                    onChange={(e) => setNewStudent(prev => ({ ...prev, phone: e.target.value }))}
+                {/* Route Selection - Optional */}
+                <div className="mt-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <Bus size={16} className="inline mr-1" />
+                    Bus Route
+                  </label>
+                  <select
+                    value={newStudent.routes}
+                    onChange={(e) => setNewStudent(prev => ({ ...prev, routes: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-sm"
-                    placeholder="Enter phone number"
-                  />
+                  >
+                    <option value="">Not Assigned</option>
+                    {routes.map(route => (
+                      <option key={route.id} value={route.id}>
+                        {route.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                  <input
-                    type="email"
-                    value={newStudent.email}
-                    onChange={(e) => setNewStudent(prev => ({ ...prev, email: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-sm"
-                    placeholder="Enter email address"
-                  />
-                </div>
-              </div>
 
-              {/* Password Field */}
-              <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Password {!editingStudent && '*'}
-                  {editingStudent && <span className="text-xs text-gray-500 ml-2">(Leave blank to keep current password)</span>}
-                </label>
-                <div className="relative">
-                  <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
-                  <input
-                    type="password"
-                    required={!editingStudent}
-                    value={newStudent.password}
-                    onChange={(e) => setNewStudent(prev => ({ ...prev, password: e.target.value }))}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-sm"
-                    placeholder={editingStudent ? "Enter new password (optional)" : "Enter student password"}
-                  />
+                {/* Phone - Optional */}
+                <div className="mt-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+                    <input
+                      type="tel"
+                      value={newStudent.phone}
+                      onChange={(e) => setNewStudent(prev => ({ ...prev, phone: e.target.value }))}
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-sm"
+                      placeholder="Enter phone number (optional)"
+                    />
+                  </div>
+                </div>
+
+                {/* Password - Required for new students, optional for edits */}
+                <div className="mt-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Password {!editingStudent && <span className="text-red-500">*</span>}
+                    {editingStudent && <span className="text-xs text-gray-500 ml-2">(Leave blank to keep current password)</span>}
+                  </label>
+                  <div className="relative">
+                    <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+                    <input
+                      type="password"
+                      required={!editingStudent}
+                      value={newStudent.password}
+                      onChange={(e) => setNewStudent(prev => ({ ...prev, password: e.target.value }))}
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-sm"
+                      placeholder={editingStudent ? "Enter new password (optional)" : "Enter student password"}
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -828,10 +850,7 @@ export default function StudentDashboard() {
                       full_name: '',
                       usn: '',
                       branch: '',
-                      class: '',
-                      division: '',
                       phone: '',
-                      email: '',
                       password: '',
                       routes: ''
                     });
