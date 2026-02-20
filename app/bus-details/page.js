@@ -15,7 +15,14 @@ import {
   Clock,
   ArrowLeft,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Shield,
+  FileText,
+  Truck,
+  Fuel,
+  Settings,
+  MapPin,
+  Info
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import withAuth from '../../components/withAuth';
@@ -26,11 +33,21 @@ function BusDetails() {
   const [error, setError] = useState(null);
   const [expandedBus, setExpandedBus] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentTime, setCurrentTime] = useState('');
 
   const router = useRouter();
 
   useEffect(() => {
     fetchBuses();
+    
+    // Update time
+    const updateTime = () => {
+      const now = new Date();
+      setCurrentTime(now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    };
+    updateTime();
+    const timer = setInterval(updateTime, 1000);
+    return () => clearInterval(timer);
   }, []);
 
   // 🔥 SIMPLIFIED: Fetch only bus details (no driver info)
@@ -88,7 +105,8 @@ function BusDetails() {
       return {
         status: 'not-set',
         text: 'Not set',
-        badgeClass: 'bg-gray-100 text-gray-800 border border-gray-300',
+        badgeClass: 'badge-not-set',
+        icon: '⚠️',
         daysText: '',
         days: null
       };
@@ -100,7 +118,8 @@ function BusDetails() {
       return {
         status: 'expired',
         text: 'Expired',
-        badgeClass: 'bg-red-100 text-red-800 border border-red-300',
+        badgeClass: 'badge-expired',
+        icon: '❌',
         daysText: `${Math.abs(days)} days ago`,
         days: days
       };
@@ -108,7 +127,8 @@ function BusDetails() {
       return {
         status: 'critical',
         text: 'Critical',
-        badgeClass: 'bg-red-100 text-red-800 border border-red-300',
+        badgeClass: 'badge-critical',
+        icon: '🔥',
         daysText: `${days} days left`,
         days: days
       };
@@ -116,7 +136,8 @@ function BusDetails() {
       return {
         status: 'warning',
         text: 'Expiring Soon',
-        badgeClass: 'bg-yellow-100 text-yellow-800 border border-yellow-300',
+        badgeClass: 'badge-warning',
+        icon: '⚠️',
         daysText: `${days} days left`,
         days: days
       };
@@ -124,7 +145,8 @@ function BusDetails() {
       return {
         status: 'valid',
         text: 'Valid',
-        badgeClass: 'bg-green-100 text-green-800 border border-green-300',
+        badgeClass: 'badge-valid',
+        icon: '✅',
         daysText: `${days} days left`,
         days: days
       };
@@ -134,7 +156,11 @@ function BusDetails() {
   // Function to format date for display
   const formatDate = (dateString) => {
     if (!dateString) return 'Not set';
-    return new Date(dateString).toLocaleDateString('en-IN');
+    return new Date(dateString).toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
   };
 
   // Function to get service status
@@ -143,7 +169,8 @@ function BusDetails() {
       return {
         status: 'not-set',
         text: 'Not set',
-        badgeClass: 'bg-gray-100 text-gray-800 border border-gray-300',
+        badgeClass: 'badge-not-set',
+        icon: '⚙️',
         daysText: '',
         kmText: ''
       };
@@ -185,14 +212,16 @@ function BusDetails() {
     }
 
     const badgeClass = 
-      status === 'critical' ? 'bg-red-100 text-red-800 border border-red-300' :
-      status === 'warning' ? 'bg-yellow-100 text-yellow-800 border border-yellow-300' :
-      'bg-green-100 text-green-800 border border-green-300';
+      status === 'critical' ? 'badge-critical' :
+      status === 'warning' ? 'badge-warning' :
+      status === 'not-set' ? 'badge-not-set' :
+      'badge-valid';
 
     return {
       status,
-      text: status === 'critical' ? 'Due Now' : status === 'warning' ? 'Due Soon' : 'Scheduled',
+      text: status === 'critical' ? 'Due Now' : status === 'warning' ? 'Due Soon' : status === 'not-set' ? 'Not Set' : 'Scheduled',
       badgeClass,
+      icon: status === 'critical' ? '🔥' : status === 'warning' ? '⚠️' : '✅',
       daysText,
       kmText
     };
@@ -226,10 +255,40 @@ function BusDetails() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading buses...</p>
+      <div style={{ 
+        minHeight: '100vh', 
+        background: '#0a0a0f',
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center' 
+      }}>
+        <style>{`
+          @keyframes spin { to { transform: rotate(360deg); } }
+          @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+        `}</style>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ position: 'relative', width: 80, height: 80, margin: '0 auto 20px' }}>
+            <div style={{ 
+              width: 80, 
+              height: 80, 
+              border: '4px solid #1e1e2e', 
+              borderTop: '4px solid #f97316', 
+              borderRadius: '50%', 
+              animation: 'spin 1s linear infinite' 
+            }}></div>
+            <div style={{ 
+              position: 'absolute', 
+              top: '50%', 
+              left: '50%', 
+              transform: 'translate(-50%, -50%)', 
+              width: 40, 
+              height: 40, 
+              background: '#f97316', 
+              borderRadius: '50%', 
+              animation: 'pulse 1.5s ease infinite' 
+            }}></div>
+          </div>
+          <p style={{ color: '#f97316', fontWeight: 600 }}>Loading buses...</p>
         </div>
       </div>
     );
@@ -237,14 +296,35 @@ function BusDetails() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <AlertTriangle className="mx-auto text-red-500 mb-4" size={48} />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Error Loading Buses</h3>
-          <p className="text-gray-600 mb-4">{error}</p>
+      <div style={{ 
+        minHeight: '100vh', 
+        background: '#0a0a0f',
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center' 
+      }}>
+        <div style={{ textAlign: 'center', background: '#16162a', padding: 40, borderRadius: 24, border: '1px solid rgba(255,255,255,0.08)' }}>
+          <AlertTriangle size={48} color="#ef4444" style={{ marginBottom: 16 }} />
+          <h3 style={{ fontSize: 20, fontWeight: 600, color: 'white', marginBottom: 8 }}>Error Loading Buses</h3>
+          <p style={{ color: '#a0a0c0', marginBottom: 24 }}>{error}</p>
           <button
             onClick={fetchBuses}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 mx-auto"
+            style={{
+              background: '#f97316',
+              color: 'white',
+              border: 'none',
+              padding: '12px 24px',
+              borderRadius: 12,
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              transition: 'all 0.2s ease'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.background = '#ea580c'}
+            onMouseLeave={(e) => e.currentTarget.style.background = '#f97316'}
           >
             <RefreshCw size={16} />
             <span>Retry</span>
@@ -254,378 +334,674 @@ function BusDetails() {
     );
   }
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Mobile Header */}
-      <div className="lg:hidden bg-white border-b border-gray-200 sticky top-0 z-40">
-        <div className="flex items-center justify-between p-4">
-          <div className="flex items-center space-x-3">
-            <button
-              onClick={handleBack}
-              className="flex items-center text-gray-600 hover:text-gray-900 transition-colors p-2 rounded-lg hover:bg-gray-100"
-              title="Go back"
-            >
-              <ArrowLeft size={20} />
-            </button>
-            <div>
-              <h1 className="text-lg font-bold text-gray-900">Bus Details</h1>
-              <p className="text-xs text-gray-600">Manage bus information</p>
-            </div>
-          </div>
-          <Link
-            href="/bus-details/add"
-            className="bg-blue-600 text-white p-2 rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <Plus size={16} />
-          </Link>
-        </div>
-      </div>
+  const today = new Date();
+  const dateStr = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
-      <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 py-4 lg:py-8">
-        {/* Desktop Header */}
-        <div className="hidden lg:flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleBack}
-              className="flex items-center text-gray-600 hover:text-gray-900 transition-colors p-2 rounded-lg hover:bg-gray-100"
-              title="Go back"
-            >
-              <ArrowLeft size={20} />
-              <span className="ml-2 text-sm font-medium">Back</span>
-            </button>
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Bus Details</h1>
-              <p className="text-gray-600 mt-1">Manage bus information and documents</p>
+  return (
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        
+        * { 
+          box-sizing: border-box; 
+          margin: 0; 
+          padding: 0; 
+        }
+        
+        :root {
+          --bg-primary: #0a0a0f;
+          --bg-secondary: #11111f;
+          --bg-card: #16162a;
+          --bg-card-hover: #1c1c34;
+          --border: rgba(255,255,255,0.08);
+          --border-hover: rgba(255,255,255,0.15);
+          --text-primary: #ffffff;
+          --text-secondary: #a0a0c0;
+          --text-muted: #6b6b8b;
+          --accent-orange: #f97316;
+          --accent-red: #ef4444;
+          --accent-green: #10b981;
+          --accent-yellow: #eab308;
+          --accent-blue: #3b82f6;
+          --accent-purple: #8b5cf6;
+        }
+        
+        body { 
+          font-family: 'Inter', sans-serif; 
+          background: var(--bg-primary);
+          color: var(--text-primary);
+        }
+        
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes slideIn {
+          from { transform: translateX(20px); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+        
+        @keyframes float {
+          0%,100% { transform: translateY(0px); }
+          50% { transform: translateY(-5px); }
+        }
+        
+        @keyframes glow {
+          0%,100% { filter: blur(60px) opacity(0.5); }
+          50% { filter: blur(80px) opacity(0.8); }
+        }
+        
+        .animate-fade-in { animation: fadeIn 0.3s ease forwards; }
+        .animate-float { animation: float 3s ease-in-out infinite; }
+        
+        .glass-effect {
+          background: rgba(22, 22, 42, 0.8);
+          backdrop-filter: blur(12px);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        
+        /* Badge Styles */
+        .badge-valid {
+          background: rgba(16, 185, 129, 0.1);
+          color: #10b981;
+          border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+        
+        .badge-warning {
+          background: rgba(234, 179, 8, 0.1);
+          color: #eab308;
+          border: 1px solid rgba(234, 179, 8, 0.2);
+        }
+        
+        .badge-critical {
+          background: rgba(239, 68, 68, 0.1);
+          color: #ef4444;
+          border: 1px solid rgba(239, 68, 68, 0.2);
+        }
+        
+        .badge-expired {
+          background: rgba(239, 68, 68, 0.15);
+          color: #ef4444;
+          border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+        
+        .badge-not-set {
+          background: rgba(107, 114, 128, 0.1);
+          color: #9ca3af;
+          border: 1px solid rgba(107, 114, 128, 0.2);
+        }
+        
+        .search-bar {
+          background: var(--bg-card);
+          border: 1px solid var(--border);
+          border-radius: 40px;
+          padding: 8px 20px;
+          transition: all 0.3s ease;
+        }
+        
+        .search-bar:focus-within {
+          border-color: #f97316;
+          box-shadow: 0 0 0 3px rgba(249,115,22,0.2);
+        }
+        
+        .stat-card {
+          background: var(--bg-card);
+          border: 1px solid var(--border);
+          border-radius: 20px;
+          padding: 20px;
+          transition: all 0.3s ease;
+          position: relative;
+          overflow: hidden;
+        }
+        
+        .stat-card::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 3px;
+          background: linear-gradient(90deg, #f97316, #eab308);
+          opacity: 0;
+          transition: opacity 0.3s ease;
+        }
+        
+        .stat-card:hover {
+          transform: translateY(-4px);
+          background: var(--bg-card-hover);
+          border-color: var(--border-hover);
+        }
+        
+        .stat-card:hover::before {
+          opacity: 1;
+        }
+        
+        .bus-card {
+          background: var(--bg-card);
+          border: 1px solid var(--border);
+          border-radius: 20px;
+          overflow: hidden;
+          transition: all 0.3s ease;
+        }
+        
+        .bus-card:hover {
+          border-color: #f97316;
+          box-shadow: 0 10px 30px -10px rgba(249,115,22,0.3);
+        }
+        
+        .bus-header {
+          background: rgba(255,255,255,0.02);
+          border-bottom: 1px solid var(--border);
+          padding: 16px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        
+        .bus-header:hover {
+          background: rgba(249,115,22,0.05);
+        }
+        
+        .table-header {
+          background: rgba(22, 22, 42, 0.95);
+          border-bottom: 1px solid var(--border);
+        }
+        
+        .table-row {
+          transition: all 0.2s ease;
+        }
+        
+        .table-row:hover {
+          background: rgba(249,115,22,0.05);
+        }
+        
+        .action-button {
+          background: var(--bg-card);
+          border: 1px solid var(--border);
+          border-radius: 40px;
+          padding: 8px 16px;
+          font-size: 13px;
+          font-weight: 500;
+          color: var(--text-secondary);
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        
+        .action-button:hover {
+          background: var(--bg-card-hover);
+          border-color: #f97316;
+          color: #f97316;
+        }
+        
+        .action-button.primary {
+          background: linear-gradient(135deg, #f97316, #eab308);
+          color: white;
+          border: none;
+        }
+        
+        .action-button.primary:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 10px 25px -5px #f97316;
+        }
+        
+        .document-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 12px;
+        }
+        
+        .document-item {
+          background: rgba(255,255,255,0.02);
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          padding: 12px;
+          text-align: center;
+        }
+        
+        @media (max-width: 768px) {
+          .stat-card { padding: 16px; }
+          .bus-card { margin-bottom: 12px; }
+        }
+      `}</style>
+
+      <div style={{ 
+        minHeight: '100vh', 
+        background: 'radial-gradient(circle at 50% 50%, #1a1a2e, #0a0a0f)',
+        position: 'relative',
+        overflow: 'hidden'
+      }}>
+        {/* Background Orbs */}
+        <div style={{
+          position: 'fixed',
+          width: 600,
+          height: 600,
+          borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(249,115,22,0.15) 0%, transparent 70%)',
+          top: -200,
+          left: -200,
+          filter: 'blur(80px)',
+          pointerEvents: 'none',
+          zIndex: 0,
+          animation: 'glow 8s ease-in-out infinite'
+        }}></div>
+        <div style={{
+          position: 'fixed',
+          width: 500,
+          height: 500,
+          borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(234,179,8,0.1) 0%, transparent 70%)',
+          bottom: -150,
+          right: -150,
+          filter: 'blur(80px)',
+          pointerEvents: 'none',
+          zIndex: 0,
+          animation: 'glow 10s ease-in-out infinite reverse'
+        }}></div>
+
+        {/* Mobile Header */}
+        <div className="glass-effect" style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 40,
+          padding: '12px 16px',
+          borderBottom: '1px solid var(--border)',
+          display: 'block'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <button
+                onClick={handleBack}
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 12,
+                  background: 'var(--bg-card)',
+                  border: '1px solid var(--border)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  color: 'var(--text-secondary)'
+                }}
+              >
+                <ArrowLeft size={18} />
+              </button>
+              <div>
+                <h1 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>Bus Details</h1>
+                <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>{dateStr}</p>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center space-x-4">
             <Link
               href="/bus-details/add"
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 12,
+                background: 'linear-gradient(135deg, #f97316, #eab308)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'white'
+              }}
             >
-              <Plus size={20} />
-              <span>Add Bus</span>
+              <Plus size={18} />
             </Link>
           </div>
         </div>
 
-        {/* Search Bar - Mobile Optimized */}
-        <div className="bg-white rounded-lg sm:rounded-xl shadow-sm p-4 border border-gray-200 mb-4 lg:mb-6">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+        <div style={{ position: 'relative', zIndex: 10, maxWidth: 1400, margin: '0 auto', padding: '16px' }}>
+          {/* Desktop Header */}
+          <div style={{ 
+            display: 'none',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 24,
+            background: 'var(--bg-card)',
+            borderRadius: 20,
+            padding: 20,
+            border: '1px solid var(--border)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <button
+                onClick={handleBack}
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 12,
+                  background: 'var(--bg-primary)',
+                  border: '1px solid var(--border)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  color: 'var(--text-secondary)'
+                }}
+              >
+                <ArrowLeft size={20} />
+              </button>
+              <div>
+                <h1 style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)' }}>Bus Details</h1>
+                <p style={{ fontSize: 14, color: 'var(--text-muted)', marginTop: 4 }}>{dateStr} • {currentTime}</p>
+              </div>
+            </div>
+            <Link
+              href="/bus-details/add"
+              className="action-button primary"
+              style={{ padding: '10px 20px' }}
+            >
+              <Plus size={18} />
+              <span>Add Bus</span>
+            </Link>
+          </div>
+
+          {/* Search Bar */}
+          <div className="search-bar" style={{ 
+            marginBottom: 20,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12
+          }}>
+            <Search size={18} color="var(--text-muted)" />
             <input
               type="text"
               placeholder="Search by bus number or route..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white text-sm"
+              style={{
+                flex: 1,
+                border: 'none',
+                outline: 'none',
+                fontSize: 14,
+                background: 'transparent',
+                color: 'var(--text-primary)'
+              }}
             />
-          </div>
-        </div>
-
-        {/* Summary Cards - Mobile Optimized */}
-        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 lg:gap-6 mb-4 lg:mb-8">
-          {/* Expired Documents Card */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 lg:p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs sm:text-sm font-medium text-gray-600">Expired Docs</p>
-                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-red-600 mt-1">
-                  {expiredDocumentsCount}
-                </p>
-              </div>
-              <div className="bg-red-100 p-2 sm:p-3 rounded-lg">
-                <AlertTriangle className="text-red-600" size={18} />
-              </div>
-            </div>
+            {searchTerm && (
+              <button 
+                onClick={() => setSearchTerm('')} 
+                style={{ 
+                  border: 'none', 
+                  background: 'none', 
+                  cursor: 'pointer',
+                  color: 'var(--text-muted)'
+                }}
+              >
+                <span style={{ fontSize: 18 }}>×</span>
+              </button>
+            )}
           </div>
 
-          {/* Critical Alerts Card */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 lg:p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs sm:text-sm font-medium text-gray-600">Critical</p>
-                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-yellow-600 mt-1">
-                  {criticalAlertsCount}
-                </p>
-              </div>
-              <div className="bg-yellow-100 p-2 sm:p-3 rounded-lg">
-                <Clock className="text-yellow-600" size={18} />
-              </div>
-            </div>
-          </div>
-
-          {/* Due for Service Card */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 lg:p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs sm:text-sm font-medium text-gray-600">Service Due</p>
-                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-blue-600 mt-1">
-                  {dueForServiceCount}
-                </p>
-              </div>
-              <div className="bg-blue-100 p-2 sm:p-3 rounded-lg">
-                <Wrench className="text-blue-600" size={18} />
-              </div>
-            </div>
-          </div>
-
-          {/* Total Buses Card */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 lg:p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs sm:text-sm font-medium text-gray-600">Total Buses</p>
-                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 mt-1">{buses.length}</p>
-              </div>
-              <div className="bg-green-100 p-2 sm:p-3 rounded-lg">
-                <Bus className="text-green-600" size={18} />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {filteredBuses.length === 0 ? (
-          <div className="text-center py-12">
-            <Bus className="mx-auto text-gray-400" size={64} />
-            <h3 className="mt-4 text-xl font-medium text-gray-900">No buses found</h3>
-            <p className="text-gray-600 mt-2 mb-6">
-              {searchTerm ? 'Try adjusting your search criteria' : 'Get started by adding your first bus to the system.'}
-            </p>
-            <Link
-              href="/bus-details/add"
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg inline-flex items-center space-x-2 transition-colors"
-            >
-              <Plus size={20} />
-              <span>Add Your First Bus</span>
-            </Link>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {/* Mobile Card View */}
-            <div className="lg:hidden space-y-3">
-              {filteredBuses.map((bus) => (
-                <div key={bus.id} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-                  {/* Bus Header */}
-                  <div 
-                    className="p-4 border-b border-gray-200 cursor-pointer"
-                    onClick={() => toggleBusExpansion(bus.id)}
-                  >
-                    <div className="flex justify-between items-center">
-                      <div className="flex-1">
-                        <h3 className="font-bold text-gray-900 text-lg">Bus {bus.bus_number}</h3>
-                        <p className="text-gray-600 text-sm">{bus.route_name || 'No route set'}</p>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <span className={`text-xs px-2 py-1 rounded-full ${
-                          getExpiryInfo(bus.puc_expiry).status === 'expired' || 
-                          getExpiryInfo(bus.insurance_expiry).status === 'expired' ||
-                          getExpiryInfo(bus.fitness_expiry).status === 'expired' ||
-                          getExpiryInfo(bus.permit_expiry).status === 'expired' ? 
-                          'bg-red-100 text-red-800 border border-red-300' : 'bg-green-100 text-green-800 border border-green-300'
-                        }`}>
-                          {getExpiryInfo(bus.puc_expiry).status === 'expired' || 
-                           getExpiryInfo(bus.insurance_expiry).status === 'expired' ||
-                           getExpiryInfo(bus.fitness_expiry).status === 'expired' ||
-                           getExpiryInfo(bus.permit_expiry).status === 'expired' ? 
-                           'Issues' : 'OK'}
-                        </span>
-                        {expandedBus === bus.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Expandable Content - Bus Details Only */}
-                  {expandedBus === bus.id && (
-                    <div className="p-4 space-y-4">
-                      {/* Document Expiry */}
-                      <div>
-                        <h4 className="font-medium text-gray-900 text-sm mb-3">Document Expiry</h4>
-                        <div className="grid grid-cols-2 gap-3">
-                          {[
-                            { label: 'PUC', expiry: bus.puc_expiry },
-                            { label: 'Insurance', expiry: bus.insurance_expiry },
-                            { label: 'Fitness', expiry: bus.fitness_expiry },
-                            { label: 'Permit', expiry: bus.permit_expiry }
-                          ].map((doc) => {
-                            const info = getExpiryInfo(doc.expiry);
-                            return (
-                              <div key={doc.label} className="text-center">
-                                <div className={`text-xs px-2 py-1 rounded-full mb-1 ${info.badgeClass}`}>
-                                  {info.text}
-                                </div>
-                                <div className="text-xs font-medium text-gray-700">{doc.label}</div>
-                                <div className="text-xs text-gray-600">{formatDate(doc.expiry)}</div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* Service Information */}
-                      <div>
-                        <h4 className="font-medium text-gray-900 text-sm mb-3">Service Information</h4>
-                        <div className="space-y-2">
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm font-medium text-gray-700">Next Service</span>
-                            <span className={`text-xs px-2 py-1 rounded-full ${
-                              getServiceInfo(bus.next_service_due, bus.current_km, bus.next_service_km).badgeClass
-                            }`}>
-                              {getServiceInfo(bus.next_service_due, bus.current_km, bus.next_service_km).text}
-                            </span>
-                          </div>
-                          {bus.current_km && (
-                            <div className="flex items-center text-sm text-gray-700">
-                              <Gauge size={14} className="mr-2 text-blue-600" />
-                              <span className="font-medium">Current KM:</span>
-                              <span className="ml-1 text-gray-900">{bus.current_km}</span>
-                            </div>
-                          )}
-                          {bus.last_service_date && (
-                            <div className="text-xs text-gray-600 bg-gray-50 px-2 py-1 rounded border border-gray-200">
-                              Last service: {formatDate(bus.last_service_date)}
-                              {bus.last_service_km && ` at ${bus.last_service_km} KM`}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {bus.remarks && (
-                        <div>
-                          <h4 className="font-medium text-gray-900 text-sm mb-2">Remarks</h4>
-                          <p className="text-sm text-gray-700 bg-gray-50 px-3 py-2 rounded border border-gray-200">{bus.remarks}</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
+          {/* Summary Cards */}
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: 'repeat(2, 1fr)',
+            gap: 12,
+            marginBottom: 20
+          }}>
+            {/* Expired Documents Card */}
+            <div className="stat-card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Expired Docs</p>
+                  <p style={{ fontSize: 28, fontWeight: 700, color: '#ef4444', marginTop: 4 }}>{expiredDocumentsCount}</p>
                 </div>
-              ))}
+                <div style={{ 
+                  width: 40, 
+                  height: 40, 
+                  borderRadius: 12, 
+                  background: 'rgba(239,68,68,0.1)', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center'
+                }}>
+                  <AlertTriangle size={20} color="#ef4444" />
+                </div>
+              </div>
             </div>
 
-            {/* Desktop Table View - Bus Details Only */}
-            <div className="hidden lg:block bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="p-6 border-b border-gray-200">
-                <h2 className="text-lg font-semibold text-gray-900">Buses List</h2>
-                <p className="text-gray-600">Total {filteredBuses.length} bus{filteredBuses.length !== 1 ? 'es' : ''}</p>
+            {/* Critical Alerts Card */}
+            <div className="stat-card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Critical</p>
+                  <p style={{ fontSize: 28, fontWeight: 700, color: '#f97316', marginTop: 4 }}>{criticalAlertsCount}</p>
+                </div>
+                <div style={{ 
+                  width: 40, 
+                  height: 40, 
+                  borderRadius: 12, 
+                  background: 'rgba(249,115,22,0.1)', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center'
+                }}>
+                  <Clock size={20} color="#f97316" />
+                </div>
               </div>
-              
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Bus Details
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Document Expiry
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Service Information
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredBuses.map((bus) => (
-                      <tr key={bus.id} className="hover:bg-gray-50">
-                        {/* Bus Details */}
-                        <td className="px-6 py-4">
-                          <div className="space-y-2">
-                            <div className="text-lg font-bold text-gray-900">
-                              {bus.bus_number}
-                            </div>
-                            <div className="text-sm text-gray-600">
-                              Route: {bus.route_name || 'Not set'}
-                            </div>
-                            {bus.remarks && (
-                              <div className="text-sm text-gray-500 bg-gray-50 px-2 py-1 rounded border border-gray-200">
-                                {bus.remarks}
-                              </div>
-                            )}
-                          </div>
-                        </td>
+            </div>
 
+            {/* Service Due Card */}
+            <div className="stat-card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Service Due</p>
+                  <p style={{ fontSize: 28, fontWeight: 700, color: '#eab308', marginTop: 4 }}>{dueForServiceCount}</p>
+                </div>
+                <div style={{ 
+                  width: 40, 
+                  height: 40, 
+                  borderRadius: 12, 
+                  background: 'rgba(234,179,8,0.1)', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center'
+                }}>
+                  <Wrench size={20} color="#eab308" />
+                </div>
+              </div>
+            </div>
+
+            {/* Total Buses Card */}
+            <div className="stat-card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Total Buses</p>
+                  <p style={{ fontSize: 28, fontWeight: 700, color: '#3b82f6', marginTop: 4 }}>{buses.length}</p>
+                </div>
+                <div style={{ 
+                  width: 40, 
+                  height: 40, 
+                  borderRadius: 12, 
+                  background: 'rgba(59,130,246,0.1)', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center'
+                }}>
+                  <Bus size={20} color="#3b82f6" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {filteredBuses.length === 0 ? (
+            <div style={{ 
+              textAlign: 'center', 
+              padding: 60,
+              background: 'var(--bg-card)',
+              borderRadius: 24,
+              border: '1px solid var(--border)'
+            }}>
+              <Bus size={48} color="var(--text-muted)" style={{ marginBottom: 16 }} />
+              <h3 style={{ fontSize: 18, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>
+                No buses found
+              </h3>
+              <p style={{ color: 'var(--text-muted)', marginBottom: 24 }}>
+                {searchTerm ? 'Try adjusting your search criteria' : 'Get started by adding your first bus'}
+              </p>
+              <Link
+                href="/bus-details/add"
+                className="action-button primary"
+                style={{ padding: '12px 24px' }}
+              >
+                <Plus size={18} />
+                <span>Add Your First Bus</span>
+              </Link>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {/* Mobile Card View */}
+              <div style={{ display: 'block' }}>
+                {filteredBuses.map((bus) => (
+                  <div key={bus.id} className="bus-card" style={{ marginBottom: 12 }}>
+                    {/* Bus Header */}
+                    <div 
+                      className="bus-header"
+                      onClick={() => toggleBusExpansion(bus.id)}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <h3 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>
+                            Bus {bus.bus_number}
+                          </h3>
+                          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>
+                            {bus.route_name || 'No route set'}
+                          </p>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span className={`badge-${getExpiryInfo(bus.puc_expiry).status === 'expired' ? 'expired' : getExpiryInfo(bus.puc_expiry).status}`} style={{
+                            padding: '4px 8px',
+                            borderRadius: 12,
+                            fontSize: 10,
+                            fontWeight: 600
+                          }}>
+                            {getExpiryInfo(bus.puc_expiry).status === 'expired' ? 'EXPIRED' : 
+                             getExpiryInfo(bus.puc_expiry).status === 'critical' ? 'CRITICAL' : 'OK'}
+                          </span>
+                          {expandedBus === bus.id ? 
+                            <ChevronUp size={16} color="var(--text-muted)" /> : 
+                            <ChevronDown size={16} color="var(--text-muted)" />
+                          }
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Expandable Content */}
+                    {expandedBus === bus.id && (
+                      <div style={{ padding: 16 }}>
                         {/* Document Expiry */}
-                        <td className="px-6 py-4">
-                          <div className="space-y-3">
+                        <div style={{ marginBottom: 16 }}>
+                          <h4 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 12 }}>
+                            Document Expiry
+                          </h4>
+                          <div className="document-grid">
                             {[
-                              { label: 'PUC', expiry: bus.puc_expiry },
-                              { label: 'Insurance', expiry: bus.insurance_expiry },
-                              { label: 'Fitness', expiry: bus.fitness_expiry },
-                              { label: 'Permit', expiry: bus.permit_expiry }
+                              { label: 'PUC', expiry: bus.puc_expiry, icon: '📄' },
+                              { label: 'Insurance', expiry: bus.insurance_expiry, icon: '🛡️' },
+                              { label: 'Fitness', expiry: bus.fitness_expiry, icon: '✅' },
+                              { label: 'Permit', expiry: bus.permit_expiry, icon: '📋' }
                             ].map((doc) => {
                               const info = getExpiryInfo(doc.expiry);
                               return (
-                                <div key={doc.label}>
-                                  <div className="flex items-center justify-between mb-1">
-                                    <span className="text-sm font-medium text-gray-700">{doc.label}</span>
-                                    <span className={`text-xs px-2 py-1 rounded-full ${info.badgeClass}`}>
-                                      {info.text}
-                                    </span>
-                                  </div>
-                                  <div className="flex justify-between text-xs text-gray-600">
-                                    <span>{formatDate(doc.expiry)}</span>
-                                    <span>{info.daysText}</span>
+                                <div key={doc.label} className="document-item">
+                                  <div style={{ fontSize: 18, marginBottom: 4 }}>{doc.icon}</div>
+                                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>{doc.label}</div>
+                                  <span className={info.badgeClass} style={{
+                                    padding: '2px 6px',
+                                    borderRadius: 8,
+                                    fontSize: 9,
+                                    fontWeight: 600,
+                                    display: 'inline-block'
+                                  }}>
+                                    {info.text}
+                                  </span>
+                                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
+                                    {formatDate(doc.expiry)}
                                   </div>
                                 </div>
                               );
                             })}
                           </div>
-                        </td>
+                        </div>
 
                         {/* Service Information */}
-                        <td className="px-6 py-4">
-                          <div className="space-y-3">
-                            {/* Next Service */}
-                            <div>
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="text-sm font-medium text-gray-700">Next Service</span>
-                                <span className={`text-xs px-2 py-1 rounded-full ${getServiceInfo(bus.next_service_due, bus.current_km, bus.next_service_km).badgeClass}`}>
-                                  {getServiceInfo(bus.next_service_due, bus.current_km, bus.next_service_km).text}
-                                </span>
-                              </div>
-                              <div className="space-y-1">
-                                {bus.next_service_due && (
-                                  <div className="flex justify-between text-xs text-gray-600">
-                                    <span>Date: {formatDate(bus.next_service_due)}</span>
-                                    <span>{getServiceInfo(bus.next_service_due, bus.current_km, bus.next_service_km).daysText}</span>
-                                  </div>
-                                )}
-                                {bus.next_service_km && bus.current_km && (
-                                  <div className="flex justify-between text-xs text-gray-600">
-                                    <span>KM: {bus.next_service_km}</span>
-                                    <span>{getServiceInfo(bus.next_service_due, bus.current_km, bus.next_service_km).kmText}</span>
-                                  </div>
-                                )}
-                              </div>
+                        <div>
+                          <h4 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 12 }}>
+                            Service Information
+                          </h4>
+                          <div style={{ 
+                            background: 'rgba(255,255,255,0.02)', 
+                            border: '1px solid var(--border)', 
+                            borderRadius: 12,
+                            padding: 12
+                          }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Next Service</span>
+                              <span className={getServiceInfo(bus.next_service_due, bus.current_km, bus.next_service_km).badgeClass} style={{
+                                padding: '4px 8px',
+                                borderRadius: 12,
+                                fontSize: 10,
+                                fontWeight: 600
+                              }}>
+                                {getServiceInfo(bus.next_service_due, bus.current_km, bus.next_service_km).text}
+                              </span>
                             </div>
-
-                            {/* Current Status */}
-                            <div className="space-y-2">
-                              {bus.current_km && (
-                                <div className="flex items-center space-x-2 text-sm text-gray-700">
-                                  <Gauge size={14} className="text-blue-600" />
-                                  <span className="font-medium">Current KM:</span>
-                                  <span className="text-gray-900">{bus.current_km}</span>
-                                </div>
-                              )}
-                              {bus.last_service_date && (
-                                <div className="text-xs text-gray-600 bg-gray-50 px-2 py-1 rounded border border-gray-200">
-                                  Last service: {formatDate(bus.last_service_date)}
-                                  {bus.last_service_km && ` at ${bus.last_service_km} KM`}
-                                </div>
-                              )}
-                            </div>
+                            {bus.current_km && (
+                              <div style={{ 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: 8,
+                                fontSize: 12,
+                                color: 'var(--text-secondary)',
+                                marginBottom: 4
+                              }}>
+                                <Gauge size={14} color="#3b82f6" />
+                                <span>Current KM: <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{bus.current_km}</span></span>
+                              </div>
+                            )}
+                            {bus.last_service_date && (
+                              <div style={{ 
+                                fontSize: 11, 
+                                color: 'var(--text-muted)',
+                                background: 'rgba(0,0,0,0.2)',
+                                padding: '6px 8px',
+                                borderRadius: 8,
+                                marginTop: 8
+                              }}>
+                                Last service: {formatDate(bus.last_service_date)}
+                                {bus.last_service_km && ` at ${bus.last_service_km} KM`}
+                              </div>
+                            )}
                           </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        </div>
+
+                        {bus.remarks && (
+                          <div style={{ marginTop: 12 }}>
+                            <h4 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>Remarks</h4>
+                            <p style={{ 
+                              fontSize: 12, 
+                              color: 'var(--text-secondary)',
+                              background: 'rgba(255,255,255,0.02)',
+                              border: '1px solid var(--border)',
+                              borderRadius: 8,
+                              padding: 8
+                            }}>
+                              {bus.remarks}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
