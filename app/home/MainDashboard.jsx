@@ -9,7 +9,8 @@ import {
   School, Bus, Map, LogOut, User, Truck, ChevronRight,
   TrendingUp, Shield, Activity, Zap, BarChart3, Clock,
   Award, Calendar, CheckCircle, XCircle, Download, RefreshCw,
-  Settings, HelpCircle, Moon, Sun, Search, Filter, MoreVertical
+  Settings, HelpCircle, Moon, Sun, Filter, MoreVertical,
+  Navigation, Radio, Wifi, WifiOff
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
@@ -22,7 +23,8 @@ function HomePage() {
     totalDrivers: 0,
     totalBuses: 0,
     busesWithDriver: 0,
-    expiringDocuments: 0
+    expiringDocuments: 0,
+    liveBuses: 0
   });
   const [loading, setLoading] = useState(true);
   const [adminName, setAdminName] = useState('');
@@ -32,6 +34,8 @@ function HomePage() {
   const [activeSessions, setActiveSessions] = useState(0);
   const [pendingApprovals, setPendingApprovals] = useState(0);
   const [systemLoad, setSystemLoad] = useState(0);
+  const [liveBuses, setLiveBuses] = useState([]);
+  const [lastUpdated, setLastUpdated] = useState(new Date());
   const router = useRouter();
 
   useEffect(() => {
@@ -45,8 +49,65 @@ function HomePage() {
     };
     updateTime();
     const timer = setInterval(updateTime, 1000);
-    return () => clearInterval(timer);
+    
+    // Fetch live buses every 30 seconds
+    const liveBusInterval = setInterval(fetchLiveBuses, 30000);
+    
+    return () => {
+      clearInterval(timer);
+      clearInterval(liveBusInterval);
+    };
   }, []);
+
+  const fetchLiveBuses = async () => {
+    try {
+      // Get buses that have been updated in the last 5 minutes
+      const fiveMinutesAgo = new Date();
+      fiveMinutesAgo.setMinutes(fiveMinutesAgo.getMinutes() - 5);
+      
+      const { data: busLocations, error } = await supabase
+        .from('bus_locations')
+        .select('*')
+        .gte('updated_at', fiveMinutesAgo.toISOString())
+        .order('updated_at', { ascending: false });
+
+      if (error) {
+        console.log('Bus locations table may not exist:', error.message);
+        setLiveBuses([]);
+        setStats(prev => ({ ...prev, liveBuses: 0 }));
+        return;
+      }
+
+      // If we have bus locations, get the bus details
+      if (busLocations && busLocations.length > 0) {
+        const busIds = [...new Set(busLocations.map(b => b.bus_id))];
+        
+        const { data: buses } = await supabase
+          .from('buses')
+          .select('*, drivers_new(*)')
+          .in('id', busIds);
+
+        // Merge bus details with locations
+        const enrichedBuses = busLocations.map(location => ({
+          ...location,
+          bus_details: buses?.find(b => b.id === location.bus_id) || null
+        }));
+
+        setLiveBuses(enrichedBuses);
+        setStats(prev => ({ ...prev, liveBuses: enrichedBuses.length }));
+      } else {
+        setLiveBuses([]);
+        setStats(prev => ({ ...prev, liveBuses: 0 }));
+      }
+
+      setLastUpdated(new Date());
+
+    } catch (error) {
+      console.error('Error in fetchLiveBuses:', error);
+      setLiveBuses([]);
+      setStats(prev => ({ ...prev, liveBuses: 0 }));
+    }
+  };
 
   const fetchDashboardData = async () => {
     try {
@@ -97,7 +158,8 @@ function HomePage() {
       }).length || 0;
 
       // Set stats
-      setStats({ 
+      setStats(prev => ({ 
+        ...prev,
         totalStudents, 
         activeBuses: totalBuses, 
         dailyComplaints, 
@@ -105,8 +167,8 @@ function HomePage() {
         totalDrivers, 
         totalBuses, 
         busesWithDriver, 
-        expiringDocuments 
-      });
+        expiringDocuments
+      }));
 
       // Set notifications count (expiring documents + unread complaints)
       setNotifications(expiringDocuments + dailyComplaints);
@@ -117,7 +179,7 @@ function HomePage() {
       // Add complaint activities
       complaintsData.data?.slice(0, 3).forEach(complaint => {
         activities.push({
-          action: `New complaint: ${complaint.title || complaint.description?.substring(0, 30)}...`,
+          action: `New complaint: ${complaint.title || complaint.description?.substring(0, 30) || 'New complaint'}...`,
           user: `Student #${complaint.student_id || 'Unknown'}`,
           time: formatTimeAgo(complaint.created_at),
           type: 'complaint',
@@ -125,7 +187,7 @@ function HomePage() {
         });
       });
 
-      // Add bus tracking activities (recently updated buses)
+      // Add bus tracking activities
       busesData.data?.slice(0, 2).forEach(bus => {
         if (bus.last_updated) {
           activities.push({
@@ -229,9 +291,12 @@ function HomePage() {
       setRecentActivities(sortedActivities);
 
       // Calculate additional stats
-      setActiveSessions(Math.floor(Math.random() * 500) + 1000); // Simulated active sessions
-      setPendingApprovals(Math.floor(Math.random() * 30) + 10); // Simulated pending approvals
-      setSystemLoad(Math.floor(Math.random() * 30) + 40); // Simulated system load
+      setActiveSessions(Math.floor(Math.random() * 500) + 1000);
+      setPendingApprovals(Math.floor(Math.random() * 30) + 10);
+      setSystemLoad(Math.floor(Math.random() * 30) + 40);
+
+      // Fetch live buses after initial data load
+      await fetchLiveBuses();
 
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
@@ -244,27 +309,35 @@ function HomePage() {
   const formatTimeAgo = (dateString) => {
     if (!dateString) return 'recently';
     
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now - date;
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
+    try {
+      const date = new Date(dateString);
+      const now = new Date();
+      const diffMs = now - date;
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMs / 3600000);
+      const diffDays = Math.floor(diffMs / 86400000);
 
-    if (diffMins < 1) return 'just now';
-    if (diffMins < 60) return `${diffMins} min ago`;
-    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
-    if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
-    return date.toLocaleDateString();
+      if (diffMins < 1) return 'just now';
+      if (diffMins < 60) return `${diffMins} min ago`;
+      if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+      if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+      return date.toLocaleDateString();
+    } catch (e) {
+      return 'recently';
+    }
   };
 
   // Helper function to calculate days until a date
   const daysUntilDate = (dateString) => {
     if (!dateString) return 999;
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = date - now;
-    return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+    try {
+      const date = new Date(dateString);
+      const now = new Date();
+      const diffMs = date - now;
+      return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+    } catch (e) {
+      return 999;
+    }
   };
 
   const handleLogout = () => {
@@ -279,7 +352,7 @@ function HomePage() {
     { id: 'drivers', name: 'Drivers Management', description: 'Complete driver oversight with license tracking', icon: Truck, href: '/drivers', accent: '#f59e0b', gradient: 'from-amber-500 to-orange-600', tag: 'Fleet Ops', metrics: `${stats.totalDrivers} drivers` },
     { id: 'buses', name: 'Bus Management', description: 'Fleet maintenance, documents, and scheduling', icon: Bus, href: '/buses', accent: '#10b981', gradient: 'from-emerald-500 to-teal-600', tag: 'Fleet', metrics: `${stats.totalBuses} vehicles` },
     { id: 'fees', name: 'Fees Management', description: 'Real-time payment tracking and financial insights', icon: CreditCard, href: '/fees', accent: '#3b82f6', gradient: 'from-blue-500 to-cyan-600', tag: 'Finance', metrics: 'Track payments' },
-    { id: 'bus-locations', name: 'Live Tracking', description: 'Real-time GPS tracking and route optimization', icon: MapPin, href: '/bus-locations', accent: '#ef4444', gradient: 'from-rose-500 to-pink-600', tag: 'Live', metrics: `${stats.activeBuses} active` },
+    { id: 'bus-locations', name: 'Live Tracking', description: 'Real-time GPS tracking and route optimization', icon: MapPin, href: '/bus-locations', accent: '#ef4444', gradient: 'from-rose-500 to-pink-600', tag: 'Live', metrics: `${stats.liveBuses} live now` },
     { id: 'bus-details', name: 'Bus Details', description: 'Vehicle specifications and route information', icon: Bus, href: '/bus-details', accent: '#8b5cf6', gradient: 'from-violet-500 to-purple-600', tag: 'Info', metrics: `${stats.totalBuses} buses` },
     { id: 'complaints', name: 'Complaints Hub', description: 'Issue tracking and resolution management', icon: AlertTriangle, href: '/complaints', accent: '#f97316', gradient: 'from-orange-500 to-red-600', tag: 'Support', metrics: `${stats.dailyComplaints} today` },
     { id: 'announcements', name: 'Announcements', description: 'Broadcast messages to students and staff', icon: Megaphone, href: '/announcements', accent: '#ec4899', gradient: 'from-pink-500 to-rose-600', tag: 'Comms', metrics: 'Manage' },
@@ -297,13 +370,13 @@ function HomePage() {
       secondary: 'active enrollment' 
     },
     { 
-      label: 'Active Buses', 
-      value: stats.activeBuses, 
-      icon: Bus, 
+      label: 'Live Buses', 
+      value: stats.liveBuses, 
+      icon: Radio, 
       accent: '#10b981', 
-      change: stats.totalBuses > 0 ? `${Math.round((stats.activeBuses / stats.totalBuses) * 100)}%` : '0%', 
-      trend: 'stable', 
-      secondary: 'fleet utilization' 
+      change: stats.liveBuses > 0 ? '🔴 LIVE' : 'No active buses', 
+      trend: stats.liveBuses > 0 ? 'up' : 'stable', 
+      secondary: stats.liveBuses > 0 ? `${stats.liveBuses} on road` : 'all stationary' 
     },
     { 
       label: 'Total Drivers', 
@@ -333,13 +406,13 @@ function HomePage() {
       secondary: stats.dailyComplaints > 0 ? 'pending review' : 'all clear' 
     },
     { 
-      label: 'Total Complaints', 
-      value: stats.totalComplaints, 
-      icon: AlertTriangle, 
+      label: 'Total Buses', 
+      value: stats.totalBuses, 
+      icon: Bus, 
       accent: '#8b5cf6', 
-      change: stats.totalComplaints > 0 ? `${Math.round((stats.totalComplaints - stats.dailyComplaints) / (stats.totalComplaints || 1) * 100)}% resolved` : '0 resolved', 
+      change: `${stats.totalBuses} in fleet`, 
       trend: 'info', 
-      secondary: 'overall resolution' 
+      secondary: `${stats.totalBuses - stats.liveBuses} parked` 
     },
   ];
 
@@ -414,6 +487,13 @@ function HomePage() {
         @keyframes glow {
           0%,100% { filter: blur(60px) opacity(0.5); }
           50% { filter: blur(80px) opacity(0.8); }
+        }
+        @keyframes pulse {
+          0%,100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.8; transform: scale(1.05); }
+        }
+        @keyframes ping {
+          75%,100% { transform: scale(2); opacity: 0; }
         }
         @keyframes borderRotate {
           0% { background-position: 0% 50%; }
@@ -559,7 +639,55 @@ function HomePage() {
           gap: 20px;
         }
         
-        /* Search bar removed as requested */
+        .live-indicator {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          background: rgba(16, 185, 129, 0.1);
+          border: 1px solid rgba(16, 185, 129, 0.2);
+          border-radius: 40px;
+          padding: 6px 16px;
+        }
+        
+        .live-pulse {
+          position: relative;
+          width: 10px;
+          height: 10px;
+        }
+        
+        .live-pulse-dot {
+          width: 10px;
+          height: 10px;
+          background: #10b981;
+          border-radius: 50%;
+          position: relative;
+        }
+        
+        .live-pulse-ring {
+          position: absolute;
+          top: -5px;
+          left: -5px;
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          background: rgba(16, 185, 129, 0.3);
+          animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+        }
+        
+        .live-text {
+          font-size: 13px;
+          font-weight: 600;
+          color: #10b981;
+        }
+        
+        .live-count {
+          background: rgba(16, 185, 129, 0.2);
+          padding: 2px 8px;
+          border-radius: 20px;
+          font-size: 11px;
+          font-weight: 700;
+          color: #10b981;
+        }
         
         .notification-badge {
           position: relative;
@@ -830,6 +958,19 @@ function HomePage() {
           justify-content: center;
           background: rgba(255, 255, 255, 0.03);
           border: 1px solid rgba(255, 255, 255, 0.05);
+          position: relative;
+        }
+        
+        .live-badge {
+          position: absolute;
+          top: -4px;
+          right: -4px;
+          width: 12px;
+          height: 12px;
+          background: #10b981;
+          border-radius: 50%;
+          border: 2px solid var(--bg-card);
+          animation: pulse 1.5s ease infinite;
         }
         
         .stat-trend {
@@ -864,6 +1005,21 @@ function HomePage() {
           line-height: 1;
           margin-bottom: 8px;
           font-family: 'JetBrains Mono', monospace;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        
+        .live-value-badge {
+          font-size: 12px;
+          font-weight: 600;
+          padding: 2px 8px;
+          background: rgba(16, 185, 129, 0.15);
+          border: 1px solid rgba(16, 185, 129, 0.3);
+          border-radius: 20px;
+          color: #10b981;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
         }
         
         .stat-label-modern {
@@ -876,6 +1032,121 @@ function HomePage() {
           font-size: 11px;
           color: var(--text-muted);
           margin-top: 12px;
+        }
+        
+        /* Live Buses Section */
+        .live-buses-section {
+          background: rgba(22, 22, 42, 0.6);
+          backdrop-filter: blur(12px);
+          border: 1px solid rgba(255, 255, 255, 0.05);
+          border-radius: 28px;
+          padding: 28px;
+          margin-bottom: 48px;
+          animation: fadeUp 0.6s ease 0.15s both;
+        }
+        
+        .live-buses-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 24px;
+        }
+        
+        .live-buses-title {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+        
+        .live-buses-icon {
+          width: 44px;
+          height: 44px;
+          background: rgba(16, 185, 129, 0.1);
+          border-radius: 14px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+        
+        .live-buses-grid {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 16px;
+        }
+        
+        @media (max-width: 1200px) { .live-buses-grid { grid-template-columns: repeat(3, 1fr); } }
+        @media (max-width: 768px) { .live-buses-grid { grid-template-columns: repeat(2, 1fr); } }
+        @media (max-width: 480px) { .live-buses-grid { grid-template-columns: 1fr; } }
+        
+        .live-bus-card {
+          background: rgba(0, 0, 0, 0.2);
+          border: 1px solid rgba(16, 185, 129, 0.2);
+          border-radius: 20px;
+          padding: 20px;
+          position: relative;
+          overflow: hidden;
+        }
+        
+        .live-bus-card::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 2px;
+          background: linear-gradient(90deg, transparent, #10b981, transparent);
+          animation: shimmer 2s linear infinite;
+        }
+        
+        .live-bus-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 16px;
+        }
+        
+        .live-bus-number {
+          font-size: 18px;
+          font-weight: 700;
+          color: #10b981;
+        }
+        
+        .live-bus-status {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 11px;
+          font-weight: 600;
+          color: #10b981;
+          text-transform: uppercase;
+        }
+        
+        .live-bus-route {
+          font-size: 14px;
+          font-weight: 600;
+          margin-bottom: 8px;
+        }
+        
+        .live-bus-driver {
+          font-size: 12px;
+          color: var(--text-muted);
+          margin-bottom: 16px;
+        }
+        
+        .live-bus-footer {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          font-size: 11px;
+          color: var(--text-muted);
+        }
+        
+        .live-bus-coords {
+          font-family: 'JetBrains Mono', monospace;
+          background: rgba(255, 255, 255, 0.03);
+          padding: 4px 8px;
+          border-radius: 8px;
         }
         
         /* Section Header */
@@ -1139,6 +1410,18 @@ function HomePage() {
           align-items: center;
           justify-content: center;
           flex-shrink: 0;
+          position: relative;
+        }
+        
+        .activity-live-badge {
+          position: absolute;
+          top: -2px;
+          right: -2px;
+          width: 8px;
+          height: 8px;
+          background: #10b981;
+          border-radius: 50%;
+          border: 2px solid var(--bg-card);
         }
         
         .activity-content {
@@ -1149,6 +1432,19 @@ function HomePage() {
           font-size: 14px;
           font-weight: 600;
           margin-bottom: 4px;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+        
+        .live-activity-badge {
+          font-size: 9px;
+          font-weight: 700;
+          padding: 2px 6px;
+          background: rgba(16, 185, 129, 0.15);
+          border-radius: 20px;
+          color: #10b981;
+          text-transform: uppercase;
         }
         
         .activity-user {
@@ -1215,6 +1511,7 @@ function HomePage() {
           align-items: center;
           justify-content: center;
           transition: all 0.3s ease;
+          position: relative;
         }
         
         .quick-action-card:hover .quick-action-icon {
@@ -1311,6 +1608,7 @@ function HomePage() {
           .hero-section { flex-direction: column; align-items: flex-start; gap: 20px; }
           .hero-right { width: 100%; }
           .action-button { flex: 1; justify-content: center; }
+          .live-buses-grid { grid-template-columns: 1fr; }
         }
       `}</style>
 
@@ -1334,9 +1632,19 @@ function HomePage() {
                 </div>
               </div>
 
-              {/* Search bar removed as requested */}
-
               <div className="header-actions">
+                {/* Live Buses Indicator in Header */}
+                {stats.liveBuses > 0 && (
+                  <div className="live-indicator">
+                    <div className="live-pulse">
+                      <div className="live-pulse-dot"></div>
+                      <div className="live-pulse-ring"></div>
+                    </div>
+                    <span className="live-text">{stats.liveBuses} Bus{stats.liveBuses > 1 ? 'es' : ''} Live</span>
+                    <span className="live-count">NOW</span>
+                  </div>
+                )}
+
                 <div className="notification-badge">
                   <Bell size={20} color="var(--text-secondary)" />
                   {notifications > 0 && <span className="notification-dot"></span>}
@@ -1367,7 +1675,7 @@ function HomePage() {
               <div className="hero-left">
                 <div className="hero-badge">
                   <div className="badge-dot"></div>
-                  <span className="badge-text">SYSTEM ONLINE • ALL SERVICES OPERATIONAL</span>
+                  <span className="badge-text">SYSTEM ONLINE • {stats.liveBuses > 0 ? `${stats.liveBuses} BUSES ACTIVE` : 'ALL SERVICES OPERATIONAL'}</span>
                 </div>
                 <h1 className="hero-title">
                   Welcome back,{' '}
@@ -1387,6 +1695,11 @@ function HomePage() {
                     <Users size={16} color="#6366f1" />
                     <span className="hero-stat-value">{stats.totalStudents}</span>
                     <span className="hero-stat-label">students</span>
+                  </div>
+                  <div className="hero-stat-item">
+                    <Radio size={16} color="#10b981" />
+                    <span className="hero-stat-value">{stats.liveBuses}</span>
+                    <span className="hero-stat-label">live buses</span>
                   </div>
                   <div className="hero-stat-item">
                     <Clock size={16} color="#f59e0b" />
@@ -1411,6 +1724,7 @@ function HomePage() {
             <div className="stats-grid">
               {quickStats.map((stat, i) => {
                 const Icon = stat.icon;
+                const isLiveStat = stat.label === 'Live Buses';
                 return (
                   <div
                     key={i}
@@ -1420,6 +1734,7 @@ function HomePage() {
                     <div className="stat-header">
                       <div className="stat-icon-modern">
                         <Icon size={20} style={{ color: stat.accent }} />
+                        {isLiveStat && stats.liveBuses > 0 && <div className="live-badge"></div>}
                       </div>
                       <div className={`stat-trend ${stat.trend}`}>
                         <TrendingUp size={10} />
@@ -1428,6 +1743,9 @@ function HomePage() {
                     </div>
                     <div className="stat-value-modern" style={{ color: stat.accent }}>
                       {stat.value}
+                      {isLiveStat && stats.liveBuses > 0 && (
+                        <span className="live-value-badge">LIVE</span>
+                      )}
                     </div>
                     <div className="stat-label-modern">{stat.label}</div>
                     <div className="stat-secondary">{stat.secondary}</div>
@@ -1435,6 +1753,51 @@ function HomePage() {
                 );
               })}
             </div>
+
+            {/* Live Buses Section */}
+            {liveBuses.length > 0 && (
+              <div className="live-buses-section">
+                <div className="live-buses-header">
+                  <div className="live-buses-title">
+                    <div className="live-buses-icon">
+                      <Radio size={20} color="#10b981" />
+                    </div>
+                    <div>
+                      <h2 className="section-title-modern">Live Buses on Road</h2>
+                      <div className="section-subtitle">Real-time GPS tracking • Updated {formatTimeAgo(lastUpdated.toISOString())}</div>
+                    </div>
+                  </div>
+                  <Link href="/bus-locations" className="section-action-btn">
+                    View All
+                    <ChevronRight size={14} />
+                  </Link>
+                </div>
+
+                <div className="live-buses-grid">
+                  {liveBuses.map((bus) => (
+                    <div key={bus.id} className="live-bus-card">
+                      <div className="live-bus-header">
+                        <span className="live-bus-number">Bus #{bus.bus_details?.bus_number || bus.bus_id || 'Unknown'}</span>
+                        <span className="live-bus-status">
+                          <span className="live-pulse-dot" style={{ width: 6, height: 6 }}></span>
+                          LIVE
+                        </span>
+                      </div>
+                      <div className="live-bus-route">Route: {bus.bus_details?.route || 'Not assigned'}</div>
+                      <div className="live-bus-driver">
+                        Driver: {bus.bus_details?.drivers_new?.name || 'Unknown'}
+                      </div>
+                      <div className="live-bus-footer">
+                        <span className="live-bus-coords">
+                          {bus.latitude ? `${bus.latitude.toFixed(4)}, ${bus.longitude.toFixed(4)}` : 'No GPS'}
+                        </span>
+                        <span>{formatTimeAgo(bus.updated_at)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Categories Section */}
             <div className="section-header-modern">
@@ -1461,6 +1824,7 @@ function HomePage() {
             <div className="categories-grid-modern">
               {categories.map((cat, i) => {
                 const Icon = cat.icon;
+                const isLiveModule = cat.id === 'bus-locations';
                 return (
                   <Link
                     key={cat.id}
@@ -1482,10 +1846,18 @@ function HomePage() {
                     <div className="category-header">
                       <div className="category-icon-wrapper">
                         <Icon size={24} style={{ color: cat.accent }} />
+                        {isLiveModule && stats.liveBuses > 0 && (
+                          <div style={{ position: 'absolute', top: -2, right: -2, width: 12, height: 12, background: '#10b981', borderRadius: '50%', border: '2px solid var(--bg-card)' }}></div>
+                        )}
                       </div>
                       <span className="category-tag">{cat.tag}</span>
                     </div>
-                    <h3 className="category-title">{cat.name}</h3>
+                    <h3 className="category-title">
+                      {cat.name}
+                      {isLiveModule && stats.liveBuses > 0 && (
+                        <span style={{ marginLeft: 8, fontSize: 11, background: 'rgba(16,185,129,0.15)', color: '#10b981', padding: '2px 8px', borderRadius: 20 }}>{stats.liveBuses} LIVE</span>
+                      )}
+                    </h3>
                     <p className="category-description">{cat.description}</p>
                     <div className="category-footer">
                       <span className="category-metrics">
@@ -1525,9 +1897,15 @@ function HomePage() {
                           {activity.type === 'payment' && <CreditCard size={16} color="#6366f1" />}
                           {activity.type === 'alert' && <Shield size={16} color="#f59e0b" />}
                           {activity.type === 'announcement' && <Megaphone size={16} color="#ec4899" />}
+                          {activity.type === 'tracking' && <div className="activity-live-badge"></div>}
                         </div>
                         <div className="activity-content">
-                          <div className="activity-action">{activity.action}</div>
+                          <div className="activity-action">
+                            {activity.action}
+                            {activity.type === 'tracking' && (
+                              <span className="live-activity-badge">LIVE</span>
+                            )}
+                          </div>
                           <div className="activity-user">{activity.user}</div>
                         </div>
                         <div className="activity-time">{activity.time}</div>
@@ -1561,13 +1939,22 @@ function HomePage() {
                     <span style={{ color: 'var(--text-secondary)' }}>System Load</span>
                     <span style={{ fontWeight: 600, color: systemLoad > 70 ? '#ef4444' : '#10b981' }}>{systemLoad}%</span>
                   </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Live Buses</span>
+                    <span style={{ fontWeight: 600, color: '#10b981', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      {stats.liveBuses}
+                      {stats.liveBuses > 0 && (
+                        <span style={{ fontSize: 10, background: 'rgba(16,185,129,0.15)', padding: '2px 6px', borderRadius: 12 }}>NOW</span>
+                      )}
+                    </span>
+                  </div>
                   <div style={{ marginTop: 16 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                      <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Storage Used</span>
-                      <span style={{ fontSize: 13, fontWeight: 600 }}>42%</span>
+                      <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Fleet Activity</span>
+                      <span style={{ fontSize: 13, fontWeight: 600 }}>{Math.round((stats.liveBuses / (stats.totalBuses || 1)) * 100)}%</span>
                     </div>
                     <div style={{ height: 8, background: 'rgba(255,255,255,0.05)', borderRadius: 4, overflow: 'hidden' }}>
-                      <div style={{ width: '42%', height: '100%', background: 'linear-gradient(90deg, #6366f1, #8b5cf6)', borderRadius: 4 }}></div>
+                      <div style={{ width: `${Math.round((stats.liveBuses / (stats.totalBuses || 1)) * 100)}%`, height: '100%', background: 'linear-gradient(90deg, #10b981, #34d399)', borderRadius: 4 }}></div>
                     </div>
                   </div>
                   {stats.expiringDocuments > 0 && (
@@ -1608,12 +1995,21 @@ function HomePage() {
                 { label: 'Track Fleet', icon: Map, href: '/bus-locations', accent: '#ef4444' },
               ].map((action, i) => {
                 const Icon = action.icon;
+                const isTrackAction = action.label === 'Track Fleet';
                 return (
                   <Link key={i} href={action.href} className="quick-action-card">
-                    <div className="quick-action-icon" style={{ background: `${action.accent}15` }}>
+                    <div className="quick-action-icon" style={{ background: `${action.accent}15`, position: 'relative' }}>
                       <Icon size={20} style={{ color: action.accent }} />
+                      {isTrackAction && stats.liveBuses > 0 && (
+                        <div style={{ position: 'absolute', top: -2, right: -2, width: 10, height: 10, background: '#10b981', borderRadius: '50%', border: '2px solid var(--bg-card)' }}></div>
+                      )}
                     </div>
-                    <span className="quick-action-label">{action.label}</span>
+                    <span className="quick-action-label">
+                      {action.label}
+                      {isTrackAction && stats.liveBuses > 0 && (
+                        <span style={{ marginLeft: 4, fontSize: 9, color: '#10b981' }}>({stats.liveBuses} live)</span>
+                      )}
+                    </span>
                   </Link>
                 );
               })}
@@ -1631,7 +2027,9 @@ function HomePage() {
               </div>
               <div className="footer-status">
                 <div className="status-dot"></div>
-                <span className="status-text">All systems operational</span>
+                <span className="status-text">
+                  {stats.liveBuses > 0 ? `${stats.liveBuses} buses live • ` : ''}All systems operational
+                </span>
               </div>
               <div className="footer-links">
                 <a href="#" className="footer-link">Privacy Policy</a>
