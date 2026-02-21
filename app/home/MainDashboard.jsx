@@ -34,8 +34,6 @@ function HomePage() {
   const [activeSessions, setActiveSessions] = useState(0);
   const [pendingApprovals, setPendingApprovals] = useState(0);
   const [systemLoad, setSystemLoad] = useState(0);
-  const [liveBuses, setLiveBuses] = useState([]);
-  const [lastUpdated, setLastUpdated] = useState(new Date());
   const router = useRouter();
 
   useEffect(() => {
@@ -50,8 +48,12 @@ function HomePage() {
     updateTime();
     const timer = setInterval(updateTime, 1000);
     
+    // Refresh data every 30 seconds to update live bus count
+    const refreshInterval = setInterval(fetchDashboardData, 30000);
+    
     return () => {
       clearInterval(timer);
+      clearInterval(refreshInterval);
     };
   }, []);
 
@@ -65,7 +67,8 @@ function HomePage() {
         driversData,
         announcementsData,
         noticesData,
-        feesData
+        feesData,
+        busLocationsData
       ] = await Promise.all([
         supabase.from('students').select('*'),
         supabase.from('buses').select('*'),
@@ -73,7 +76,8 @@ function HomePage() {
         supabase.from('drivers_new').select('*'),
         supabase.from('announcements').select('*').order('created_at', { ascending: false }).limit(3),
         supabase.from('notices').select('*').order('created_at', { ascending: false }).limit(3),
-        supabase.from('fees').select('*')
+        supabase.from('fees').select('*'),
+        supabase.from('bus_locations').select('*').gte('updated_at', new Date(Date.now() - 5*60000).toISOString())
       ]);
 
       // Calculate statistics
@@ -103,7 +107,23 @@ function HomePage() {
         });
       }).length || 0;
 
-      // Set stats
+      // FIXED: Calculate live buses (unique buses with location updates in last 5 minutes)
+      let liveBusesCount = 0;
+      if (busLocationsData.data && busLocationsData.data.length > 0) {
+        // Get unique bus IDs to count each bus only once
+        const uniqueBusIds = new Set();
+        busLocationsData.data.forEach(location => {
+          if (location.bus_id) {
+            uniqueBusIds.add(location.bus_id);
+          }
+        });
+        liveBusesCount = uniqueBusIds.size;
+        console.log(`Found ${busLocationsData.data.length} location records from ${liveBusesCount} unique buses`);
+      } else {
+        liveBusesCount = 0;
+      }
+
+      // Set stats with fixed live buses count
       setStats({ 
         totalStudents, 
         activeBuses: totalBuses, 
@@ -113,7 +133,7 @@ function HomePage() {
         totalBuses, 
         busesWithDriver, 
         expiringDocuments,
-        liveBuses: 0 
+        liveBuses: liveBusesCount // This now counts unique buses, not packets
       });
 
       // Set notifications count (expiring documents + unread complaints)
@@ -977,8 +997,6 @@ function HomePage() {
           margin-top: 12px;
         }
         
-        /* Live Buses Section - REMOVED COMPLETELY */
-        
         /* Section Header */
         .section-header-modern {
           display: flex;
@@ -1462,7 +1480,7 @@ function HomePage() {
               </div>
 
               <div className="header-actions">
-                {/* Live Buses Indicator in Header */}
+                {/* Live Buses Indicator in Header - NOW SHOWS ACTUAL COUNT */}
                 {stats.liveBuses > 0 && (
                   <div className="live-indicator">
                     <div className="live-pulse">
@@ -1549,7 +1567,7 @@ function HomePage() {
               </div>
             </div>
 
-            {/* Stats Grid */}
+            {/* Stats Grid - NOW SHOWS ACTUAL LIVE BUSES COUNT */}
             <div className="stats-grid">
               {quickStats.map((stat, i) => {
                 const Icon = stat.icon;
@@ -1582,8 +1600,6 @@ function HomePage() {
                 );
               })}
             </div>
-
-            {/* LIVE BUSES SECTION - COMPLETELY REMOVED */}
 
             {/* Categories Section */}
             <div className="section-header-modern">
