@@ -2,11 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Bell, Send, User, Mail, Calendar, Plus, X, Users, FileText, Target, ArrowLeft } from 'lucide-react';
+import { 
+  Bell, Send, User, Mail, Calendar, Plus, X, Users, 
+  FileText, Target, ArrowLeft, Clock, ChevronDown, 
+  CheckCircle, AlertCircle, BookOpen, Link as LinkIcon
+} from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import withAuth from '../../components/withAuth';
 
- function Notices() {
+function Notices() {
   const [students, setStudents] = useState([]);
   const [selectedStudent, setSelectedStudent] = useState("");
   const [title, setTitle] = useState("");
@@ -16,6 +20,7 @@ import withAuth from '../../components/withAuth';
   const [recentNotices, setRecentNotices] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [sendToAll, setSendToAll] = useState(false);
+  const [currentTime, setCurrentTime] = useState('');
 
   const router = useRouter();
 
@@ -33,6 +38,15 @@ import withAuth from '../../components/withAuth';
 
     fetchStudents();
     fetchRecentNotices();
+    
+    // Update time
+    const updateTime = () => {
+      const now = new Date();
+      setCurrentTime(now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    };
+    updateTime();
+    const timer = setInterval(updateTime, 1000);
+    return () => clearInterval(timer);
   }, []);
 
   // Fetch recent notices
@@ -114,6 +128,7 @@ import withAuth from '../../components/withAuth';
   };
 
   const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleDateString('en-IN', {
       day: '2-digit',
       month: 'short',
@@ -121,6 +136,27 @@ import withAuth from '../../components/withAuth';
       hour: '2-digit',
       minute: '2-digit'
     });
+  };
+
+  const formatTimeAgo = (dateString) => {
+    if (!dateString) return 'recently';
+    
+    try {
+      const date = new Date(dateString);
+      const now = new Date();
+      const diffMs = now - date;
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMs / 3600000);
+      const diffDays = Math.floor(diffMs / 86400000);
+
+      if (diffMins < 1) return 'just now';
+      if (diffMins < 60) return `${diffMins} min ago`;
+      if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+      if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+      return formatDate(dateString);
+    } catch (e) {
+      return 'recently';
+    }
   };
 
   const getSelectedStudentName = () => {
@@ -133,242 +169,737 @@ import withAuth from '../../components/withAuth';
     router.back();
   };
 
+  const today = new Date();
+  const dateStr = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="space-y-8">
-          {/* Header */}
-          <div className="text-center relative">
-            {/* Back Button */}
-            <button
-              onClick={handleBack}
-              className="absolute left-0 top-1/2 transform -translate-y-1/2 flex items-center text-gray-600 hover:text-gray-900 transition-colors p-2 rounded-lg hover:bg-white"
-              title="Go back"
-            >
-              <ArrowLeft size={20} />
-            </button>
-            
-            <div className="flex items-center justify-center mb-4">
-              <div className="bg-blue-600 p-3 rounded-full">
-                <Bell className="text-white" size={32} />
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        
+        * { 
+          box-sizing: border-box; 
+          margin: 0; 
+          padding: 0; 
+        }
+        
+        :root {
+          --bg-primary: #0a0a0f;
+          --bg-secondary: #11111f;
+          --bg-card: #16162a;
+          --bg-card-hover: #1c1c34;
+          --border: rgba(255,255,255,0.08);
+          --border-hover: rgba(255,255,255,0.15);
+          --text-primary: #ffffff;
+          --text-secondary: #a0a0c0;
+          --text-muted: #6b6b8b;
+          --accent-blue: #3b82f6;
+          --accent-cyan: #06b6d4;
+          --accent-purple: #8b5cf6;
+        }
+        
+        body { 
+          font-family: 'Inter', sans-serif; 
+          background: var(--bg-primary);
+          color: var(--text-primary);
+        }
+        
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes slideIn {
+          from { transform: translateX(20px); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+        
+        @keyframes scaleIn {
+          from { transform: scale(0.95); opacity: 0; }
+          to { transform: scale(1); opacity: 1; }
+        }
+        
+        @keyframes float {
+          0%,100% { transform: translateY(0px); }
+          50% { transform: translateY(-5px); }
+        }
+        
+        @keyframes glow {
+          0%,100% { filter: blur(60px) opacity(0.5); }
+          50% { filter: blur(80px) opacity(0.8); }
+        }
+        
+        @keyframes shimmer {
+          0% { background-position: -200% center; }
+          100% { background-position: 200% center; }
+        }
+        
+        .animate-fade-in { animation: fadeIn 0.3s ease forwards; }
+        .animate-float { animation: float 3s ease-in-out infinite; }
+        
+        .glass-effect {
+          background: rgba(22, 22, 42, 0.8);
+          backdrop-filter: blur(12px);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        
+        .gradient-text {
+          background: linear-gradient(135deg, #3b82f6, #06b6d4);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+        }
+        
+        .stat-card {
+          background: var(--bg-card);
+          border: 1px solid var(--border);
+          border-radius: 20px;
+          padding: 20px;
+          transition: all 0.3s ease;
+          position: relative;
+          overflow: hidden;
+        }
+        
+        .stat-card::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 3px;
+          background: linear-gradient(90deg, #3b82f6, #06b6d4);
+          opacity: 0;
+          transition: opacity 0.3s ease;
+        }
+        
+        .stat-card:hover {
+          transform: translateY(-4px);
+          background: var(--bg-card-hover);
+          border-color: var(--border-hover);
+        }
+        
+        .stat-card:hover::before {
+          opacity: 1;
+        }
+        
+        .notice-card {
+          background: var(--bg-card);
+          border: 1px solid var(--border);
+          border-radius: 16px;
+          padding: 16px;
+          transition: all 0.3s ease;
+        }
+        
+        .notice-card:hover {
+          background: var(--bg-card-hover);
+          border-color: #3b82f6;
+          transform: translateY(-2px);
+        }
+        
+        .action-button {
+          background: var(--bg-card);
+          border: 1px solid var(--border);
+          border-radius: 40px;
+          padding: 8px 16px;
+          font-size: 13px;
+          font-weight: 500;
+          color: var(--text-secondary);
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        
+        .action-button:hover {
+          background: var(--bg-card-hover);
+          border-color: #3b82f6;
+          color: #3b82f6;
+        }
+        
+        .action-button.primary {
+          background: linear-gradient(135deg, #3b82f6, #06b6d4);
+          color: white;
+          border: none;
+        }
+        
+        .action-button.primary:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 10px 25px -5px #3b82f6;
+        }
+        
+        .info-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 4px 10px;
+          background: rgba(255,255,255,0.02);
+          border: 1px solid var(--border);
+          border-radius: 30px;
+          font-size: 11px;
+          color: var(--text-secondary);
+        }
+        
+        .radio-card {
+          background: rgba(255,255,255,0.02);
+          border: 1px solid var(--border);
+          border-radius: 16px;
+          padding: 12px 16px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        
+        .radio-card:hover {
+          background: rgba(59,130,246,0.05);
+          border-color: #3b82f6;
+        }
+        
+        .radio-card.selected {
+          background: rgba(59,130,246,0.1);
+          border-color: #3b82f6;
+        }
+        
+        .input-field {
+          width: 100%;
+          padding: 12px 16px;
+          background: var(--bg-primary);
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          font-size: 14px;
+          color: var(--text-primary);
+          outline: none;
+          transition: all 0.2s ease;
+        }
+        
+        .input-field:focus {
+          border-color: #3b82f6;
+          box-shadow: 0 0 0 3px rgba(59,130,246,0.2);
+        }
+        
+        .input-field::placeholder {
+          color: var(--text-muted);
+        }
+        
+        .tip-item {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 12px;
+          background: rgba(59,130,246,0.05);
+          border: 1px solid rgba(59,130,246,0.2);
+          border-radius: 10px;
+          font-size: 12px;
+          color: var(--text-secondary);
+        }
+        
+        @media (max-width: 768px) {
+          .stat-card { padding: 16px; }
+        }
+      `}</style>
+
+      <div style={{ 
+        minHeight: '100vh', 
+        background: 'radial-gradient(circle at 50% 50%, #1a1a2e, #0a0a0f)',
+        position: 'relative',
+        overflow: 'hidden'
+      }}>
+        {/* Background Orbs */}
+        <div style={{
+          position: 'fixed',
+          width: 600,
+          height: 600,
+          borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(59,130,246,0.15) 0%, transparent 70%)',
+          top: -200,
+          left: -200,
+          filter: 'blur(80px)',
+          pointerEvents: 'none',
+          zIndex: 0,
+          animation: 'glow 8s ease-in-out infinite'
+        }}></div>
+        <div style={{
+          position: 'fixed',
+          width: 500,
+          height: 500,
+          borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(6,182,212,0.1) 0%, transparent 70%)',
+          bottom: -150,
+          right: -150,
+          filter: 'blur(80px)',
+          pointerEvents: 'none',
+          zIndex: 0,
+          animation: 'glow 10s ease-in-out infinite reverse'
+        }}></div>
+
+        {/* Mobile Header */}
+        <div className="glass-effect" style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 40,
+          padding: '12px 16px',
+          borderBottom: '1px solid var(--border)',
+          display: 'block'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <button
+                onClick={handleBack}
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 12,
+                  background: 'var(--bg-card)',
+                  border: '1px solid var(--border)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  color: 'var(--text-secondary)'
+                }}
+              >
+                <ArrowLeft size={18} />
+              </button>
+              <div>
+                <h1 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>Notices</h1>
+                <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>{currentTime}</p>
               </div>
             </div>
-            <h1 className="text-4xl font-bold text-gray-900 mb-2">Student Notices</h1>
-            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-              Send important announcements, updates, and notifications to students
-            </p>
+          </div>
+        </div>
+
+        <div style={{ position: 'relative', zIndex: 10, maxWidth: 1400, margin: '0 auto', padding: '16px' }}>
+          {/* Desktop Header */}
+          <div style={{ 
+            display: 'none',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 24,
+            background: 'var(--bg-card)',
+            borderRadius: 20,
+            padding: 20,
+            border: '1px solid var(--border)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <button
+                onClick={handleBack}
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 12,
+                  background: 'var(--bg-primary)',
+                  border: '1px solid var(--border)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  color: 'var(--text-secondary)'
+                }}
+              >
+                <ArrowLeft size={20} />
+              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ 
+                  width: 48, 
+                  height: 48, 
+                  borderRadius: 14, 
+                  background: 'rgba(59,130,246,0.1)', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  border: '1px solid rgba(59,130,246,0.2)',
+                  animation: 'float 3s ease-in-out infinite'
+                }}>
+                  <Bell size={24} color="#3b82f6" />
+                </div>
+                <div>
+                  <h1 style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)' }}>Student Notices</h1>
+                  <p style={{ fontSize: 14, color: 'var(--text-muted)', marginTop: 4 }}>
+                    {dateStr} • {currentTime}
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Stats Cards */}
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: 'repeat(2, 1fr)',
+            gap: 12,
+            marginBottom: 20
+          }}>
+            <div className="stat-card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Total Students</p>
+                  <p style={{ fontSize: 28, fontWeight: 700, color: '#3b82f6', marginTop: 4 }}>{students.length}</p>
+                </div>
+                <div style={{ 
+                  width: 40, 
+                  height: 40, 
+                  borderRadius: 12, 
+                  background: 'rgba(59,130,246,0.1)', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center'
+                }}>
+                  <Users size={20} color="#3b82f6" />
+                </div>
+              </div>
+            </div>
+
+            <div className="stat-card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Recent Notices</p>
+                  <p style={{ fontSize: 28, fontWeight: 700, color: '#06b6d4', marginTop: 4 }}>{recentNotices.length}</p>
+                </div>
+                <div style={{ 
+                  width: 40, 
+                  height: 40, 
+                  borderRadius: 12, 
+                  background: 'rgba(6,182,212,0.1)', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center'
+                }}>
+                  <FileText size={20} color="#06b6d4" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: '1fr',
+            gap: 20
+          }}>
             {/* Send Notice Form */}
-            <div className="lg:col-span-2">
-              <div className="bg-white rounded-2xl shadow-lg p-6 sm:p-8 border border-gray-200">
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-2xl font-bold text-gray-900">Send New Notice</h2>
-                  <div className="bg-blue-100 p-2 rounded-lg">
-                    <Send className="text-blue-600" size={24} />
+            <div style={{ 
+              background: 'var(--bg-card)',
+              borderRadius: 24,
+              border: '1px solid var(--border)',
+              padding: 24
+            }}>
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: 12,
+                marginBottom: 24
+              }}>
+                <div style={{ 
+                  width: 48, 
+                  height: 48, 
+                  borderRadius: 14, 
+                  background: 'rgba(59,130,246,0.1)', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  border: '1px solid rgba(59,130,246,0.2)'
+                }}>
+                  <Send size={22} color="#3b82f6" />
+                </div>
+                <div>
+                  <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)' }}>
+                    Send New Notice
+                  </h2>
+                  <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                    Create and send important announcements
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                {/* Send To Options */}
+                <div>
+                  <label style={{ 
+                    display: 'block', 
+                    fontSize: 13, 
+                    fontWeight: 600, 
+                    color: 'var(--text-primary)',
+                    marginBottom: 12 
+                  }}>
+                    Send To
+                  </label>
+                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                    <div 
+                      className={`radio-card ${sendToAll ? 'selected' : ''}`}
+                      onClick={() => setSendToAll(true)}
+                      style={{ flex: 1 }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div style={{
+                          width: 18,
+                          height: 18,
+                          borderRadius: '50%',
+                          border: '2px solid',
+                          borderColor: sendToAll ? '#3b82f6' : 'var(--border)',
+                          background: sendToAll ? '#3b82f6' : 'transparent',
+                          transition: 'all 0.2s ease'
+                        }} />
+                        <Users size={18} color={sendToAll ? '#3b82f6' : 'var(--text-muted)'} />
+                        <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>
+                          All Students ({students.length})
+                        </span>
+                      </div>
+                    </div>
+
+                    <div 
+                      className={`radio-card ${!sendToAll ? 'selected' : ''}`}
+                      onClick={() => setSendToAll(false)}
+                      style={{ flex: 1 }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div style={{
+                          width: 18,
+                          height: 18,
+                          borderRadius: '50%',
+                          border: '2px solid',
+                          borderColor: !sendToAll ? '#3b82f6' : 'var(--border)',
+                          background: !sendToAll ? '#3b82f6' : 'transparent',
+                          transition: 'all 0.2s ease'
+                        }} />
+                        <Target size={18} color={!sendToAll ? '#3b82f6' : 'var(--text-muted)'} />
+                        <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>
+                          Specific Student
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
-                <div className="space-y-6">
-                  {/* Send To Options */}
-                  <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-                    <label className="block text-sm font-medium text-gray-700 mb-3">
-                      Send To
-                    </label>
-                    <div className="space-y-3">
-                      <label className="flex items-center">
-                        <input
-                          type="radio"
-                          checked={sendToAll}
-                          onChange={() => setSendToAll(true)}
-                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
-                        />
-                        <span className="ml-2 text-sm text-gray-700 flex items-center">
-                          <Users size={16} className="mr-2" />
-                          Send to All Students ({students.length} students)
-                        </span>
-                      </label>
-                      <label className="flex items-center">
-                        <input
-                          type="radio"
-                          checked={!sendToAll}
-                          onChange={() => setSendToAll(false)}
-                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
-                        />
-                        <span className="ml-2 text-sm text-gray-700 flex items-center">
-                          <Target size={16} className="mr-2" />
-                          Send to Specific Student
-                        </span>
-                      </label>
-                    </div>
-                  </div>
-
-                  {/* Student Selection */}
-                  {!sendToAll && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Select Student
-                      </label>
-                      <select
-                        value={selectedStudent}
-                        onChange={(e) => setSelectedStudent(e.target.value)}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 transition-all duration-200"
-                      >
-                        <option value="">-- Choose a student --</option>
-                        {students.map((student) => (
-                          <option key={student.id} value={student.id}>
-                            {student.full_name} ({student.usn}) - {student.branch}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-
-                  {/* Notice Title */}
+                {/* Student Selection */}
+                {!sendToAll && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Notice Title *
+                    <label style={{ 
+                      display: 'block', 
+                      fontSize: 13, 
+                      fontWeight: 600, 
+                      color: 'var(--text-primary)',
+                      marginBottom: 8 
+                    }}>
+                      Select Student
                     </label>
-                    <input
-                      type="text"
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                      placeholder="Enter notice title..."
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 placeholder-gray-500 transition-all duration-200"
-                    />
+                    <select
+                      value={selectedStudent}
+                      onChange={(e) => setSelectedStudent(e.target.value)}
+                      className="input-field"
+                      style={{ appearance: 'none' }}
+                    >
+                      <option value="">-- Choose a student --</option>
+                      {students.map((student) => (
+                        <option key={student.id} value={student.id}>
+                          {student.full_name} ({student.usn}) - {student.branch}
+                        </option>
+                      ))}
+                    </select>
                   </div>
+                )}
 
-                  {/* Notice Description */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Description *
-                    </label>
-                    <textarea
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      placeholder="Enter notice description..."
-                      rows={4}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 placeholder-gray-500 resize-none transition-all duration-200"
-                    />
-                  </div>
+                {/* Notice Title */}
+                <div>
+                  <label style={{ 
+                    display: 'block', 
+                    fontSize: 13, 
+                    fontWeight: 600, 
+                    color: 'var(--text-primary)',
+                    marginBottom: 8 
+                  }}>
+                    Notice Title <span style={{ color: '#3b82f6' }}>*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="Enter notice title..."
+                    className="input-field"
+                  />
+                </div>
 
-                  {/* PDF URL */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      PDF URL (Optional)
-                    </label>
+                {/* Notice Description */}
+                <div>
+                  <label style={{ 
+                    display: 'block', 
+                    fontSize: 13, 
+                    fontWeight: 600, 
+                    color: 'var(--text-primary)',
+                    marginBottom: 8 
+                  }}>
+                    Description
+                  </label>
+                  <textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Enter notice description..."
+                    rows={4}
+                    className="input-field"
+                    style={{ resize: 'vertical', minHeight: 100 }}
+                  />
+                </div>
+
+                {/* PDF URL */}
+                <div>
+                  <label style={{ 
+                    display: 'block', 
+                    fontSize: 13, 
+                    fontWeight: 600, 
+                    color: 'var(--text-primary)',
+                    marginBottom: 8 
+                  }}>
+                    PDF URL (Optional)
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <LinkIcon size={16} color="var(--text-muted)" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }} />
                     <input
                       type="url"
                       value={pdfUrl}
                       onChange={(e) => setPdfUrl(e.target.value)}
                       placeholder="https://example.com/notice.pdf"
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 placeholder-gray-500 transition-all duration-200"
+                      className="input-field"
+                      style={{ paddingLeft: 36 }}
                     />
                   </div>
+                </div>
 
-                  {/* Send Button */}
-                  <button
-                    onClick={sendNotice}
-                    disabled={loading}
-                    className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 px-6 rounded-xl font-semibold hover:from-blue-700 hover:to-indigo-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200 transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center"
-                  >
-                    {loading ? (
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
-                    ) : (
-                      <>
-                        <Send size={20} className="mr-2" />
-                        {sendToAll ? `Send to All Students` : 'Send Notice'}
-                      </>
-                    )}
-                  </button>
-
-                  {/* Preview */}
-                  {(title || description) && (
-                    <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
-                      <h3 className="text-sm font-medium text-blue-900 mb-2">Preview</h3>
-                      <div className="text-sm text-blue-800">
-                        <p className="font-semibold">{title || 'No title'}</p>
-                        <p className="mt-1 whitespace-pre-line">{description || 'No description'}</p>
-                        <p className="mt-2 text-blue-600 text-xs">
-                          To: {getSelectedStudentName()}
-                        </p>
+                {/* Preview */}
+                {(title || description) && (
+                  <div style={{ 
+                    background: 'rgba(59,130,246,0.05)',
+                    border: '1px solid rgba(59,130,246,0.2)',
+                    borderRadius: 16,
+                    padding: 16
+                  }}>
+                    <h3 style={{ fontSize: 13, fontWeight: 600, color: '#3b82f6', marginBottom: 8 }}>
+                      Preview
+                    </h3>
+                    <div style={{ 
+                      fontSize: 14, 
+                      color: 'var(--text-secondary)',
+                      background: 'var(--bg-primary)',
+                      borderRadius: 12,
+                      padding: 12
+                    }}>
+                      <p style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
+                        {title || 'No title'}
+                      </p>
+                      <p style={{ whiteSpace: 'pre-wrap', marginBottom: 8 }}>
+                        {description || 'No description'}
+                      </p>
+                      <div className="info-chip" style={{ display: 'inline-flex' }}>
+                        <User size={10} />
+                        <span>To: {getSelectedStudentName() || 'Not selected'}</span>
                       </div>
                     </div>
+                  </div>
+                )}
+
+                {/* Send Button */}
+                <button
+                  onClick={sendNotice}
+                  disabled={loading}
+                  className="action-button primary"
+                  style={{ 
+                    padding: '14px', 
+                    fontSize: 14,
+                    justifyContent: 'center',
+                    marginTop: 8
+                  }}
+                >
+                  {loading ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div className="animate-spin" style={{ width: 16, height: 16, border: '2px solid white', borderTopColor: 'transparent', borderRadius: '50%' }}></div>
+                      <span>Sending...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <Send size={16} />
+                      <span>{sendToAll ? `Send to All Students` : 'Send Notice'}</span>
+                    </>
                   )}
-                </div>
+                </button>
               </div>
             </div>
 
-            {/* Recent Notices & Stats */}
-            <div className="space-y-6">
-              {/* Stats Card */}
-              <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Stats</h3>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Total Students</span>
-                    <span className="font-semibold text-gray-900">{students.length}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Recent Notices</span>
-                    <span className="font-semibold text-gray-900">{recentNotices.length}</span>
-                  </div>
-                </div>
-              </div>
-
+            {/* Right Column */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               {/* Recent Notices */}
-              <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Notices</h3>
-                <div className="space-y-4">
-                  {recentNotices.map((notice) => (
-                    <div key={notice.id} className="border-l-4 border-blue-500 pl-4 py-2">
-                      <p className="font-medium text-gray-900 text-sm">{notice.title}</p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        To: {notice.students?.full_name} ({notice.students?.usn})
-                      </p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        {formatDate(notice.created_at)}
-                      </p>
+              <div style={{ 
+                background: 'var(--bg-card)',
+                borderRadius: 24,
+                border: '1px solid var(--border)',
+                padding: 20
+              }}>
+                <h3 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 16 }}>
+                  Recent Notices
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {recentNotices.length > 0 ? (
+                    recentNotices.map((notice) => (
+                      <div key={notice.id} className="notice-card">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                          <h4 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
+                            {notice.title}
+                          </h4>
+                          <span className="info-chip" style={{ fontSize: 10 }}>
+                            <Clock size={8} />
+                            {formatTimeAgo(notice.created_at)}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
+                          To: {notice.students?.full_name} ({notice.students?.usn})
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                          {formatDate(notice.created_at)}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div style={{ 
+                      textAlign: 'center', 
+                      padding: 32,
+                      color: 'var(--text-muted)',
+                      fontSize: 13
+                    }}>
+                      <Bell size={32} style={{ marginBottom: 8, opacity: 0.3 }} />
+                      <p>No notices sent yet</p>
                     </div>
-                  ))}
-                  {recentNotices.length === 0 && (
-                    <p className="text-sm text-gray-500 text-center py-4">
-                      No notices sent yet
-                    </p>
                   )}
                 </div>
               </div>
 
               {/* Quick Tips */}
-              <div className="bg-blue-50 rounded-2xl p-6 border border-blue-200">
-                <h3 className="text-lg font-semibold text-blue-900 mb-3">Tips</h3>
-                <ul className="space-y-2 text-sm text-blue-800">
-                  <li className="flex items-start">
-                    <div className="bg-blue-200 rounded-full p-1 mr-2 mt-0.5">
-                      <Bell size={12} className="text-blue-700" />
-                    </div>
-                    Use clear and concise titles
-                  </li>
-                  <li className="flex items-start">
-                    <div className="bg-blue-200 rounded-full p-1 mr-2 mt-0.5">
-                      <User size={12} className="text-blue-700" />
-                    </div>
-                    Select specific students for targeted communication
-                  </li>
-                  <li className="flex items-start">
-                    <div className="bg-blue-200 rounded-full p-1 mr-2 mt-0.5">
-                      <FileText size={12} className="text-blue-700" />
-                    </div>
-                    Attach PDFs for detailed information
-                  </li>
-                </ul>
+              <div style={{ 
+                background: 'rgba(59,130,246,0.05)',
+                borderRadius: 24,
+                border: '1px solid rgba(59,130,246,0.2)',
+                padding: 20
+              }}>
+                <h3 style={{ fontSize: 16, fontWeight: 600, color: '#3b82f6', marginBottom: 16 }}>
+                  Tips
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div className="tip-item">
+                    <Bell size={14} color="#3b82f6" />
+                    <span>Use clear and concise titles</span>
+                  </div>
+                  <div className="tip-item">
+                    <Target size={14} color="#3b82f6" />
+                    <span>Select specific students for targeted communication</span>
+                  </div>
+                  <div className="tip-item">
+                    <FileText size={14} color="#3b82f6" />
+                    <span>Attach PDFs for detailed information</span>
+                  </div>
+                  <div className="tip-item">
+                    <CheckCircle size={14} color="#3b82f6" />
+                    <span>Preview before sending to check formatting</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 export default withAuth(Notices);

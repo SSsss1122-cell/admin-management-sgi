@@ -1,10 +1,22 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { MapPin, Navigation, Plus, Edit, Trash2, Users, Phone, AlertTriangle, Menu, X, ArrowLeft } from 'lucide-react';
+import { 
+  MapPin, Navigation, Plus, Edit, Trash2, Users, Phone, 
+  AlertTriangle, Menu, X, ArrowLeft, Bus, Wifi, WifiOff,
+  Clock, ChevronRight, Search, Filter, RefreshCw, Gauge,
+  User, Shield, Calendar, Car, Speed
+} from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import withAuth from '../../components/withAuth';
+import dynamic from 'next/dynamic';
+
+// Dynamically import Leaflet components (to avoid SSR issues)
+const MapContainer = dynamic(() => import('react-leaflet').then(mod => mod.MapContainer), { ssr: false });
+const TileLayer = dynamic(() => import('react-leaflet').then(mod => mod.TileLayer), { ssr: false });
+const Marker = dynamic(() => import('react-leaflet').then(mod => mod.Marker), { ssr: false });
+const Popup = dynamic(() => import('react-leaflet').then(mod => mod.Popup), { ssr: false });
 
 function BusManagement() {
   const [buses, setBuses] = useState([]);
@@ -12,15 +24,113 @@ function BusManagement() {
   const [busLocations, setBusLocations] = useState([]);
   const [selectedBus, setSelectedBus] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [currentTime, setCurrentTime] = useState('');
+  const [mapReady, setMapReady] = useState(false);
+  const [leafletLoaded, setLeafletLoaded] = useState(false);
+  const [busIcons, setBusIcons] = useState({});
+  const mapRef = useRef(null);
+  const markersRef = useRef({});
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   const router = useRouter();
 
+  // Load Leaflet CSS and icons
+  useEffect(() => {
+    // Load Leaflet CSS
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    link.integrity = 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=';
+    link.crossOrigin = '';
+    document.head.appendChild(link);
+
+    // Load Leaflet library
+    import('leaflet').then(L => {
+      // Fix default icon issues
+      delete L.Icon.Default.prototype._getIconUrl;
+      L.Icon.Default.mergeOptions({
+        iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+        iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+        shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+      });
+
+      // Create custom bus icons
+      const activeIcon = L.divIcon({
+        className: 'custom-bus-icon',
+        html: `<div style="
+          background: #10b981;
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border: 3px solid white;
+          box-shadow: 0 0 20px #10b981;
+          animation: pulse 1.5s infinite;
+        ">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+            <rect x="4" y="6" width="16" height="12" rx="2" />
+            <circle cx="8" cy="18" r="2" />
+            <circle cx="16" cy="18" r="2" />
+            <path d="M8 6V4M16 6V4" />
+          </svg>
+        </div>`,
+        iconSize: [32, 32],
+        iconAnchor: [16, 16],
+        popupAnchor: [0, -16]
+      });
+
+      const offlineIcon = L.divIcon({
+        className: 'custom-bus-icon',
+        html: `<div style="
+          background: #6b7280;
+          width: 28px;
+          height: 28px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border: 2px solid white;
+          opacity: 0.7;
+        ">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+            <rect x="4" y="6" width="16" height="12" rx="2" />
+            <circle cx="8" cy="18" r="2" />
+            <circle cx="16" cy="18" r="2" />
+          </svg>
+        </div>`,
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
+        popupAnchor: [0, -14]
+      });
+
+      setBusIcons({ active: activeIcon, offline: offlineIcon });
+      setLeafletLoaded(true);
+      setMapReady(true);
+    });
+
+    return () => {
+      document.head.removeChild(link);
+    };
+  }, []);
+
   // Fix hydration error
   useEffect(() => {
     setMounted(true);
+    
+    // Update time
+    const updateTime = () => {
+      const now = new Date();
+      setCurrentTime(now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    };
+    updateTime();
+    const timer = setInterval(updateTime, 1000);
+    return () => clearInterval(timer);
   }, []);
 
   useEffect(() => {
@@ -29,14 +139,58 @@ function BusManagement() {
       fetchDrivers();
       fetchBusLocations();
       
-      // Refresh bus locations every 10 seconds
-      const interval = setInterval(fetchBusLocations, 10000);
+      // Refresh bus locations every 5 seconds for smooth updates
+      const interval = setInterval(fetchBusLocations, 5000);
       
       return () => clearInterval(interval);
     }
   }, [mounted]);
 
-  // 🔥 FIXED: Fetch buses without join
+  // Update map markers when locations change
+  useEffect(() => {
+    if (!leafletLoaded || !mapRef.current || !busIcons.active) return;
+
+    import('leaflet').then(L => {
+      const map = mapRef.current;
+      
+      // Clear existing markers
+      Object.values(markersRef.current).forEach(marker => marker.remove());
+      markersRef.current = {};
+
+      // Add new markers for each bus location
+      busLocations.forEach(location => {
+        const bus = buses.find(b => b.id === location.bus_id);
+        if (!bus) return;
+
+        const status = getBusStatus(bus.id);
+        const icon = status === 'active' ? busIcons.active : busIcons.offline;
+
+        const marker = L.marker([location.latitude, location.longitude], { icon })
+          .addTo(map)
+          .bindPopup(`
+            <div style="font-family: Inter, sans-serif; padding: 8px;">
+              <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">Bus ${bus.bus_number}</div>
+              <div style="font-size: 12px; color: #666;">Route: ${bus.route_name || 'Not set'}</div>
+              <div style="font-size: 12px; color: #666;">Speed: ${location.speed?.toFixed(1) || 0} km/h</div>
+              <div style="font-size: 12px; color: #666;">Last: ${formatTimeAgo(location.updated_at)}</div>
+            </div>
+          `);
+
+        marker.on('click', () => {
+          setSelectedBus(bus);
+        });
+
+        markersRef.current[bus.id] = marker;
+      });
+
+      // Fit bounds to show all markers
+      if (busLocations.length > 0) {
+        const bounds = L.latLngBounds(busLocations.map(loc => [loc.latitude, loc.longitude]));
+        map.fitBounds(bounds, { padding: [50, 50] });
+      }
+    });
+  }, [busLocations, leafletLoaded, busIcons]);
+
   const fetchBuses = async () => {
     try {
       const { data, error } = await supabase
@@ -51,7 +205,6 @@ function BusManagement() {
     }
   };
 
-  // 🔥 NEW: Fetch drivers separately
   const fetchDrivers = async () => {
     try {
       const { data, error } = await supabase
@@ -68,12 +221,12 @@ function BusManagement() {
 
   const fetchBusLocations = async () => {
     try {
-      const tenSecondsAgo = new Date(Date.now() - 10000).toISOString();
+      const thirtySecondsAgo = new Date(Date.now() - 30000).toISOString();
       
       const { data, error } = await supabase
         .from('bus_locations')
         .select('*')
-        .gte('updated_at', tenSecondsAgo)
+        .gte('updated_at', thirtySecondsAgo)
         .order('updated_at', { ascending: false });
 
       if (error) throw error;
@@ -94,7 +247,6 @@ function BusManagement() {
     }
   };
 
-  // 🔥 Helper to get driver by ID
   const getDriverById = (driverId) => {
     return drivers.find(d => d.id === driverId);
   };
@@ -130,373 +282,934 @@ function BusManagement() {
   };
 
   const getStatusColor = (status) => {
-    return status === 'active' ? 'bg-green-100 text-green-800 border border-green-200' : 'bg-gray-100 text-gray-800 border border-gray-200';
+    return status === 'active' 
+      ? 'bg-green-500/10 text-green-500 border border-green-500/20' 
+      : 'bg-gray-500/10 text-gray-400 border border-gray-500/20';
   };
 
-  const getGoogleMapsUrl = (location) => {
-    if (!location) {
-      return "https://www.google.com/maps/embed/v1/view?key=AIzaSyBFw0Qbyq9zTFTd-tUY6dZWTgaQzuU17R8&center=17.3616,78.4747&zoom=12&maptype=roadmap";
-    }
-    return `https://www.google.com/maps/embed/v1/place?key=AIzaSyBFw0Qbyq9zTFTd-tUY6dZWTgaQzuU17R8&q=${location.latitude},${location.longitude}&zoom=15&maptype=roadmap`;
+  const getStatusIcon = (status) => {
+    return status === 'active' ? <Wifi size={14} /> : <WifiOff size={14} />;
   };
 
-  const openInGoogleMaps = (lat, lng) => {
-    window.open(`https://www.google.com/maps?q=${lat},${lng}`, '_blank');
-  };
-
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+  const formatTimeAgo = (dateString) => {
+    if (!dateString) return 'No data';
+    
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffSeconds = Math.floor(diffMs / 1000);
+    
+    if (diffSeconds < 10) return 'Just now';
+    if (diffSeconds < 60) return `${diffSeconds} seconds ago`;
+    if (diffMins < 60) return `${diffMins} min ago`;
+    return new Date(dateString).toLocaleTimeString();
   };
 
   const handleBack = () => {
     router.back();
   };
 
+  // Filter buses based on search and status
+  const filteredBuses = buses.filter(bus => {
+    const matchesSearch = 
+      (bus.bus_number?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+      (bus.route_name?.toLowerCase() || '').includes(searchTerm.toLowerCase());
+    
+    const status = getBusStatus(bus.id);
+    let matchesStatus = true;
+    
+    if (filterStatus === 'active') {
+      matchesStatus = status === 'active';
+    } else if (filterStatus === 'offline') {
+      matchesStatus = status === 'offline';
+    }
+    
+    return matchesSearch && matchesStatus;
+  });
+
+  // Calculate stats
+  const activeBuses = buses.filter(bus => getBusStatus(bus.id) === 'active').length;
+  const offlineBuses = buses.filter(bus => getBusStatus(bus.id) === 'offline').length;
+  const uniqueRoutes = [...new Set(buses.map(bus => bus.route_name).filter(Boolean))].length;
+
   // Show loading until mounted
   if (!mounted || loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div style={{ 
+        minHeight: '100vh', 
+        background: '#0a0a0f',
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center' 
+      }}>
+        <style>{`
+          @keyframes spin { to { transform: rotate(360deg); } }
+          @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+        `}</style>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ position: 'relative', width: 80, height: 80, margin: '0 auto 20px' }}>
+            <div style={{ 
+              width: 80, 
+              height: 80, 
+              border: '4px solid #1e1e2e', 
+              borderTop: '4px solid #3b82f6', 
+              borderRadius: '50%', 
+              animation: 'spin 1s linear infinite' 
+            }}></div>
+            <div style={{ 
+              position: 'absolute', 
+              top: '50%', 
+              left: '50%', 
+              transform: 'translate(-50%, -50%)', 
+              width: 40, 
+              height: 40, 
+              background: '#3b82f6', 
+              borderRadius: '50%', 
+              animation: 'pulse 1.5s ease infinite' 
+            }}></div>
+          </div>
+          <p style={{ color: '#3b82f6', fontWeight: 600 }}>Loading bus management...</p>
+        </div>
       </div>
     );
   }
 
+  const today = new Date();
+  const dateStr = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Mobile Header */}
-      <div className="lg:hidden bg-white border-b border-gray-200 sticky top-0 z-40">
-        <div className="flex items-center justify-between p-4">
-          <div className="flex items-center space-x-3">
-            <button
-              onClick={handleBack}
-              className="flex items-center text-gray-600 hover:text-gray-900 transition-colors p-2 rounded-lg hover:bg-gray-100"
-              title="Go back"
-            >
-              <ArrowLeft size={20} />
-            </button>
-            <button
-              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="p-2 rounded-lg hover:bg-gray-100"
-            >
-              {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
-            </button>
-            <div>
-              <h1 className="text-lg font-bold text-gray-900">Bus Management</h1>
-              <p className="text-xs text-gray-600">Track college buses</p>
-            </div>
-          </div>
-          <button className="bg-blue-600 text-white p-2 rounded-lg hover:bg-blue-700 transition-colors">
-            <Plus size={16} />
-          </button>
-        </div>
-      </div>
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        
+        * { 
+          box-sizing: border-box; 
+          margin: 0; 
+          padding: 0; 
+        }
+        
+        :root {
+          --bg-primary: #0a0a0f;
+          --bg-secondary: #11111f;
+          --bg-card: #16162a;
+          --bg-card-hover: #1c1c34;
+          --border: rgba(255,255,255,0.08);
+          --border-hover: rgba(255,255,255,0.15);
+          --text-primary: #ffffff;
+          --text-secondary: #a0a0c0;
+          --text-muted: #6b6b8b;
+          --accent-blue: #3b82f6;
+          --accent-green: #10b981;
+          --accent-red: #ef4444;
+          --accent-yellow: #eab308;
+          --accent-purple: #8b5cf6;
+        }
+        
+        body { 
+          font-family: 'Inter', sans-serif; 
+          background: var(--bg-primary);
+          color: var(--text-primary);
+        }
+        
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes slideIn {
+          from { transform: translateX(20px); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+        
+        @keyframes float {
+          0%,100% { transform: translateY(0px); }
+          50% { transform: translateY(-5px); }
+        }
+        
+        @keyframes glow {
+          0%,100% { filter: blur(60px) opacity(0.5); }
+          50% { filter: blur(80px) opacity(0.8); }
+        }
+        
+        @keyframes pulse {
+          0%,100% { opacity: 1; }
+          50% { opacity: 0.7; }
+        }
+        
+        .animate-fade-in { animation: fadeIn 0.3s ease forwards; }
+        .animate-float { animation: float 3s ease-in-out infinite; }
+        .animate-pulse-slow { animation: pulse 2s ease-in-out infinite; }
+        
+        .glass-effect {
+          background: rgba(22, 22, 42, 0.8);
+          backdrop-filter: blur(12px);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        
+        .search-bar {
+          background: var(--bg-card);
+          border: 1px solid var(--border);
+          border-radius: 40px;
+          padding: 8px 20px;
+          transition: all 0.3s ease;
+        }
+        
+        .search-bar:focus-within {
+          border-color: #3b82f6;
+          box-shadow: 0 0 0 3px rgba(59,130,246,0.2);
+        }
+        
+        .stat-card {
+          background: var(--bg-card);
+          border: 1px solid var(--border);
+          border-radius: 20px;
+          padding: 20px;
+          transition: all 0.3s ease;
+          position: relative;
+          overflow: hidden;
+        }
+        
+        .stat-card::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 3px;
+          background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+          opacity: 0;
+          transition: opacity 0.3s ease;
+        }
+        
+        .stat-card:hover {
+          transform: translateY(-4px);
+          background: var(--bg-card-hover);
+          border-color: var(--border-hover);
+        }
+        
+        .stat-card:hover::before {
+          opacity: 1;
+        }
+        
+        .bus-card {
+          background: var(--bg-card);
+          border: 1px solid var(--border);
+          border-radius: 20px;
+          padding: 16px;
+          transition: all 0.3s ease;
+          cursor: pointer;
+        }
+        
+        .bus-card:hover {
+          background: var(--bg-card-hover);
+          border-color: #3b82f6;
+          transform: translateX(4px);
+        }
+        
+        .bus-card.selected {
+          background: rgba(59,130,246,0.1);
+          border-color: #3b82f6;
+          box-shadow: 0 0 20px -5px rgba(59,130,246,0.3);
+        }
+        
+        .status-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 4px 10px;
+          border-radius: 30px;
+          font-size: 11px;
+          font-weight: 600;
+        }
+        
+        .info-item {
+          display: flex;
+          justify-content: space-between;
+          padding: 8px 12px;
+          background: rgba(255,255,255,0.02);
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          transition: all 0.2s ease;
+        }
+        
+        .info-item:hover {
+          background: rgba(59,130,246,0.05);
+          border-color: rgba(59,130,246,0.2);
+        }
+        
+        .filter-chip {
+          background: var(--bg-card);
+          border: 1px solid var(--border);
+          border-radius: 30px;
+          padding: 6px 14px;
+          font-size: 12px;
+          font-weight: 500;
+          color: var(--text-secondary);
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        
+        .filter-chip:hover {
+          border-color: #3b82f6;
+          color: #3b82f6;
+        }
+        
+        .filter-chip.active {
+          background: #3b82f6;
+          color: white;
+          border-color: #3b82f6;
+        }
+        
+        .action-button {
+          background: var(--bg-card);
+          border: 1px solid var(--border);
+          border-radius: 40px;
+          padding: 8px 16px;
+          font-size: 13px;
+          font-weight: 500;
+          color: var(--text-secondary);
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        
+        .action-button:hover {
+          background: var(--bg-card-hover);
+          border-color: #3b82f6;
+          color: #3b82f6;
+        }
+        
+        .action-button.primary {
+          background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+          color: white;
+          border: none;
+        }
+        
+        .action-button.primary:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 10px 25px -5px #3b82f6;
+        }
 
-      <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 py-4 lg:py-8">
-        {/* Desktop Header */}
-        <div className="hidden lg:flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleBack}
-              className="flex items-center text-gray-600 hover:text-gray-900 transition-colors p-2 rounded-lg hover:bg-gray-100"
-              title="Go back"
-            >
-              <ArrowLeft size={20} />
-              <span className="ml-2 text-sm font-medium">Back</span>
+        .leaflet-container {
+          background: #1a1a2e !important;
+        }
+
+        .leaflet-popup-content-wrapper {
+          background: var(--bg-card) !important;
+          color: var(--text-primary) !important;
+          border: 1px solid var(--border) !important;
+          border-radius: 12px !important;
+        }
+
+        .leaflet-popup-tip {
+          background: var(--bg-card) !important;
+        }
+
+        @keyframes pulse {
+          0%,100% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.1); opacity: 0.8; }
+        }
+
+        .custom-bus-icon {
+          background: transparent;
+          border: none;
+        }
+        
+        @media (max-width: 768px) {
+          .stat-card { padding: 16px; }
+          .bus-card { padding: 14px; }
+        }
+      `}</style>
+
+      <div style={{ 
+        minHeight: '100vh', 
+        background: 'radial-gradient(circle at 50% 50%, #1a1a2e, #0a0a0f)',
+        position: 'relative',
+        overflow: 'hidden'
+      }}>
+        {/* Background Orbs */}
+        <div style={{
+          position: 'fixed',
+          width: 600,
+          height: 600,
+          borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(59,130,246,0.15) 0%, transparent 70%)',
+          top: -200,
+          left: -200,
+          filter: 'blur(80px)',
+          pointerEvents: 'none',
+          zIndex: 0,
+          animation: 'glow 8s ease-in-out infinite'
+        }}></div>
+        <div style={{
+          position: 'fixed',
+          width: 500,
+          height: 500,
+          borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(139,92,246,0.1) 0%, transparent 70%)',
+          bottom: -150,
+          right: -150,
+          filter: 'blur(80px)',
+          pointerEvents: 'none',
+          zIndex: 0,
+          animation: 'glow 10s ease-in-out infinite reverse'
+        }}></div>
+
+        {/* Mobile Header */}
+        <div className="glass-effect" style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 40,
+          padding: '12px 16px',
+          borderBottom: '1px solid var(--border)',
+          display: 'block'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <button
+                onClick={handleBack}
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 12,
+                  background: 'var(--bg-card)',
+                  border: '1px solid var(--border)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  color: 'var(--text-secondary)'
+                }}
+              >
+                <ArrowLeft size={18} />
+              </button>
+              <button
+                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 12,
+                  background: 'var(--bg-card)',
+                  border: '1px solid var(--border)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  color: 'var(--text-secondary)'
+                }}
+              >
+                {isSidebarOpen ? <X size={18} /> : <Menu size={18} />}
+              </button>
+              <div>
+                <h1 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>Bus Management</h1>
+                <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>{currentTime}</p>
+              </div>
+            </div>
+            <button className="action-button primary" style={{ width: 40, height: 40, padding: 0, justifyContent: 'center' }}>
+              <Plus size={18} />
             </button>
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Bus Management</h1>
-              <p className="text-gray-600 mt-1">Track and manage college buses</p>
-            </div>
-          </div>
-          <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center w-full sm:w-auto justify-center">
-            <Plus size={16} className="mr-2" />
-            Add Bus
-          </button>
-        </div>
-
-        {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 lg:gap-4 mb-4 lg:mb-6">
-          <div className="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6 border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs sm:text-sm font-medium text-gray-600">Total Buses</p>
-                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">{buses.length}</p>
-              </div>
-              <MapPin className="text-blue-400" size={18} />
-            </div>
-          </div>
-          <div className="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6 border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs sm:text-sm font-medium text-gray-600">Active</p>
-                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-green-600">
-                  {buses.filter(bus => getBusStatus(bus.id) === 'active').length}
-                </p>
-              </div>
-              <Navigation className="text-green-400" size={18} />
-            </div>
-          </div>
-          <div className="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6 border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs sm:text-sm font-medium text-gray-600">Offline</p>
-                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-600">
-                  {buses.filter(bus => getBusStatus(bus.id) === 'offline').length}
-                </p>
-              </div>
-              <AlertTriangle className="text-gray-400" size={18} />
-            </div>
-          </div>
-          <div className="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6 border border-gray-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs sm:text-sm font-medium text-gray-600">Routes</p>
-                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">
-                  {[...new Set(buses.map(bus => bus.route_name).filter(Boolean))].length}
-                </p>
-              </div>
-              <MapPin className="text-purple-400" size={18} />
-            </div>
           </div>
         </div>
 
-        <div className="flex flex-col lg:grid lg:grid-cols-2 gap-4 lg:gap-6">
-          {/* Bus List */}
-          <div className={`lg:block ${isSidebarOpen ? 'block fixed inset-0 z-50 bg-white' : 'hidden'}`}>
-            {isSidebarOpen && (
-              <div className="lg:hidden flex items-center justify-between p-4 border-b border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-900">All Buses ({buses.length})</h3>
-                <button
-                  onClick={() => setIsSidebarOpen(false)}
-                  className="p-2 rounded-lg hover:bg-gray-100"
-                >
-                  <X size={20} />
-                </button>
+        <div style={{ position: 'relative', zIndex: 10, maxWidth: 1400, margin: '0 auto', padding: '16px' }}>
+          {/* Desktop Header */}
+          <div style={{ 
+            display: 'none',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 24,
+            background: 'var(--bg-card)',
+            borderRadius: 20,
+            padding: 20,
+            border: '1px solid var(--border)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <button
+                onClick={handleBack}
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 12,
+                  background: 'var(--bg-primary)',
+                  border: '1px solid var(--border)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  color: 'var(--text-secondary)'
+                }}
+              >
+                <ArrowLeft size={20} />
+              </button>
+              <div>
+                <h1 style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)' }}>Bus Management</h1>
+                <p style={{ fontSize: 14, color: 'var(--text-muted)', marginTop: 4 }}>{dateStr} • {currentTime}</p>
               </div>
-            )}
+            </div>
+            <button className="action-button primary" style={{ padding: '10px 20px' }}>
+              <Plus size={18} />
+              <span>Add Bus</span>
+            </button>
+          </div>
+
+          {/* Search and Filters */}
+          <div style={{ 
+            background: 'var(--bg-card)',
+            borderRadius: 20,
+            padding: 16,
+            marginBottom: 20,
+            border: '1px solid var(--border)'
+          }}>
+            <div className="search-bar" style={{ 
+              marginBottom: 12,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12
+            }}>
+              <Search size={16} color="var(--text-muted)" />
+              <input
+                type="text"
+                placeholder="Search by bus number or route..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                style={{
+                  flex: 1,
+                  border: 'none',
+                  outline: 'none',
+                  fontSize: 13,
+                  background: 'transparent',
+                  color: 'var(--text-primary)'
+                }}
+              />
+            </div>
             
-            <div className={`space-y-4 ${isSidebarOpen ? 'p-4 h-[calc(100vh-80px)] overflow-y-auto' : ''}`}>
-              {!isSidebarOpen && (
-                <h3 className="text-lg font-semibold text-gray-900 hidden lg:block">
-                  All Buses ({buses.length})
-                </h3>
-              )}
-              <div className="space-y-3 lg:max-h-96 lg:overflow-y-auto">
-                {buses.map((bus) => {
-                  const status = getBusStatus(bus.id);
-                  const location = busLocations.find(loc => loc.bus_id === bus.id);
-                  const driver = bus.driver_id ? getDriverById(bus.driver_id) : null;
-                  
-                  return (
-                    <div 
-                      key={bus.id}
-                      className={`bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 border border-gray-200 cursor-pointer transition-all ${
-                        selectedBus?.id === bus.id ? 'border-blue-500 bg-blue-50' : 'hover:shadow-md'
-                      }`}
-                      onClick={() => {
-                        setSelectedBus(bus);
-                        setIsSidebarOpen(false);
-                      }}
-                    >
-                      <div className="flex justify-between items-start mb-2">
-                        <div className="flex-1 min-w-0">
-                          <h4 className="font-semibold text-gray-900 text-base sm:text-lg truncate">
-                            Bus {bus.bus_number}
-                          </h4>
-                          <p className="text-gray-600 text-xs sm:text-sm truncate">
-                            {bus.route_name || 'No route'}
-                          </p>
-                        </div>
-                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full flex-shrink-0 ml-2 ${getStatusColor(status)}`}>
-                          {status === 'active' ? 'Active' : 'Offline'}
-                        </span>
-                      </div>
-                      
-                      <div className="space-y-1.5 text-xs sm:text-sm">
-                        <div className="flex justify-between items-center">
-                          <span className="text-gray-600">Driver:</span>
-                          <span className="text-gray-900 font-medium text-right truncate ml-2 max-w-[120px] sm:max-w-none">
-                            {driver ? driver.name : 'Not assigned'}
-                          </span>
-                        </div>
-                        
-                        {driver && driver.contact && (
-                          <div className="flex justify-between items-center">
-                            <span className="text-gray-600">Contact:</span>
-                            <span className="text-gray-900 font-medium text-right truncate ml-2 max-w-[120px]">
-                              {driver.contact}
-                            </span>
-                          </div>
-                        )}
-                        
-                        {location && (
-                          <>
-                            <div className="flex justify-between items-center">
-                              <span className="text-gray-600">Speed:</span>
-                              <span className="text-gray-900 font-medium">{location.speed?.toFixed(1) || '0'} km/h</span>
-                            </div>
-                            {location.driver_name && (
-                              <div className="flex justify-between items-center">
-                                <span className="text-gray-600">Current Driver:</span>
-                                <span className="text-gray-900 font-medium">{location.driver_name}</span>
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </div>
-                      
-                      <div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-200">
-                        <div className="text-xs text-gray-500 truncate flex-1 mr-2">
-                          {location ? `Updated: ${formatDate(location.updated_at)}` : 'No recent data'}
-                        </div>
-                        <div className="flex space-x-1 flex-shrink-0">
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              // Edit functionality here
-                            }}
-                            className="text-blue-600 hover:text-blue-800 p-1"
-                          >
-                            <Edit size={12} className="sm:hidden" />
-                            <Edit size={14} className="hidden sm:block" />
-                          </button>
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              deleteBus(bus.id);
-                            }}
-                            className="text-red-600 hover:text-red-800 p-1"
-                          >
-                            <Trash2 size={12} className="sm:hidden" />
-                            <Trash2 size={14} className="hidden sm:block" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Filter size={12} />
+                Status:
+              </span>
+              <button
+                onClick={() => setFilterStatus('all')}
+                className={`filter-chip ${filterStatus === 'all' ? 'active' : ''}`}
+              >
+                All
+              </button>
+              <button
+                onClick={() => setFilterStatus('active')}
+                className={`filter-chip ${filterStatus === 'active' ? 'active' : ''}`}
+              >
+                Active
+              </button>
+              <button
+                onClick={() => setFilterStatus('offline')}
+                className={`filter-chip ${filterStatus === 'offline' ? 'active' : ''}`}
+              >
+                Offline
+              </button>
+            </div>
+          </div>
+
+          {/* Stats */}
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: 'repeat(2, 1fr)',
+            gap: 12,
+            marginBottom: 20
+          }}>
+            <div className="stat-card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Total Buses</p>
+                  <p style={{ fontSize: 28, fontWeight: 700, color: '#3b82f6', marginTop: 4 }}>{buses.length}</p>
+                </div>
+                <div style={{ 
+                  width: 40, 
+                  height: 40, 
+                  borderRadius: 12, 
+                  background: 'rgba(59,130,246,0.1)', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center'
+                }}>
+                  <Bus size={20} color="#3b82f6" />
+                </div>
+              </div>
+            </div>
+
+            <div className="stat-card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Active</p>
+                  <p style={{ fontSize: 28, fontWeight: 700, color: '#10b981', marginTop: 4 }}>{activeBuses}</p>
+                </div>
+                <div style={{ 
+                  width: 40, 
+                  height: 40, 
+                  borderRadius: 12, 
+                  background: 'rgba(16,185,129,0.1)', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center'
+                }}>
+                  <Wifi size={20} color="#10b981" />
+                </div>
+              </div>
+            </div>
+
+            <div className="stat-card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Offline</p>
+                  <p style={{ fontSize: 28, fontWeight: 700, color: '#6b7280', marginTop: 4 }}>{offlineBuses}</p>
+                </div>
+                <div style={{ 
+                  width: 40, 
+                  height: 40, 
+                  borderRadius: 12, 
+                  background: 'rgba(107,114,128,0.1)', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center'
+                }}>
+                  <WifiOff size={20} color="#9ca3af" />
+                </div>
+              </div>
+            </div>
+
+            <div className="stat-card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Routes</p>
+                  <p style={{ fontSize: 28, fontWeight: 700, color: '#8b5cf6', marginTop: 4 }}>{uniqueRoutes}</p>
+                </div>
+                <div style={{ 
+                  width: 40, 
+                  height: 40, 
+                  borderRadius: 12, 
+                  background: 'rgba(139,92,246,0.1)', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center'
+                }}>
+                  <MapPin size={20} color="#8b5cf6" />
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Map and Bus Details */}
-          <div className="space-y-4 flex-1">
-            {/* Mobile Bus List Toggle Button */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Mobile Bus List Toggle */}
             <button
               onClick={() => setIsSidebarOpen(true)}
-              className="lg:hidden bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center w-full"
+              className="action-button"
+              style={{ width: '100%', justifyContent: 'center', padding: '12px' }}
             >
-              <Menu size={16} className="mr-2" />
-              Show Bus List ({buses.length})
+              <Menu size={16} />
+              <span>Show Bus List ({filteredBuses.length})</span>
             </button>
 
-            <h3 className="text-lg font-semibold text-gray-900">
-              {selectedBus ? `Bus ${selectedBus.bus_number} Details` : 'Select a Bus'}
-            </h3>
-              
-            {/* Google Maps */}
-            <div className="bg-white rounded-lg sm:rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="h-64 sm:h-80">
-                <iframe
-                  className="w-full h-full"
-                  frameBorder="0"
-                  style={{ border: 0 }}
-                  allowFullScreen
-                  src={getGoogleMapsUrl(
-                    selectedBus ? busLocations.find(loc => loc.bus_id === selectedBus.id) : null
-                  )}
-                  loading="lazy"
-                  referrerPolicy="no-referrer-when-downgrade"
-                ></iframe>
-              </div>
-            </div>
-
-            {selectedBus && (
-              <div className="bg-white rounded-lg sm:rounded-xl shadow-sm p-4 sm:p-6 border border-gray-200">
-                <h4 className="font-semibold text-gray-900 text-lg mb-4">Bus Information</h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-sm">
+            {/* Main Content Area */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {/* Map with Moving Icons */}
+              <div style={{ 
+                background: 'var(--bg-card)',
+                borderRadius: 20,
+                border: '1px solid var(--border)',
+                overflow: 'hidden',
+                height: 400
+              }}>
+                <div style={{ padding: '16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
-                    <p className="text-gray-600 text-xs sm:text-sm">Bus Number</p>
-                    <p className="font-medium text-gray-900 text-sm sm:text-base">{selectedBus.bus_number}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-600 text-xs sm:text-sm">Route</p>
-                    <p className="font-medium text-gray-900 text-sm sm:text-base">{selectedBus.route_name || 'Not assigned'}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-600 text-xs sm:text-sm">Driver</p>
-                    <p className="font-medium text-gray-900 text-sm sm:text-base">
-                      {selectedBus.driver_id ? getDriverById(selectedBus.driver_id)?.name || 'Not assigned' : 'Not assigned'}
+                    <h3 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>
+                      Live Bus Tracking
+                    </h3>
+                    <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                      {busLocations.length} buses active • Updates every 5 seconds
                     </p>
                   </div>
-                  <div>
-                    <p className="text-gray-600 text-xs sm:text-sm">Driver Contact</p>
-                    <p className="font-medium text-gray-900 text-sm sm:text-base">
-                      {selectedBus.driver_id ? getDriverById(selectedBus.driver_id)?.contact || 'N/A' : 'N/A'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-gray-600 text-xs sm:text-sm">License No</p>
-                    <p className="font-medium text-gray-900 text-sm sm:text-base">
-                      {selectedBus.driver_id ? getDriverById(selectedBus.driver_id)?.license_no || 'N/A' : 'N/A'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-gray-600 text-xs sm:text-sm">Current KM</p>
-                    <p className="font-medium text-gray-900 text-sm sm:text-base">{selectedBus.current_km || 'N/A'}</p>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <p className="text-gray-600 text-xs sm:text-sm">Status</p>
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(getBusStatus(selectedBus.id))}`}>
-                      {getBusStatus(selectedBus.id) === 'active' ? 'Active' : 'Offline'}
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <span className="status-badge" style={{ background: 'rgba(16,185,129,0.1)', color: '#10b981' }}>
+                      <Wifi size={12} />
+                      {activeBuses} Live
                     </span>
                   </div>
                 </div>
-                
-                {busLocations.find(loc => loc.bus_id === selectedBus.id) && (
-                  <button
-                    onClick={() => {
-                      const location = busLocations.find(loc => loc.bus_id === selectedBus.id);
-                      if (location) {
-                        openInGoogleMaps(location.latitude, location.longitude);
-                      }
-                    }}
-                    className="mt-4 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm w-full"
-                  >
-                    Open in Google Maps
-                  </button>
-                )}
+                <div style={{ height: 332, width: '100%' }}>
+                  {mapReady && leafletLoaded && (
+                    <MapContainer
+                      center={[17.3616, 78.4747]}
+                      zoom={12}
+                      style={{ height: '100%', width: '100%' }}
+                      whenCreated={(map) => {
+                        mapRef.current = map;
+                      }}
+                      zoomControl={true}
+                      attributionControl={true}
+                    >
+                      <TileLayer
+                        url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                      />
+                      {/* Markers are added programmatically via useEffect */}
+                    </MapContainer>
+                  )}
+                </div>
               </div>
-            )}
 
-            {/* No Bus Selected Message */}
-            {!selectedBus && (
-              <div className="bg-white rounded-lg sm:rounded-xl shadow-sm p-6 border border-gray-200 text-center">
-                <MapPin className="mx-auto text-gray-400 mb-3" size={32} />
-                <h4 className="font-semibold text-gray-900 text-lg mb-2">No Bus Selected</h4>
-                <p className="text-gray-600 text-sm">
-                  Select a bus from the list to view details and location
-                </p>
-              </div>
-            )}
+              {/* Selected Bus Details */}
+              {selectedBus ? (
+                <div style={{ 
+                  background: 'var(--bg-card)',
+                  borderRadius: 20,
+                  border: '1px solid var(--border)',
+                  padding: 20
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                    <h3 style={{ fontSize: 18, fontWeight: 600, color: 'var(--text-primary)' }}>
+                      Bus {selectedBus.bus_number} Details
+                    </h3>
+                    <span className={`status-badge ${getStatusColor(getBusStatus(selectedBus.id))}`}>
+                      {getStatusIcon(getBusStatus(selectedBus.id))}
+                      {getBusStatus(selectedBus.id) === 'active' ? 'Live' : 'Offline'}
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    <div className="info-item">
+                      <span style={{ color: 'var(--text-muted)' }}>Route</span>
+                      <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
+                        {selectedBus.route_name || 'Not assigned'}
+                      </span>
+                    </div>
+
+                    {selectedBus.driver_id && (
+                      <>
+                        <div className="info-item">
+                          <span style={{ color: 'var(--text-muted)' }}>Driver</span>
+                          <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
+                            {getDriverById(selectedBus.driver_id)?.name || 'Unknown'}
+                          </span>
+                        </div>
+                        {getDriverById(selectedBus.driver_id)?.contact && (
+                          <div className="info-item">
+                            <span style={{ color: 'var(--text-muted)' }}>Contact</span>
+                            <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
+                              {getDriverById(selectedBus.driver_id)?.contact}
+                            </span>
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    <div className="info-item">
+                      <span style={{ color: 'var(--text-muted)' }}>Current KM</span>
+                      <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
+                        {selectedBus.current_km || 'N/A'}
+                      </span>
+                    </div>
+
+                    {busLocations.find(loc => loc.bus_id === selectedBus.id) && (
+                      <>
+                        <div className="info-item">
+                          <span style={{ color: 'var(--text-muted)' }}>Speed</span>
+                          <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
+                            {busLocations.find(loc => loc.bus_id === selectedBus.id)?.speed?.toFixed(1) || '0'} km/h
+                          </span>
+                        </div>
+                        <div className="info-item">
+                          <span style={{ color: 'var(--text-muted)' }}>Last Updated</span>
+                          <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
+                            {formatTimeAgo(busLocations.find(loc => loc.bus_id === selectedBus.id)?.updated_at)}
+                          </span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {busLocations.find(loc => loc.bus_id === selectedBus.id) && (
+                    <button
+                      onClick={() => {
+                        const location = busLocations.find(loc => loc.bus_id === selectedBus.id);
+                        if (location) {
+                          window.open(`https://www.openstreetmap.org/?mlat=${location.latitude}&mlon=${location.longitude}#map=15/${location.latitude}/${location.longitude}`, '_blank');
+                        }
+                      }}
+                      className="action-button primary"
+                      style={{ width: '100%', marginTop: 16, justifyContent: 'center' }}
+                    >
+                      <Navigation size={14} />
+                      Open in OpenStreetMap
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div style={{ 
+                  background: 'var(--bg-card)',
+                  borderRadius: 20,
+                  border: '1px solid var(--border)',
+                  padding: 32,
+                  textAlign: 'center'
+                }}>
+                  <MapPin size={40} color="var(--text-muted)" style={{ marginBottom: 12, opacity: 0.5 }} />
+                  <h4 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
+                    No Bus Selected
+                  </h4>
+                  <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                    Select a bus from the list to view details
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Mobile Overlay */}
-      {isSidebarOpen && (
-        <div 
-          className="lg:hidden fixed inset-0 bg-black bg-opacity-50 z-30"
-          onClick={() => setIsSidebarOpen(false)}
-        />
-      )}
-    </div>
+        {/* Bus List Sidebar for Mobile */}
+        {isSidebarOpen && (
+          <>
+            <div 
+              style={{
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(0,0,0,0.8)',
+                backdropFilter: 'blur(4px)',
+                zIndex: 45
+              }}
+              onClick={() => setIsSidebarOpen(false)}
+            />
+            <div style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              bottom: 0,
+              width: '85%',
+              maxWidth: 400,
+              background: 'var(--bg-secondary)',
+              borderRight: '1px solid var(--border)',
+              zIndex: 50,
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column'
+            }}>
+              <div style={{
+                padding: 16,
+                borderBottom: '1px solid var(--border)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <h3 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>
+                  All Buses ({filteredBuses.length})
+                </h3>
+                <button
+                  onClick={() => setIsSidebarOpen(false)}
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 8,
+                    background: 'var(--bg-card)',
+                    border: '1px solid var(--border)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    color: 'var(--text-muted)'
+                  }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {filteredBuses.map((bus) => {
+                    const status = getBusStatus(bus.id);
+                    const location = busLocations.find(loc => loc.bus_id === bus.id);
+                    const driver = bus.driver_id ? getDriverById(bus.driver_id) : null;
+                    
+                    return (
+                      <div 
+                        key={bus.id}
+                        className={`bus-card ${selectedBus?.id === bus.id ? 'selected' : ''}`}
+                        onClick={() => {
+                          setSelectedBus(bus);
+                          setIsSidebarOpen(false);
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                          <div>
+                            <h4 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>
+                              Bus {bus.bus_number}
+                            </h4>
+                            <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                              {bus.route_name || 'No route'}
+                            </p>
+                          </div>
+                          <span className={`status-badge ${getStatusColor(status)}`} style={{ fontSize: 10 }}>
+                            {status === 'active' ? 'LIVE' : 'OFF'}
+                          </span>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
+                          {driver && (
+                            <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                              <span style={{ color: 'var(--text-muted)' }}>Driver:</span>{' '}
+                              <span style={{ color: 'var(--text-primary)' }}>{driver.name}</span>
+                            </div>
+                          )}
+                          {location && (
+                            <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                              <span style={{ color: 'var(--text-muted)' }}>Speed:</span>{' '}
+                              <span style={{ color: 'var(--text-primary)' }}>{location.speed?.toFixed(1) || 0} km/h</span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div style={{ 
+                          display: 'flex', 
+                          justifyContent: 'space-between', 
+                          alignItems: 'center',
+                          marginTop: 12,
+                          paddingTop: 8,
+                          borderTop: '1px solid var(--border)',
+                          fontSize: 10,
+                          color: 'var(--text-muted)'
+                        }}>
+                          <span>
+                            {location ? formatTimeAgo(location.updated_at) : 'No data'}
+                          </span>
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                // Edit functionality
+                              }}
+                              style={{ color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer' }}
+                            >
+                              <Edit size={12} />
+                            </button>
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteBus(bus.id);
+                              }}
+                              style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </>
   );
 }
 export default withAuth(BusManagement);

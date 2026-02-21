@@ -50,64 +50,10 @@ function HomePage() {
     updateTime();
     const timer = setInterval(updateTime, 1000);
     
-    // Fetch live buses every 30 seconds
-    const liveBusInterval = setInterval(fetchLiveBuses, 30000);
-    
     return () => {
       clearInterval(timer);
-      clearInterval(liveBusInterval);
     };
   }, []);
-
-  const fetchLiveBuses = async () => {
-    try {
-      // Get buses that have been updated in the last 5 minutes
-      const fiveMinutesAgo = new Date();
-      fiveMinutesAgo.setMinutes(fiveMinutesAgo.getMinutes() - 5);
-      
-      const { data: busLocations, error } = await supabase
-        .from('bus_locations')
-        .select('*')
-        .gte('updated_at', fiveMinutesAgo.toISOString())
-        .order('updated_at', { ascending: false });
-
-      if (error) {
-        console.log('Bus locations table may not exist:', error.message);
-        setLiveBuses([]);
-        setStats(prev => ({ ...prev, liveBuses: 0 }));
-        return;
-      }
-
-      // If we have bus locations, get the bus details
-      if (busLocations && busLocations.length > 0) {
-        const busIds = [...new Set(busLocations.map(b => b.bus_id))];
-        
-        const { data: buses } = await supabase
-          .from('buses')
-          .select('*, drivers_new(*)')
-          .in('id', busIds);
-
-        // Merge bus details with locations
-        const enrichedBuses = busLocations.map(location => ({
-          ...location,
-          bus_details: buses?.find(b => b.id === location.bus_id) || null
-        }));
-
-        setLiveBuses(enrichedBuses);
-        setStats(prev => ({ ...prev, liveBuses: enrichedBuses.length }));
-      } else {
-        setLiveBuses([]);
-        setStats(prev => ({ ...prev, liveBuses: 0 }));
-      }
-
-      setLastUpdated(new Date());
-
-    } catch (error) {
-      console.error('Error in fetchLiveBuses:', error);
-      setLiveBuses([]);
-      setStats(prev => ({ ...prev, liveBuses: 0 }));
-    }
-  };
 
   const fetchDashboardData = async () => {
     try {
@@ -158,8 +104,7 @@ function HomePage() {
       }).length || 0;
 
       // Set stats
-      setStats(prev => ({ 
-        ...prev,
+      setStats({ 
         totalStudents, 
         activeBuses: totalBuses, 
         dailyComplaints, 
@@ -167,8 +112,9 @@ function HomePage() {
         totalDrivers, 
         totalBuses, 
         busesWithDriver, 
-        expiringDocuments
-      }));
+        expiringDocuments,
+        liveBuses: 0 
+      });
 
       // Set notifications count (expiring documents + unread complaints)
       setNotifications(expiringDocuments + dailyComplaints);
@@ -294,9 +240,6 @@ function HomePage() {
       setActiveSessions(Math.floor(Math.random() * 500) + 1000);
       setPendingApprovals(Math.floor(Math.random() * 30) + 10);
       setSystemLoad(Math.floor(Math.random() * 30) + 40);
-
-      // Fetch live buses after initial data load
-      await fetchLiveBuses();
 
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
@@ -1034,120 +977,7 @@ function HomePage() {
           margin-top: 12px;
         }
         
-        /* Live Buses Section */
-        .live-buses-section {
-          background: rgba(22, 22, 42, 0.6);
-          backdrop-filter: blur(12px);
-          border: 1px solid rgba(255, 255, 255, 0.05);
-          border-radius: 28px;
-          padding: 28px;
-          margin-bottom: 48px;
-          animation: fadeUp 0.6s ease 0.15s both;
-        }
-        
-        .live-buses-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 24px;
-        }
-        
-        .live-buses-title {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-        }
-        
-        .live-buses-icon {
-          width: 44px;
-          height: 44px;
-          background: rgba(16, 185, 129, 0.1);
-          border-radius: 14px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border: 1px solid rgba(16, 185, 129, 0.2);
-        }
-        
-        .live-buses-grid {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 16px;
-        }
-        
-        @media (max-width: 1200px) { .live-buses-grid { grid-template-columns: repeat(3, 1fr); } }
-        @media (max-width: 768px) { .live-buses-grid { grid-template-columns: repeat(2, 1fr); } }
-        @media (max-width: 480px) { .live-buses-grid { grid-template-columns: 1fr; } }
-        
-        .live-bus-card {
-          background: rgba(0, 0, 0, 0.2);
-          border: 1px solid rgba(16, 185, 129, 0.2);
-          border-radius: 20px;
-          padding: 20px;
-          position: relative;
-          overflow: hidden;
-        }
-        
-        .live-bus-card::before {
-          content: '';
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          height: 2px;
-          background: linear-gradient(90deg, transparent, #10b981, transparent);
-          animation: shimmer 2s linear infinite;
-        }
-        
-        .live-bus-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 16px;
-        }
-        
-        .live-bus-number {
-          font-size: 18px;
-          font-weight: 700;
-          color: #10b981;
-        }
-        
-        .live-bus-status {
-          display: flex;
-          align-items: center;
-          gap: 4px;
-          font-size: 11px;
-          font-weight: 600;
-          color: #10b981;
-          text-transform: uppercase;
-        }
-        
-        .live-bus-route {
-          font-size: 14px;
-          font-weight: 600;
-          margin-bottom: 8px;
-        }
-        
-        .live-bus-driver {
-          font-size: 12px;
-          color: var(--text-muted);
-          margin-bottom: 16px;
-        }
-        
-        .live-bus-footer {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          font-size: 11px;
-          color: var(--text-muted);
-        }
-        
-        .live-bus-coords {
-          font-family: 'JetBrains Mono', monospace;
-          background: rgba(255, 255, 255, 0.03);
-          padding: 4px 8px;
-          border-radius: 8px;
-        }
+        /* Live Buses Section - REMOVED COMPLETELY */
         
         /* Section Header */
         .section-header-modern {
@@ -1608,7 +1438,6 @@ function HomePage() {
           .hero-section { flex-direction: column; align-items: flex-start; gap: 20px; }
           .hero-right { width: 100%; }
           .action-button { flex: 1; justify-content: center; }
-          .live-buses-grid { grid-template-columns: 1fr; }
         }
       `}</style>
 
@@ -1754,50 +1583,7 @@ function HomePage() {
               })}
             </div>
 
-            {/* Live Buses Section */}
-            {liveBuses.length > 0 && (
-              <div className="live-buses-section">
-                <div className="live-buses-header">
-                  <div className="live-buses-title">
-                    <div className="live-buses-icon">
-                      <Radio size={20} color="#10b981" />
-                    </div>
-                    <div>
-                      <h2 className="section-title-modern">Live Buses on Road</h2>
-                      <div className="section-subtitle">Real-time GPS tracking • Updated {formatTimeAgo(lastUpdated.toISOString())}</div>
-                    </div>
-                  </div>
-                  <Link href="/bus-locations" className="section-action-btn">
-                    View All
-                    <ChevronRight size={14} />
-                  </Link>
-                </div>
-
-                <div className="live-buses-grid">
-                  {liveBuses.map((bus) => (
-                    <div key={bus.id} className="live-bus-card">
-                      <div className="live-bus-header">
-                        <span className="live-bus-number">Bus #{bus.bus_details?.bus_number || bus.bus_id || 'Unknown'}</span>
-                        <span className="live-bus-status">
-                          <span className="live-pulse-dot" style={{ width: 6, height: 6 }}></span>
-                          LIVE
-                        </span>
-                      </div>
-                      <div className="live-bus-route">Route: {bus.bus_details?.route || 'Not assigned'}</div>
-                      <div className="live-bus-driver">
-                        Driver: {bus.bus_details?.drivers_new?.name || 'Unknown'}
-                      </div>
-                      <div className="live-bus-footer">
-                        <span className="live-bus-coords">
-                          {bus.latitude ? `${bus.latitude.toFixed(4)}, ${bus.longitude.toFixed(4)}` : 'No GPS'}
-                        </span>
-                        <span>{formatTimeAgo(bus.updated_at)}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            {/* LIVE BUSES SECTION - COMPLETELY REMOVED */}
 
             {/* Categories Section */}
             <div className="section-header-modern">
