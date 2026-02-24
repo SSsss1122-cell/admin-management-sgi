@@ -45,8 +45,7 @@ export default function StudentDashboard() {
     password: '',
     routes: '',
     email: '',
-    semester: '',
-    enrollment_year: ''
+    semester: ''
   });
 
   // Predefined routes with vibrant dark mode colors
@@ -177,8 +176,7 @@ export default function StudentDashboard() {
         password: newStudent.password || null,
         routes: newStudent.routes || null,
         email: newStudent.email || null,
-        semester: newStudent.semester || null,
-        enrollment_year: newStudent.enrollment_year || null
+        semester: newStudent.semester || null
       };
 
       const { data, error } = await supabase
@@ -198,8 +196,7 @@ export default function StudentDashboard() {
         password: '',
         routes: '',
         email: '',
-        semester: '',
-        enrollment_year: ''
+        semester: ''
       });
       setShowAddForm(false);
       fetchStudents();
@@ -233,8 +230,7 @@ export default function StudentDashboard() {
         phone: newStudent.phone || null,
         routes: newStudent.routes || null,
         email: newStudent.email || null,
-        semester: newStudent.semester || null,
-        enrollment_year: newStudent.enrollment_year || null
+        semester: newStudent.semester || null
       };
 
       // Only update password if it's provided (not empty)
@@ -260,8 +256,7 @@ export default function StudentDashboard() {
         password: '',
         routes: '',
         email: '',
-        semester: '',
-        enrollment_year: ''
+        semester: ''
       });
       fetchStudents();
     } catch (error) {
@@ -321,8 +316,7 @@ export default function StudentDashboard() {
       password: '', // Don't pre-fill password for security
       routes: student.routes || '',
       email: student.email || '',
-      semester: student.semester || '',
-      enrollment_year: student.enrollment_year || ''
+      semester: student.semester || ''
     });
   };
 
@@ -376,7 +370,7 @@ export default function StudentDashboard() {
   };
 
   const exportToCSV = () => {
-    const headers = ['USN', 'Name', 'Branch', 'Route', 'Phone', 'Email', 'Semester', 'Enrollment Year'];
+    const headers = ['USN', 'Name', 'Branch', 'Route', 'Phone', 'Email', 'Semester'];
     const data = filteredStudents.map(s => [
       s.usn,
       s.full_name,
@@ -384,8 +378,7 @@ export default function StudentDashboard() {
       getRouteName(s.routes),
       s.phone || '',
       s.email || '',
-      s.semester || '',
-      s.enrollment_year || ''
+      s.semester || ''
     ]);
     
     const csvContent = [headers, ...data]
@@ -785,42 +778,6 @@ export default function StudentDashboard() {
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                {/* Notification Bell */}
-                <div style={{ position: 'relative' }}>
-                  <button
-                    style={{
-                      width: 48,
-                      height: 48,
-                      borderRadius: 16,
-                      background: 'var(--bg-card)',
-                      border: '1px solid var(--border)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: 'pointer',
-                      color: 'var(--text-secondary)'
-                    }}
-                  >
-                    <Bell size={20} />
-                  </button>
-                  <span style={{
-                    position: 'absolute',
-                    top: -4,
-                    right: -4,
-                    width: 20,
-                    height: 20,
-                    background: '#ef4444',
-                    borderRadius: '50%',
-                    border: '2px solid var(--bg-primary)',
-                    fontSize: 11,
-                    color: 'white',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontWeight: 600
-                  }}>3</span>
-                </div>
-
                 {/* Admin Profile */}
                 <div style={{ 
                   display: 'flex', 
@@ -1159,6 +1116,7 @@ export default function StudentDashboard() {
                       <th style={{ padding: 16, textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Branch</th>
                       <th style={{ padding: 16, textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Route</th>
                       <th style={{ padding: 16, textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Contact</th>
+                      <th style={{ padding: 16, textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Semester</th>
                       <th style={{ padding: 16, textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Password</th>
                       <th style={{ padding: 16, textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Actions</th>
                     </tr>
@@ -1229,6 +1187,22 @@ export default function StudentDashboard() {
                               <Phone size={12} color="var(--text-muted)" />
                               <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>{student.phone}</span>
                             </div>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>
+                          )}
+                        </td>
+                        <td style={{ padding: 16, borderBottom: '1px solid var(--border)' }}>
+                          {student.semester ? (
+                            <span style={{ 
+                              background: 'rgba(139,92,246,0.1)', 
+                              color: '#8b5cf6', 
+                              padding: '4px 10px', 
+                              borderRadius: 20, 
+                              fontSize: 11, 
+                              fontWeight: 500 
+                            }}>
+                              Sem {student.semester}
+                            </span>
                           ) : (
                             <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>
                           )}
@@ -1406,8 +1380,8 @@ export default function StudentDashboard() {
                     )}
                     {student.semester && (
                       <span style={{ 
-                        background: 'rgba(255,255,255,0.05)', 
-                        color: 'var(--text-muted)', 
+                        background: 'rgba(139,92,246,0.1)', 
+                        color: '#8b5cf6', 
                         padding: '4px 12px', 
                         borderRadius: 20, 
                         fontSize: 11, 
@@ -1450,12 +1424,6 @@ export default function StudentDashboard() {
                           </button>
                         </div>
                       </div>
-                      {student.enrollment_year && (
-                        <div>
-                          <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Enrolled</p>
-                          <p style={{ fontSize: 13, color: 'var(--text-primary)' }}>{student.enrollment_year}</p>
-                        </div>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -1538,8 +1506,7 @@ export default function StudentDashboard() {
                     password: '',
                     routes: '',
                     email: '',
-                    semester: '',
-                    enrollment_year: ''
+                    semester: ''
                   });
                 }}
                 style={{
@@ -1744,30 +1711,6 @@ export default function StudentDashboard() {
                   />
                 </div>
 
-                {/* Enrollment Year */}
-                <div>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>Enrollment Year</label>
-                  <input
-                    type="text"
-                    value={newStudent.enrollment_year}
-                    onChange={(e) => setNewStudent(prev => ({ ...prev, enrollment_year: e.target.value }))}
-                    style={{
-                      width: '100%',
-                      padding: '12px 16px',
-                      border: '1px solid var(--border)',
-                      borderRadius: 16,
-                      fontSize: 14,
-                      outline: 'none',
-                      transition: 'all 0.2s ease',
-                      background: 'var(--bg-primary)',
-                      color: 'var(--text-primary)'
-                    }}
-                    onFocus={(e) => e.target.style.borderColor = '#6366f1'}
-                    onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
-                    placeholder="e.g., 2024"
-                  />
-                </div>
-
                 {/* Route */}
                 <div style={{ gridColumn: 'span 2' }}>
                   <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>Bus Route</label>
@@ -1843,8 +1786,7 @@ export default function StudentDashboard() {
                       password: '',
                       routes: '',
                       email: '',
-                      semester: '',
-                      enrollment_year: ''
+                      semester: ''
                     });
                   }}
                   className="action-button"

@@ -22,7 +22,11 @@ import {
   Fuel,
   Settings,
   MapPin,
-  Info
+  Info,
+  Edit,
+  Trash2,
+  Save,
+  X
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import withAuth from '../../components/withAuth';
@@ -34,6 +38,23 @@ function BusDetails() {
   const [expandedBus, setExpandedBus] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentTime, setCurrentTime] = useState('');
+  const [editingBus, setEditingBus] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+  const [editFormData, setEditFormData] = useState({
+    bus_number: '',
+    route_name: '',
+    puc_expiry: '',
+    insurance_expiry: '',
+    fitness_expiry: '',
+    permit_expiry: '',
+    current_km: '',
+    last_service_date: '',
+    last_service_km: '',
+    next_service_due: '',
+    next_service_km: '',
+    remarks: ''
+  });
 
   const router = useRouter();
 
@@ -50,7 +71,20 @@ function BusDetails() {
     return () => clearInterval(timer);
   }, []);
 
-  // 🔥 SIMPLIFIED: Fetch only bus details (no driver info)
+  // Auto-hide toast after 3 seconds
+  useEffect(() => {
+    if (toast.show) {
+      const timer = setTimeout(() => {
+        setToast({ show: false, message: '', type: 'success' });
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast.show]);
+
+  const showToast = (message, type = 'success') => {
+    setToast({ show: true, message, type });
+  };
+
   const fetchBuses = async () => {
     try {
       setLoading(true);
@@ -163,6 +197,13 @@ function BusDetails() {
     });
   };
 
+  // Function to format date for input
+  const formatDateForInput = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toISOString().split('T')[0];
+  };
+
   // Function to get service status
   const getServiceInfo = (nextServiceDate, currentKm, nextServiceKm) => {
     if (!nextServiceDate && !nextServiceKm) {
@@ -252,6 +293,89 @@ function BusDetails() {
   const dueForServiceCount = buses.filter(bus => 
     getServiceInfo(bus.next_service_due, bus.current_km, bus.next_service_km).status !== 'valid'
   ).length;
+
+  // NEW: Delete bus function
+  const deleteBus = async (busId, busNumber) => {
+    if (!window.confirm(`⚠️ Are you sure you want to delete Bus ${busNumber}?\n\nThis action cannot be undone.`)) return;
+    
+    try {
+      const { error } = await supabase
+        .from('buses')
+        .delete()
+        .eq('id', busId);
+
+      if (error) throw error;
+
+      showToast(`Bus ${busNumber} deleted successfully!`, 'success');
+      fetchBuses(); // Refresh the list
+    } catch (error) {
+      console.error('Error deleting bus:', error);
+      showToast('Error deleting bus: ' + error.message, 'error');
+    }
+  };
+
+  // NEW: Open edit modal
+  const openEditModal = (bus) => {
+    setEditingBus(bus);
+    setEditFormData({
+      bus_number: bus.bus_number || '',
+      route_name: bus.route_name || '',
+      puc_expiry: formatDateForInput(bus.puc_expiry) || '',
+      insurance_expiry: formatDateForInput(bus.insurance_expiry) || '',
+      fitness_expiry: formatDateForInput(bus.fitness_expiry) || '',
+      permit_expiry: formatDateForInput(bus.permit_expiry) || '',
+      current_km: bus.current_km || '',
+      last_service_date: formatDateForInput(bus.last_service_date) || '',
+      last_service_km: bus.last_service_km || '',
+      next_service_due: formatDateForInput(bus.next_service_due) || '',
+      next_service_km: bus.next_service_km || '',
+      remarks: bus.remarks || ''
+    });
+    setShowEditModal(true);
+  };
+
+  // NEW: Handle edit form input changes
+  const handleEditInputChange = (e) => {
+    const { name, value } = e.target;
+    setEditFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  // NEW: Save edited bus
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    
+    try {
+      const updateData = {
+        bus_number: editFormData.bus_number,
+        route_name: editFormData.route_name || null,
+        puc_expiry: editFormData.puc_expiry || null,
+        insurance_expiry: editFormData.insurance_expiry || null,
+        fitness_expiry: editFormData.fitness_expiry || null,
+        permit_expiry: editFormData.permit_expiry || null,
+        current_km: editFormData.current_km || null,
+        last_service_date: editFormData.last_service_date || null,
+        last_service_km: editFormData.last_service_km || null,
+        next_service_due: editFormData.next_service_due || null,
+        next_service_km: editFormData.next_service_km || null,
+        remarks: editFormData.remarks || null
+      };
+
+      const { error } = await supabase
+        .from('buses')
+        .update(updateData)
+        .eq('id', editingBus.id);
+
+      if (error) throw error;
+
+      showToast(`Bus ${editFormData.bus_number} updated successfully!`, 'success');
+      setShowEditModal(false);
+      setEditingBus(null);
+      fetchBuses(); // Refresh the list
+    } catch (error) {
+      console.error('Error updating bus:', error);
+      showToast('Error updating bus: ' + error.message, 'error');
+    }
+  };
 
   if (loading) {
     return (
@@ -382,6 +506,11 @@ function BusDetails() {
           to { transform: translateX(0); opacity: 1; }
         }
         
+        @keyframes scaleIn {
+          from { transform: scale(0.95); opacity: 0; }
+          to { transform: scale(1); opacity: 1; }
+        }
+        
         @keyframes float {
           0%,100% { transform: translateY(0px); }
           50% { transform: translateY(-5px); }
@@ -393,6 +522,8 @@ function BusDetails() {
         }
         
         .animate-fade-in { animation: fadeIn 0.3s ease forwards; }
+        .animate-slide-in { animation: slideIn 0.3s ease forwards; }
+        .animate-scale-in { animation: scaleIn 0.2s ease forwards; }
         .animate-float { animation: float 3s ease-in-out infinite; }
         
         .glass-effect {
@@ -502,19 +633,6 @@ function BusDetails() {
           background: rgba(249,115,22,0.05);
         }
         
-        .table-header {
-          background: rgba(22, 22, 42, 0.95);
-          border-bottom: 1px solid var(--border);
-        }
-        
-        .table-row {
-          transition: all 0.2s ease;
-        }
-        
-        .table-row:hover {
-          background: rgba(249,115,22,0.05);
-        }
-        
         .action-button {
           background: var(--bg-card);
           border: 1px solid var(--border);
@@ -547,6 +665,28 @@ function BusDetails() {
           box-shadow: 0 10px 25px -5px #f97316;
         }
         
+        .action-button.edit {
+          background: rgba(59, 130, 246, 0.1);
+          color: #3b82f6;
+          border: 1px solid rgba(59, 130, 246, 0.2);
+        }
+        
+        .action-button.edit:hover {
+          background: rgba(59, 130, 246, 0.2);
+          border-color: rgba(59, 130, 246, 0.4);
+        }
+        
+        .action-button.delete {
+          background: rgba(239, 68, 68, 0.1);
+          color: #ef4444;
+          border: 1px solid rgba(239, 68, 68, 0.2);
+        }
+        
+        .action-button.delete:hover {
+          background: rgba(239, 68, 68, 0.2);
+          border-color: rgba(239, 68, 68, 0.4);
+        }
+        
         .document-grid {
           display: grid;
           grid-template-columns: repeat(2, 1fr);
@@ -561,11 +701,468 @@ function BusDetails() {
           text-align: center;
         }
         
+        .modal-backdrop {
+          position: fixed;
+          inset: 0;
+          background: rgba(0,0,0,0.8);
+          backdrop-filter: blur(8px);
+          z-index: 1000;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 16px;
+        }
+        
+        .modal-content {
+          background: var(--bg-secondary);
+          border: 1px solid var(--border);
+          border-radius: 32px;
+          box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+          max-width: 800px;
+          width: 100%;
+          max-height: 90vh;
+          overflow-y: auto;
+          animation: scaleIn 0.2s ease;
+        }
+        
+        .toast-success {
+          background: #10b981;
+          color: white;
+        }
+        
+        .toast-error {
+          background: #ef4444;
+          color: white;
+        }
+        
         @media (max-width: 768px) {
           .stat-card { padding: 16px; }
           .bus-card { margin-bottom: 12px; }
         }
       `}</style>
+
+      {/* Toast Notification */}
+      {toast.show && (
+        <div style={{
+          position: 'fixed',
+          top: 20,
+          right: 20,
+          zIndex: 1100,
+          animation: 'slideIn 0.3s ease'
+        }}>
+          <div style={{
+            background: toast.type === 'success' ? '#10b981' : '#ef4444',
+            color: 'white',
+            padding: '14px 24px',
+            borderRadius: 16,
+            boxShadow: '0 10px 25px rgba(0,0,0,0.3)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            minWidth: 320,
+            border: '1px solid rgba(255,255,255,0.1)'
+          }}>
+            {toast.type === 'success' ? <AlertTriangle size={20} /> : <AlertTriangle size={20} />}
+            <span style={{ flex: 1, fontSize: 14, fontWeight: 500 }}>{toast.message}</span>
+            <button
+              onClick={() => setToast({ show: false, message: '', type: 'success' })}
+              style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer' }}
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {showEditModal && (
+        <div className="modal-backdrop">
+          <div className="modal-content">
+            {/* Modal Header */}
+            <div style={{
+              padding: 24,
+              borderBottom: '1px solid var(--border)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <div>
+                <h3 style={{ fontSize: 24, fontWeight: 700, color: '#f97316', margin: 0 }}>
+                  Edit Bus {editingBus?.bus_number}
+                </h3>
+                <p style={{ fontSize: 14, color: 'var(--text-muted)', marginTop: 4 }}>
+                  Update bus details and documents
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowEditModal(false);
+                  setEditingBus(null);
+                }}
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 12,
+                  border: '1px solid var(--border)',
+                  background: 'var(--bg-card)',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'var(--bg-card-hover)';
+                  e.currentTarget.style.color = '#ef4444';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'var(--bg-card)';
+                  e.currentTarget.style.color = 'var(--text-muted)';
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit} style={{ padding: 24 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
+                {/* Basic Info */}
+                <div style={{ gridColumn: 'span 2' }}>
+                  <h4 style={{ fontSize: 16, fontWeight: 600, color: '#f97316', marginBottom: 12 }}>Basic Information</h4>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>
+                    Bus Number <span style={{ color: '#ef4444' }}>*</span>
+                  </label>
+                  <input
+                    type="text"
+                    name="bus_number"
+                    required
+                    value={editFormData.bus_number}
+                    onChange={handleEditInputChange}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      border: '1px solid var(--border)',
+                      borderRadius: 12,
+                      fontSize: 14,
+                      outline: 'none',
+                      transition: 'all 0.2s ease',
+                      background: 'var(--bg-primary)',
+                      color: 'var(--text-primary)'
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = '#f97316'}
+                    onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+                    placeholder="e.g., KA01AB1234"
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>Route Name</label>
+                  <input
+                    type="text"
+                    name="route_name"
+                    value={editFormData.route_name}
+                    onChange={handleEditInputChange}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      border: '1px solid var(--border)',
+                      borderRadius: 12,
+                      fontSize: 14,
+                      outline: 'none',
+                      transition: 'all 0.2s ease',
+                      background: 'var(--bg-primary)',
+                      color: 'var(--text-primary)'
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = '#f97316'}
+                    onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+                    placeholder="e.g., Route 1 - Amritsar"
+                  />
+                </div>
+
+                {/* Documents Section */}
+                <div style={{ gridColumn: 'span 2', marginTop: 8 }}>
+                  <h4 style={{ fontSize: 16, fontWeight: 600, color: '#f97316', marginBottom: 12 }}>Document Expiry Dates</h4>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>PUC Expiry</label>
+                  <input
+                    type="date"
+                    name="puc_expiry"
+                    value={editFormData.puc_expiry}
+                    onChange={handleEditInputChange}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      border: '1px solid var(--border)',
+                      borderRadius: 12,
+                      fontSize: 14,
+                      outline: 'none',
+                      transition: 'all 0.2s ease',
+                      background: 'var(--bg-primary)',
+                      color: 'var(--text-primary)'
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = '#f97316'}
+                    onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>Insurance Expiry</label>
+                  <input
+                    type="date"
+                    name="insurance_expiry"
+                    value={editFormData.insurance_expiry}
+                    onChange={handleEditInputChange}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      border: '1px solid var(--border)',
+                      borderRadius: 12,
+                      fontSize: 14,
+                      outline: 'none',
+                      transition: 'all 0.2s ease',
+                      background: 'var(--bg-primary)',
+                      color: 'var(--text-primary)'
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = '#f97316'}
+                    onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>Fitness Expiry</label>
+                  <input
+                    type="date"
+                    name="fitness_expiry"
+                    value={editFormData.fitness_expiry}
+                    onChange={handleEditInputChange}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      border: '1px solid var(--border)',
+                      borderRadius: 12,
+                      fontSize: 14,
+                      outline: 'none',
+                      transition: 'all 0.2s ease',
+                      background: 'var(--bg-primary)',
+                      color: 'var(--text-primary)'
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = '#f97316'}
+                    onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>Permit Expiry</label>
+                  <input
+                    type="date"
+                    name="permit_expiry"
+                    value={editFormData.permit_expiry}
+                    onChange={handleEditInputChange}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      border: '1px solid var(--border)',
+                      borderRadius: 12,
+                      fontSize: 14,
+                      outline: 'none',
+                      transition: 'all 0.2s ease',
+                      background: 'var(--bg-primary)',
+                      color: 'var(--text-primary)'
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = '#f97316'}
+                    onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+                  />
+                </div>
+
+                {/* Service Section */}
+                <div style={{ gridColumn: 'span 2', marginTop: 8 }}>
+                  <h4 style={{ fontSize: 16, fontWeight: 600, color: '#f97316', marginBottom: 12 }}>Service Information</h4>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>Current KM</label>
+                  <input
+                    type="number"
+                    name="current_km"
+                    value={editFormData.current_km}
+                    onChange={handleEditInputChange}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      border: '1px solid var(--border)',
+                      borderRadius: 12,
+                      fontSize: 14,
+                      outline: 'none',
+                      transition: 'all 0.2s ease',
+                      background: 'var(--bg-primary)',
+                      color: 'var(--text-primary)'
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = '#f97316'}
+                    onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+                    placeholder="e.g., 15000"
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>Last Service Date</label>
+                  <input
+                    type="date"
+                    name="last_service_date"
+                    value={editFormData.last_service_date}
+                    onChange={handleEditInputChange}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      border: '1px solid var(--border)',
+                      borderRadius: 12,
+                      fontSize: 14,
+                      outline: 'none',
+                      transition: 'all 0.2s ease',
+                      background: 'var(--bg-primary)',
+                      color: 'var(--text-primary)'
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = '#f97316'}
+                    onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>Last Service KM</label>
+                  <input
+                    type="number"
+                    name="last_service_km"
+                    value={editFormData.last_service_km}
+                    onChange={handleEditInputChange}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      border: '1px solid var(--border)',
+                      borderRadius: 12,
+                      fontSize: 14,
+                      outline: 'none',
+                      transition: 'all 0.2s ease',
+                      background: 'var(--bg-primary)',
+                      color: 'var(--text-primary)'
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = '#f97316'}
+                    onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+                    placeholder="e.g., 14500"
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>Next Service Due Date</label>
+                  <input
+                    type="date"
+                    name="next_service_due"
+                    value={editFormData.next_service_due}
+                    onChange={handleEditInputChange}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      border: '1px solid var(--border)',
+                      borderRadius: 12,
+                      fontSize: 14,
+                      outline: 'none',
+                      transition: 'all 0.2s ease',
+                      background: 'var(--bg-primary)',
+                      color: 'var(--text-primary)'
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = '#f97316'}
+                    onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>Next Service Due KM</label>
+                  <input
+                    type="number"
+                    name="next_service_km"
+                    value={editFormData.next_service_km}
+                    onChange={handleEditInputChange}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      border: '1px solid var(--border)',
+                      borderRadius: 12,
+                      fontSize: 14,
+                      outline: 'none',
+                      transition: 'all 0.2s ease',
+                      background: 'var(--bg-primary)',
+                      color: 'var(--text-primary)'
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = '#f97316'}
+                    onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+                    placeholder="e.g., 20000"
+                  />
+                </div>
+
+                {/* Remarks */}
+                <div style={{ gridColumn: 'span 2' }}>
+                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>Remarks</label>
+                  <textarea
+                    name="remarks"
+                    value={editFormData.remarks}
+                    onChange={handleEditInputChange}
+                    rows="3"
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      border: '1px solid var(--border)',
+                      borderRadius: 12,
+                      fontSize: 14,
+                      outline: 'none',
+                      transition: 'all 0.2s ease',
+                      background: 'var(--bg-primary)',
+                      color: 'var(--text-primary)',
+                      resize: 'vertical'
+                    }}
+                    onFocus={(e) => e.target.style.borderColor = '#f97316'}
+                    onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+                    placeholder="Any additional notes or remarks..."
+                  />
+                </div>
+              </div>
+
+              {/* Form Actions */}
+              <div style={{
+                marginTop: 24,
+                paddingTop: 20,
+                borderTop: '1px solid var(--border)',
+                display: 'flex',
+                justifyContent: 'flex-end',
+                gap: 12
+              }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditModal(false);
+                    setEditingBus(null);
+                  }}
+                  className="action-button"
+                  style={{ padding: '12px 24px' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="action-button primary"
+                  style={{ padding: '12px 24px' }}
+                >
+                  <Save size={16} style={{ marginRight: 6 }} />
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <div style={{ 
         minHeight: '100vh', 
@@ -891,6 +1488,32 @@ function BusDetails() {
                     {/* Expandable Content */}
                     {expandedBus === bus.id && (
                       <div style={{ padding: 16 }}>
+                        {/* Action Buttons */}
+                        <div style={{ 
+                          display: 'flex', 
+                          gap: 8, 
+                          marginBottom: 16,
+                          paddingBottom: 16,
+                          borderBottom: '1px solid var(--border)'
+                        }}>
+                          <button
+                            onClick={() => openEditModal(bus)}
+                            className="action-button edit"
+                            style={{ padding: '8px 16px' }}
+                          >
+                            <Edit size={14} />
+                            <span>Edit</span>
+                          </button>
+                          <button
+                            onClick={() => deleteBus(bus.id, bus.bus_number)}
+                            className="action-button delete"
+                            style={{ padding: '8px 16px' }}
+                          >
+                            <Trash2 size={14} />
+                            <span>Delete</span>
+                          </button>
+                        </div>
+
                         {/* Document Expiry */}
                         <div style={{ marginBottom: 16 }}>
                           <h4 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 12 }}>
