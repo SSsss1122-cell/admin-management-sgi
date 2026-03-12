@@ -10,7 +10,7 @@ import {
   TrendingUp, Shield, Activity, Zap, BarChart3, Clock,
   Award, Calendar, CheckCircle, XCircle, Download, RefreshCw,
   Settings, HelpCircle, Moon, Sun, Filter, MoreVertical,
-  Navigation, Radio, Wifi, WifiOff
+  Navigation, Radio, Wifi, WifiOff, BookOpen
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
@@ -26,14 +26,18 @@ function HomePage() {
     expiringDocuments: 0,
     liveBuses: 0
   });
+  const [tripStats, setTripStats] = useState({
+    totalTrips: 0,
+    activeTrips: 0,
+    morningTrips: 0,
+    eveningTrips: 0,
+    otherTrips: 0
+  });
   const [loading, setLoading] = useState(true);
   const [adminName, setAdminName] = useState('');
   const [currentTime, setCurrentTime] = useState('');
   const [notifications, setNotifications] = useState(0);
   const [recentActivities, setRecentActivities] = useState([]);
-  const [activeSessions, setActiveSessions] = useState(0);
-  const [pendingApprovals, setPendingApprovals] = useState(0);
-  const [systemLoad, setSystemLoad] = useState(0);
   const router = useRouter();
 
   useEffect(() => {
@@ -48,7 +52,7 @@ function HomePage() {
     updateTime();
     const timer = setInterval(updateTime, 1000);
     
-    // Refresh data every 30 seconds to update live bus count
+    // Refresh data every 30 seconds
     const refreshInterval = setInterval(fetchDashboardData, 30000);
     
     return () => {
@@ -68,7 +72,8 @@ function HomePage() {
         announcementsData,
         noticesData,
         feesData,
-        busLocationsData
+        busLocationsData,
+        tripsData
       ] = await Promise.all([
         supabase.from('students').select('*'),
         supabase.from('buses').select('*'),
@@ -77,7 +82,8 @@ function HomePage() {
         supabase.from('announcements').select('*').order('created_at', { ascending: false }).limit(3),
         supabase.from('notices').select('*').order('created_at', { ascending: false }).limit(3),
         supabase.from('fees').select('*'),
-        supabase.from('bus_locations').select('*').gte('updated_at', new Date(Date.now() - 5*60000).toISOString())
+        supabase.from('bus_locations').select('*').gte('updated_at', new Date(Date.now() - 5*60000).toISOString()),
+        supabase.from('driver_trips').select('*').order('start_time', { ascending: false })
       ]);
 
       // Calculate statistics
@@ -107,10 +113,9 @@ function HomePage() {
         });
       }).length || 0;
 
-      // FIXED: Calculate live buses (unique buses with location updates in last 5 minutes)
+      // Calculate live buses (unique buses with location updates in last 5 minutes)
       let liveBusesCount = 0;
       if (busLocationsData.data && busLocationsData.data.length > 0) {
-        // Get unique bus IDs to count each bus only once
         const uniqueBusIds = new Set();
         busLocationsData.data.forEach(location => {
           if (location.bus_id) {
@@ -118,12 +123,23 @@ function HomePage() {
           }
         });
         liveBusesCount = uniqueBusIds.size;
-        console.log(`Found ${busLocationsData.data.length} location records from ${liveBusesCount} unique buses`);
-      } else {
-        liveBusesCount = 0;
       }
 
-      // Set stats with fixed live buses count
+      // Calculate trip statistics
+      const trips = tripsData.data || [];
+      const activeTrips = trips.filter(t => !t.end_time).length;
+      const morningTrips = trips.filter(t => t.trip_type === 'morning').length;
+      const eveningTrips = trips.filter(t => t.trip_type === 'evening').length;
+      const otherTrips = trips.filter(t => t.trip_type === 'other').length;
+
+      setTripStats({
+        totalTrips: trips.length,
+        activeTrips,
+        morningTrips,
+        eveningTrips,
+        otherTrips
+      });
+
       setStats({ 
         totalStudents, 
         activeBuses: totalBuses, 
@@ -133,14 +149,24 @@ function HomePage() {
         totalBuses, 
         busesWithDriver, 
         expiringDocuments,
-        liveBuses: liveBusesCount // This now counts unique buses, not packets
+        liveBuses: liveBusesCount
       });
 
-      // Set notifications count (expiring documents + unread complaints)
-      setNotifications(expiringDocuments + dailyComplaints);
+      setNotifications(expiringDocuments + dailyComplaints + activeTrips);
 
       // Create recent activities from real data
       const activities = [];
+
+      // Add active trips to activities
+      trips.filter(t => !t.end_time).slice(0, 3).forEach(trip => {
+        activities.push({
+          action: `Active trip: ${trip.trip_type || 'Unknown'} trip`,
+          user: `Driver #${trip.driver_id?.substring(0, 8)} on Bus #${trip.bus_id}`,
+          time: formatTimeAgo(trip.start_time),
+          type: 'trip',
+          status: 'success'
+        });
+      });
 
       // Add complaint activities
       complaintsData.data?.slice(0, 3).forEach(complaint => {
@@ -256,11 +282,6 @@ function HomePage() {
 
       setRecentActivities(sortedActivities);
 
-      // Calculate additional stats
-      setActiveSessions(Math.floor(Math.random() * 500) + 1000);
-      setPendingApprovals(Math.floor(Math.random() * 30) + 10);
-      setSystemLoad(Math.floor(Math.random() * 30) + 40);
-
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
     } finally {
@@ -314,69 +335,13 @@ function HomePage() {
     { id: 'student-dashboard', name: 'Student Dashboard', description: 'Comprehensive student analytics and performance metrics', icon: Users, href: '/dashboard', accent: '#6366f1', gradient: 'from-indigo-500 to-blue-600', tag: 'Analytics', metrics: `${stats.totalStudents} students` },
     { id: 'drivers', name: 'Drivers Management', description: 'Complete driver oversight with license tracking', icon: Truck, href: '/drivers', accent: '#f59e0b', gradient: 'from-amber-500 to-orange-600', tag: 'Fleet Ops', metrics: `${stats.totalDrivers} drivers` },
     { id: 'buses', name: 'Bus Management', description: 'Fleet maintenance, documents, and scheduling', icon: Bus, href: '/buses', accent: '#10b981', gradient: 'from-emerald-500 to-teal-600', tag: 'Fleet', metrics: `${stats.totalBuses} vehicles` },
+    { id: 'bus-trips', name: 'Bus Trips', description: 'Track driver trips, attendance, and trip history', icon: BookOpen, href: '/bus-trips', accent: '#8b5cf6', gradient: 'from-violet-500 to-purple-600', tag: 'Trips', metrics: `${tripStats.activeTrips} active` },
     { id: 'fees', name: 'Fees Management', description: 'Real-time payment tracking and financial insights', icon: CreditCard, href: '/fees', accent: '#3b82f6', gradient: 'from-blue-500 to-cyan-600', tag: 'Finance', metrics: 'Track payments' },
     { id: 'bus-locations', name: 'Live Tracking', description: 'Real-time GPS tracking and route optimization', icon: MapPin, href: '/bus-locations', accent: '#ef4444', gradient: 'from-rose-500 to-pink-600', tag: 'Live', metrics: `${stats.liveBuses} live now` },
     { id: 'bus-details', name: 'Bus Details', description: 'Vehicle specifications and route information', icon: Bus, href: '/bus-details', accent: '#8b5cf6', gradient: 'from-violet-500 to-purple-600', tag: 'Info', metrics: `${stats.totalBuses} buses` },
     { id: 'complaints', name: 'Complaints Hub', description: 'Issue tracking and resolution management', icon: AlertTriangle, href: '/complaints', accent: '#f97316', gradient: 'from-orange-500 to-red-600', tag: 'Support', metrics: `${stats.dailyComplaints} today` },
     { id: 'announcements', name: 'Announcements', description: 'Broadcast messages to students and staff', icon: Megaphone, href: '/announcements', accent: '#ec4899', gradient: 'from-pink-500 to-rose-600', tag: 'Comms', metrics: 'Manage' },
     { id: 'notices', name: 'Notices', description: 'Official circulars and important updates', icon: Bell, href: '/notices', accent: '#14b8a6', gradient: 'from-teal-500 to-cyan-600', tag: 'Comms', metrics: 'View all' },
-  ];
-
-  const quickStats = [
-    { 
-      label: 'Total Students', 
-      value: stats.totalStudents, 
-      icon: Users, 
-      accent: '#6366f1', 
-      change: stats.totalStudents > 0 ? `${Math.round((stats.totalStudents / 1000) * 10) / 10}k total` : '0', 
-      trend: 'stable', 
-      secondary: 'active enrollment' 
-    },
-    { 
-      label: 'Live Buses', 
-      value: stats.liveBuses, 
-      icon: Radio, 
-      accent: '#10b981', 
-      change: stats.liveBuses > 0 ? '🔴 LIVE' : 'No active buses', 
-      trend: stats.liveBuses > 0 ? 'up' : 'stable', 
-      secondary: stats.liveBuses > 0 ? `${stats.liveBuses} on road` : 'all stationary' 
-    },
-    { 
-      label: 'Total Drivers', 
-      value: stats.totalDrivers, 
-      icon: Truck, 
-      accent: '#f59e0b', 
-      change: `${stats.busesWithDriver} assigned`, 
-      trend: 'info', 
-      secondary: `${stats.totalDrivers - stats.busesWithDriver} unassigned` 
-    },
-    { 
-      label: 'Expiring Documents', 
-      value: stats.expiringDocuments, 
-      icon: Shield, 
-      accent: '#ef4444', 
-      change: stats.expiringDocuments > 0 ? '⚠️ Action needed' : 'All valid', 
-      trend: stats.expiringDocuments > 0 ? 'down' : 'stable', 
-      secondary: stats.expiringDocuments > 0 ? 'within 30 days' : 'no expirations' 
-    },
-    { 
-      label: "Today's Complaints", 
-      value: stats.dailyComplaints, 
-      icon: Activity, 
-      accent: '#f97316', 
-      change: stats.dailyComplaints > 0 ? `${stats.dailyComplaints} new` : 'No new', 
-      trend: stats.dailyComplaints > 0 ? 'up' : 'down', 
-      secondary: stats.dailyComplaints > 0 ? 'pending review' : 'all clear' 
-    },
-    { 
-      label: 'Total Buses', 
-      value: stats.totalBuses, 
-      icon: Bus, 
-      accent: '#8b5cf6', 
-      change: `${stats.totalBuses} in fleet`, 
-      trend: 'info', 
-      secondary: `${stats.totalBuses - stats.liveBuses} parked` 
-    },
   ];
 
   if (loading) {
@@ -859,144 +824,6 @@ function HomePage() {
           box-shadow: var(--shadow-lg);
         }
         
-        /* Stats Grid */
-        .stats-grid {
-          display: grid;
-          grid-template-columns: repeat(6, 1fr);
-          gap: 20px;
-          margin-bottom: 48px;
-          animation: fadeUp 0.6s ease 0.1s both;
-        }
-        
-        @media (max-width: 1400px) { .stats-grid { grid-template-columns: repeat(3, 1fr); } }
-        @media (max-width: 768px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
-        
-        .stat-card-modern {
-          background: rgba(22, 22, 42, 0.6);
-          backdrop-filter: blur(12px);
-          border: 1px solid rgba(255, 255, 255, 0.05);
-          border-radius: 24px;
-          padding: 24px;
-          transition: all 0.3s ease;
-          position: relative;
-          overflow: hidden;
-        }
-        
-        .stat-card-modern::before {
-          content: '';
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          height: 2px;
-          background: linear-gradient(90deg, transparent, var(--stat-color), transparent);
-          opacity: 0;
-          transition: opacity 0.3s ease;
-        }
-        
-        .stat-card-modern:hover {
-          transform: translateY(-5px);
-          background: rgba(28, 28, 52, 0.8);
-          border-color: rgba(255, 255, 255, 0.1);
-          box-shadow: var(--shadow-lg);
-        }
-        
-        .stat-card-modern:hover::before {
-          opacity: 1;
-        }
-        
-        .stat-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          margin-bottom: 16px;
-        }
-        
-        .stat-icon-modern {
-          width: 48px;
-          height: 48px;
-          border-radius: 16px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: rgba(255, 255, 255, 0.03);
-          border: 1px solid rgba(255, 255, 255, 0.05);
-          position: relative;
-        }
-        
-        .live-badge {
-          position: absolute;
-          top: -4px;
-          right: -4px;
-          width: 12px;
-          height: 12px;
-          background: #10b981;
-          border-radius: 50%;
-          border: 2px solid var(--bg-card);
-          animation: pulse 1.5s ease infinite;
-        }
-        
-        .stat-trend {
-          display: flex;
-          align-items: center;
-          gap: 4px;
-          padding: 4px 8px;
-          border-radius: 20px;
-          font-size: 11px;
-          font-weight: 600;
-        }
-        
-        .stat-trend.up {
-          background: rgba(16, 185, 129, 0.1);
-          color: #10b981;
-        }
-        
-        .stat-trend.down {
-          background: rgba(239, 68, 68, 0.1);
-          color: #ef4444;
-        }
-        
-        .stat-trend.stable {
-          background: rgba(99, 102, 241, 0.1);
-          color: #6366f1;
-        }
-        
-        .stat-value-modern {
-          font-size: 36px;
-          font-weight: 700;
-          letter-spacing: -1px;
-          line-height: 1;
-          margin-bottom: 8px;
-          font-family: 'JetBrains Mono', monospace;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-        
-        .live-value-badge {
-          font-size: 12px;
-          font-weight: 600;
-          padding: 2px 8px;
-          background: rgba(16, 185, 129, 0.15);
-          border: 1px solid rgba(16, 185, 129, 0.3);
-          border-radius: 20px;
-          color: #10b981;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-        }
-        
-        .stat-label-modern {
-          font-size: 13px;
-          color: var(--text-secondary);
-          font-weight: 500;
-        }
-        
-        .stat-secondary {
-          font-size: 11px;
-          color: var(--text-muted);
-          margin-top: 12px;
-        }
-        
         /* Section Header */
         .section-header-modern {
           display: flex;
@@ -1197,13 +1024,77 @@ function HomePage() {
           gap: 12px;
         }
         
+        /* Trip Stats Cards */
+        .trip-stats-grid {
+          display: grid;
+          grid-template-columns: repeat(5, 1fr);
+          gap: 20px;
+          margin-bottom: 48px;
+          animation: fadeUp 0.6s ease 0.3s both;
+        }
+        
+        @media (max-width: 1200px) { .trip-stats-grid { grid-template-columns: repeat(3, 1fr); } }
+        @media (max-width: 768px) { .trip-stats-grid { grid-template-columns: repeat(2, 1fr); } }
+        
+        .trip-stat-card {
+          background: rgba(22, 22, 42, 0.6);
+          backdrop-filter: blur(12px);
+          border: 1px solid rgba(255, 255, 255, 0.05);
+          border-radius: 20px;
+          padding: 20px;
+          transition: all 0.3s ease;
+        }
+        
+        .trip-stat-card:hover {
+          transform: translateY(-5px);
+          background: rgba(28, 28, 52, 0.8);
+          border-color: rgba(255, 255, 255, 0.1);
+        }
+        
+        .trip-stat-header {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          margin-bottom: 16px;
+        }
+        
+        .trip-stat-icon {
+          width: 48px;
+          height: 48px;
+          border-radius: 14px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        
+        .trip-stat-label {
+          font-size: 14px;
+          color: var(--text-secondary);
+          font-weight: 500;
+        }
+        
+        .trip-stat-value {
+          font-size: 32px;
+          font-weight: 700;
+          font-family: 'JetBrains Mono', monospace;
+          margin-bottom: 8px;
+        }
+        
+        .trip-stat-trend {
+          font-size: 12px;
+          color: var(--text-muted);
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+        
         /* Activity Grid */
         .activity-section {
           display: grid;
           grid-template-columns: 2fr 1fr;
           gap: 24px;
           margin-bottom: 48px;
-          animation: fadeUp 0.6s ease 0.3s both;
+          animation: fadeUp 0.6s ease 0.4s both;
         }
         
         @media (max-width: 1000px) { .activity-section { grid-template-columns: 1fr; } }
@@ -1322,7 +1213,7 @@ function HomePage() {
           display: grid;
           grid-template-columns: repeat(6, 1fr);
           gap: 16px;
-          animation: fadeUp 0.6s ease 0.4s both;
+          animation: fadeUp 0.6s ease 0.5s both;
         }
         
         @media (max-width: 1200px) { .quick-actions-grid { grid-template-columns: repeat(3, 1fr); } }
@@ -1480,7 +1371,7 @@ function HomePage() {
               </div>
 
               <div className="header-actions">
-                {/* Live Buses Indicator in Header - NOW SHOWS ACTUAL COUNT */}
+                {/* Live Buses Indicator */}
                 {stats.liveBuses > 0 && (
                   <div className="live-indicator">
                     <div className="live-pulse">
@@ -1567,41 +1458,7 @@ function HomePage() {
               </div>
             </div>
 
-            {/* Stats Grid - NOW SHOWS ACTUAL LIVE BUSES COUNT */}
-            <div className="stats-grid">
-              {quickStats.map((stat, i) => {
-                const Icon = stat.icon;
-                const isLiveStat = stat.label === 'Live Buses';
-                return (
-                  <div
-                    key={i}
-                    className="stat-card-modern"
-                    style={{ '--stat-color': stat.accent }}
-                  >
-                    <div className="stat-header">
-                      <div className="stat-icon-modern">
-                        <Icon size={20} style={{ color: stat.accent }} />
-                        {isLiveStat && stats.liveBuses > 0 && <div className="live-badge"></div>}
-                      </div>
-                      <div className={`stat-trend ${stat.trend}`}>
-                        <TrendingUp size={10} />
-                        {stat.change}
-                      </div>
-                    </div>
-                    <div className="stat-value-modern" style={{ color: stat.accent }}>
-                      {stat.value}
-                      {isLiveStat && stats.liveBuses > 0 && (
-                        <span className="live-value-badge">LIVE</span>
-                      )}
-                    </div>
-                    <div className="stat-label-modern">{stat.label}</div>
-                    <div className="stat-secondary">{stat.secondary}</div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Categories Section */}
+            {/* Categories Section - STARTS HERE (No stats grid above) */}
             <div className="section-header-modern">
               <div className="section-title-wrapper">
                 <div className="section-icon">
@@ -1627,6 +1484,7 @@ function HomePage() {
               {categories.map((cat, i) => {
                 const Icon = cat.icon;
                 const isLiveModule = cat.id === 'bus-locations';
+                const isTripsModule = cat.id === 'bus-trips';
                 return (
                   <Link
                     key={cat.id}
@@ -1651,6 +1509,9 @@ function HomePage() {
                         {isLiveModule && stats.liveBuses > 0 && (
                           <div style={{ position: 'absolute', top: -2, right: -2, width: 12, height: 12, background: '#10b981', borderRadius: '50%', border: '2px solid var(--bg-card)' }}></div>
                         )}
+                        {isTripsModule && tripStats.activeTrips > 0 && (
+                          <div style={{ position: 'absolute', top: -2, right: -2, width: 12, height: 12, background: '#8b5cf6', borderRadius: '50%', border: '2px solid var(--bg-card)' }}></div>
+                        )}
                       </div>
                       <span className="category-tag">{cat.tag}</span>
                     </div>
@@ -1658,6 +1519,9 @@ function HomePage() {
                       {cat.name}
                       {isLiveModule && stats.liveBuses > 0 && (
                         <span style={{ marginLeft: 8, fontSize: 11, background: 'rgba(16,185,129,0.15)', color: '#10b981', padding: '2px 8px', borderRadius: 20 }}>{stats.liveBuses} LIVE</span>
+                      )}
+                      {isTripsModule && tripStats.activeTrips > 0 && (
+                        <span style={{ marginLeft: 8, fontSize: 11, background: 'rgba(139,92,246,0.15)', color: '#8b5cf6', padding: '2px 8px', borderRadius: 20 }}>{tripStats.activeTrips} ACTIVE</span>
                       )}
                     </h3>
                     <p className="category-description">{cat.description}</p>
@@ -1676,6 +1540,84 @@ function HomePage() {
               })}
             </div>
 
+            {/* Trip Stats Section */}
+            <div className="section-header-modern">
+              <div className="section-title-wrapper">
+                <div className="section-icon">
+                  <BookOpen size={20} color="#8b5cf6" />
+                </div>
+                <div>
+                  <h2 className="section-title-modern">Trip Overview</h2>
+                  <div className="section-subtitle">Real-time driver trip statistics</div>
+                </div>
+              </div>
+              <div className="section-actions">
+                <Link href="/bus-trips" className="section-action-btn">
+                  View All Trips
+                  <ChevronRight size={14} />
+                </Link>
+              </div>
+            </div>
+
+            <div className="trip-stats-grid">
+              <div className="trip-stat-card">
+                <div className="trip-stat-header">
+                  <div className="trip-stat-icon" style={{ background: 'rgba(139,92,246,0.1)' }}>
+                    <BookOpen size={20} color="#8b5cf6" />
+                  </div>
+                  <div className="trip-stat-label">Total Trips</div>
+                </div>
+                <div className="trip-stat-value" style={{ color: '#8b5cf6' }}>{tripStats.totalTrips}</div>
+                <div className="trip-stat-trend">All time</div>
+              </div>
+
+              <div className="trip-stat-card">
+                <div className="trip-stat-header">
+                  <div className="trip-stat-icon" style={{ background: 'rgba(16,185,129,0.1)' }}>
+                    <Activity size={20} color="#10b981" />
+                  </div>
+                  <div className="trip-stat-label">Active Trips</div>
+                </div>
+                <div className="trip-stat-value" style={{ color: '#10b981' }}>{tripStats.activeTrips}</div>
+                <div className="trip-stat-trend">
+                  <span style={{ color: '#10b981' }}>● {tripStats.activeTrips > 0 ? 'Live now' : 'No active trips'}</span>
+                </div>
+              </div>
+
+              <div className="trip-stat-card">
+                <div className="trip-stat-header">
+                  <div className="trip-stat-icon" style={{ background: 'rgba(245,158,11,0.1)' }}>
+                    <Sun size={20} color="#f59e0b" />
+                  </div>
+                  <div className="trip-stat-label">Morning Trips</div>
+                </div>
+                <div className="trip-stat-value" style={{ color: '#f59e0b' }}>{tripStats.morningTrips}</div>
+                <div className="trip-stat-trend">8:00 - 9:30 AM</div>
+              </div>
+
+              <div className="trip-stat-card">
+                <div className="trip-stat-header">
+                  <div className="trip-stat-icon" style={{ background: 'rgba(59,130,246,0.1)' }}>
+                    <Moon size={20} color="#3b82f6" />
+                  </div>
+                  <div className="trip-stat-label">Evening Trips</div>
+                </div>
+                <div className="trip-stat-value" style={{ color: '#3b82f6' }}>{tripStats.eveningTrips}</div>
+                <div className="trip-stat-trend">4:30 - 6:00 PM</div>
+              </div>
+
+              <div className="trip-stat-card">
+                <div className="trip-stat-header">
+                  <div className="trip-stat-icon" style={{ background: 'rgba(156,163,175,0.1)' }}>
+                    <Clock size={20} color="#9ca3af" />
+                  </div>
+                  <div className="trip-stat-label">Other Trips</div>
+                </div>
+                <div className="trip-stat-value" style={{ color: '#9ca3af' }}>{tripStats.otherTrips}</div>
+                <div className="trip-stat-trend">Outside schedule</div>
+              </div>
+            </div>
+
             {/* Activity Section */}
             <div className="activity-section">
               <div className="activity-card">
@@ -1692,19 +1634,21 @@ function HomePage() {
                                      activity.type === 'tracking' ? 'rgba(16,185,129,0.1)' :
                                      activity.type === 'payment' ? 'rgba(99,102,241,0.1)' :
                                      activity.type === 'alert' ? 'rgba(245,158,11,0.1)' :
+                                     activity.type === 'trip' ? 'rgba(139,92,246,0.1)' :
                                      'rgba(236,72,153,0.1)'
                         }}>
                           {activity.type === 'complaint' && <AlertTriangle size={16} color="#ef4444" />}
                           {activity.type === 'tracking' && <MapPin size={16} color="#10b981" />}
                           {activity.type === 'payment' && <CreditCard size={16} color="#6366f1" />}
                           {activity.type === 'alert' && <Shield size={16} color="#f59e0b" />}
+                          {activity.type === 'trip' && <BookOpen size={16} color="#8b5cf6" />}
                           {activity.type === 'announcement' && <Megaphone size={16} color="#ec4899" />}
-                          {activity.type === 'tracking' && <div className="activity-live-badge"></div>}
+                          {(activity.type === 'tracking' || activity.type === 'trip') && <div className="activity-live-badge"></div>}
                         </div>
                         <div className="activity-content">
                           <div className="activity-action">
                             {activity.action}
-                            {activity.type === 'tracking' && (
+                            {(activity.type === 'tracking' || activity.type === 'trip') && (
                               <span className="live-activity-badge">LIVE</span>
                             )}
                           </div>
@@ -1725,30 +1669,29 @@ function HomePage() {
 
               <div className="activity-card">
                 <div className="activity-header">
-                  <h3 className="activity-title">Quick Stats</h3>
+                  <h3 className="activity-title">System Status</h3>
                   <span className="category-tag">Today</span>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>Active Sessions</span>
-                    <span style={{ fontWeight: 600 }}>{activeSessions}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>Pending Approvals</span>
-                    <span style={{ fontWeight: 600, color: pendingApprovals > 0 ? '#f59e0b' : 'inherit' }}>{pendingApprovals}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>System Load</span>
-                    <span style={{ fontWeight: 600, color: systemLoad > 70 ? '#ef4444' : '#10b981' }}>{systemLoad}%</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>Active Trips</span>
+                    <span style={{ fontWeight: 600, color: '#8b5cf6' }}>{tripStats.activeTrips}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ color: 'var(--text-secondary)' }}>Live Buses</span>
-                    <span style={{ fontWeight: 600, color: '#10b981', display: 'flex', alignItems: 'center', gap: 4 }}>
-                      {stats.liveBuses}
-                      {stats.liveBuses > 0 && (
-                        <span style={{ fontSize: 10, background: 'rgba(16,185,129,0.15)', padding: '2px 6px', borderRadius: 12 }}>NOW</span>
-                      )}
-                    </span>
+                    <span style={{ fontWeight: 600, color: '#10b981' }}>{stats.liveBuses}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Total Students</span>
+                    <span style={{ fontWeight: 600 }}>{stats.totalStudents}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Total Drivers</span>
+                    <span style={{ fontWeight: 600 }}>{stats.totalDrivers}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Total Buses</span>
+                    <span style={{ fontWeight: 600 }}>{stats.totalBuses}</span>
                   </div>
                   <div style={{ marginTop: 16 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -1794,22 +1737,22 @@ function HomePage() {
                 { label: 'Add Student', icon: Users, href: '/dashboard', accent: '#6366f1' },
                 { label: 'Add Bus', icon: Bus, href: '/buses', accent: '#10b981' },
                 { label: 'Add Driver', icon: Truck, href: '/drivers', accent: '#f59e0b' },
-                { label: 'Track Fleet', icon: Map, href: '/bus-locations', accent: '#ef4444' },
+                { label: 'View Trips', icon: BookOpen, href: '/bus-trips', accent: '#8b5cf6' },
               ].map((action, i) => {
                 const Icon = action.icon;
-                const isTrackAction = action.label === 'Track Fleet';
+                const isTripsAction = action.label === 'View Trips';
                 return (
                   <Link key={i} href={action.href} className="quick-action-card">
                     <div className="quick-action-icon" style={{ background: `${action.accent}15`, position: 'relative' }}>
                       <Icon size={20} style={{ color: action.accent }} />
-                      {isTrackAction && stats.liveBuses > 0 && (
-                        <div style={{ position: 'absolute', top: -2, right: -2, width: 10, height: 10, background: '#10b981', borderRadius: '50%', border: '2px solid var(--bg-card)' }}></div>
+                      {isTripsAction && tripStats.activeTrips > 0 && (
+                        <div style={{ position: 'absolute', top: -2, right: -2, width: 10, height: 10, background: action.accent, borderRadius: '50%', border: '2px solid var(--bg-card)' }}></div>
                       )}
                     </div>
                     <span className="quick-action-label">
                       {action.label}
-                      {isTrackAction && stats.liveBuses > 0 && (
-                        <span style={{ marginLeft: 4, fontSize: 9, color: '#10b981' }}>({stats.liveBuses} live)</span>
+                      {isTripsAction && tripStats.activeTrips > 0 && (
+                        <span style={{ marginLeft: 4, fontSize: 9, color: action.accent }}>({tripStats.activeTrips} active)</span>
                       )}
                     </span>
                   </Link>
@@ -1830,6 +1773,7 @@ function HomePage() {
               <div className="footer-status">
                 <div className="status-dot"></div>
                 <span className="status-text">
+                  {tripStats.activeTrips > 0 ? `${tripStats.activeTrips} active trips • ` : ''}
                   {stats.liveBuses > 0 ? `${stats.liveBuses} buses live • ` : ''}All systems operational
                 </span>
               </div>
