@@ -7,7 +7,7 @@ import {
   FileText, Target, ArrowLeft, Clock, ChevronDown, 
   CheckCircle, AlertCircle, BookOpen, Link as LinkIcon
 } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../../lib/supabase';
 import withAuth from '../../components/withAuth';
 
 function Notices() {

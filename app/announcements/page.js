@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Megaphone, Plus, X, Send, Trash2, Edit, ArrowLeft, Calendar, Clock, Bell } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../../lib/supabase';
 import withAuth from '../../components/withAuth';
 
 function Announcements() {

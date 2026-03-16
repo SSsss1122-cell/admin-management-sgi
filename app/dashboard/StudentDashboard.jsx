@@ -30,7 +30,6 @@ export default function StudentDashboard() {
     assignedToRoute: 0
   });
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
-  const [showPassword, setShowPassword] = useState({});
   const [viewMode, setViewMode] = useState('table'); // 'table' or 'grid'
   const [selectedStudents, setSelectedStudents] = useState([]);
   const [currentTime, setCurrentTime] = useState('');
@@ -89,7 +88,7 @@ export default function StudentDashboard() {
     try {
       const { data, error } = await supabase
         .from('students')
-        .select('*')
+        .select('id, full_name, usn, branch, phone, routes, email, semester, created_at, updated_at')
         .order('usn');
 
       if (error) throw error;
@@ -344,13 +343,6 @@ export default function StudentDashboard() {
     localStorage.removeItem('adminMobile');
     localStorage.removeItem('adminName');
     router.push('/login');
-  };
-
-  const togglePasswordVisibility = (studentId) => {
-    setShowPassword(prev => ({
-      ...prev,
-      [studentId]: !prev[studentId]
-    }));
   };
 
   const toggleSelectAll = () => {
@@ -1208,23 +1200,7 @@ export default function StudentDashboard() {
                           )}
                         </td>
                         <td style={{ padding: 16, borderBottom: '1px solid var(--border)' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <span style={{ fontFamily: 'monospace', fontSize: 13, color: 'var(--text-primary)' }}>
-                              {showPassword[student.id] ? student.password || 'Not set' : '••••••••'}
-                            </span>
-                            <button
-                              onClick={() => togglePasswordVisibility(student.id)}
-                              style={{ 
-                                border: 'none', 
-                                background: 'none', 
-                                cursor: 'pointer', 
-                                color: 'var(--text-muted)',
-                                padding: 4
-                              }}
-                            >
-                              {showPassword[student.id] ? <EyeOff size={14} /> : <Eye size={14} />}
-                            </button>
-                          </div>
+                          <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>
                         </td>
                         <td style={{ padding: 16, borderBottom: '1px solid var(--border)' }}>
                           <div style={{ display: 'flex', gap: 8 }}>
@@ -1411,18 +1387,7 @@ export default function StudentDashboard() {
                       )}
                       <div>
                         <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Password</p>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <Key size={12} color="var(--text-muted)" />
-                          <span style={{ fontSize: 13, fontFamily: 'monospace', color: 'var(--text-primary)' }}>
-                            {showPassword[student.id] ? student.password || 'Not set' : '••••••••'}
-                          </span>
-                          <button
-                            onClick={() => togglePasswordVisibility(student.id)}
-                            style={{ border: 'none', background: 'none', cursor: 'pointer', marginLeft: 4 }}
-                          >
-                            {showPassword[student.id] ? <EyeOff size={12} color="var(--text-muted)" /> : <Eye size={12} color="var(--text-muted)" />}
-                          </button>
-                        </div>
+                        <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>—</p>
                       </div>
                     </div>
                   </div>

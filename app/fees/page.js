@@ -10,7 +10,7 @@ import {
   Award, Target, BookOpen, GraduationCap, Layers,
   Moon, Sun, Settings, LogOut, UserCircle
 } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../../lib/supabase';
 import { useRouter } from 'next/navigation';
 import withAuth from '../../components/withAuth';
 

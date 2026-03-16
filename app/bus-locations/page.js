@@ -8,7 +8,7 @@ import {
   Clock, ChevronRight, Search, Filter, RefreshCw, Gauge,
   User, Shield, Calendar, Car, Speed
 } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../../lib/supabase';
 import withAuth from '../../components/withAuth';
 import dynamic from 'next/dynamic';
 

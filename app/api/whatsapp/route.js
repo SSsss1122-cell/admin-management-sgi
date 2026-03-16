@@ -6,13 +6,12 @@ export async function POST(request) {
   
   try {
     const { to } = await request.json();
-    
-    console.log("=".repeat(50));
-    console.log("📤 Sending request to ViralBoost");
-    console.log("=".repeat(50));
-    console.log("Phone Number ID:", PHONE_NUMBER_ID);
-    console.log("Phone Number ID length:", PHONE_NUMBER_ID?.length);
-    console.log("To:", to);
+    if (!API_KEY || !PHONE_NUMBER_ID) {
+      return Response.json({ error: 'Server is not configured' }, { status: 500 });
+    }
+    if (!to || typeof to !== 'string') {
+      return Response.json({ error: 'Missing or invalid "to"' }, { status: 400 });
+    }
     
     const requestBody = {
       phone_number_id: PHONE_NUMBER_ID,
@@ -23,8 +22,6 @@ export async function POST(request) {
         language: { code: "en" }
       }
     };
-    
-    console.log("Request Body:", JSON.stringify(requestBody, null, 2));
     
     const response = await fetch(
       "https://app.viralboostup.in/api/v2/whatsapp-business/messages",
@@ -40,16 +37,9 @@ export async function POST(request) {
     
     const data = await response.json();
     
-    console.log("Response Status:", response.status);
-    console.log("Response Data:", data);
-    
     return Response.json({
       status: response.status,
-      data: data,
-      phone_id_used: PHONE_NUMBER_ID,
-      suggestion: response.status === 400 ? 
-        "Phone Number ID is incorrect - check ViralBoost dashboard" : 
-        "Check the response"
+      data
     });
     
   } catch (error) {
@@ -63,6 +53,9 @@ export async function GET() {
   const API_KEY = process.env.VIRALBOOST_API_KEY;
   
   try {
+    if (!API_KEY) {
+      return Response.json({ error: 'Server is not configured' }, { status: 500 });
+    }
     // Try to fetch phone numbers from ViralBoost
     const response = await fetch(
       "https://app.viralboostup.in/api/v2/whatsapp-business/phone-numbers",
@@ -77,16 +70,11 @@ export async function GET() {
     const data = await response.json();
     
     return Response.json({
-      message: "Check your ViralBoost dashboard for correct Phone Number ID",
-      current_phone_id: process.env.PHONE_NUMBER_ID,
-      phone_numbers_from_api: data,
-      instructions: "Go to ViralBoost → WhatsApp → Phone Numbers and copy the correct ID"
+      phone_numbers_from_api: data
     });
   } catch (error) {
     return Response.json({
-      message: "Go to ViralBoost dashboard to find your Phone Number ID",
-      current_phone_id: process.env.PHONE_NUMBER_ID,
-      url: "https://app.viralboostup.in"
+      error: 'Failed to fetch phone numbers'
     });
   }
 }

@@ -75,22 +75,22 @@ function HomePage() {
         busLocationsData,
         tripsData
       ] = await Promise.all([
-        supabase.from('students').select('*'),
-        supabase.from('buses').select('*'),
-        supabase.from('complaints').select('*').order('created_at', { ascending: false }),
-        supabase.from('drivers_new').select('*'),
+        supabase.from('students').select('id', { count: 'exact', head: true }),
+        supabase.from('buses').select('id, puc_expiry, insurance_expiry, fitness_expiry, permit_expiry'),
+        supabase.from('complaints').select('id, created_at').order('created_at', { ascending: false }).limit(200),
+        supabase.from('drivers_new').select('id, bus_id', { count: 'exact' }),
         supabase.from('announcements').select('*').order('created_at', { ascending: false }).limit(3),
         supabase.from('notices').select('*').order('created_at', { ascending: false }).limit(3),
-        supabase.from('fees').select('*'),
-        supabase.from('bus_locations').select('*').gte('updated_at', new Date(Date.now() - 5*60000).toISOString()),
-        supabase.from('driver_trips').select('*').order('start_time', { ascending: false })
+        supabase.from('fees').select('id', { count: 'exact', head: true }),
+        supabase.from('bus_locations').select('bus_id, updated_at').gte('updated_at', new Date(Date.now() - 5*60000).toISOString()),
+        supabase.from('driver_trips').select('id, start_time, end_time, trip_type').order('start_time', { ascending: false })
       ]);
 
       // Calculate statistics
-      const totalStudents = studentsData.data?.length || 0;
+      const totalStudents = studentsData.count || 0;
       const totalBuses = busesData.data?.length || 0;
       const totalComplaints = complaintsData.data?.length || 0;
-      const totalDrivers = driversData.data?.length || 0;
+      const totalDrivers = driversData.count || driversData.data?.length || 0;
       const busesWithDriver = driversData.data?.filter(d => d.bus_id).length || 0;
       
       // Today's complaints

@@ -10,9 +10,10 @@ import {
   MoreVertical, Eye, Filter, Calendar, CheckCircle,
   Settings, Users, MapPin, Route, Home
 } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../../lib/supabase';
+import withAuth from '../../components/withAuth';
 
-export default function BusesPage() {
+function BusesPage() {
   const router = useRouter();
   const [buses, setBuses] = useState([]);
   const [filteredBuses, setFilteredBuses] = useState([]);
@@ -1283,3 +1284,5 @@ export default function BusesPage() {
     </div>
   );
 }
+
+export default withAuth(BusesPage);
