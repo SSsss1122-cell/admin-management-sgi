@@ -8,7 +8,7 @@ import {
   Users, MapPin, CreditCard, AlertTriangle, Megaphone, Bell,
   School, Bus, Map, LogOut, User, Truck, ChevronRight,
   TrendingUp, Shield, Activity, Zap, BarChart3, Clock,
-  Award, Calendar, CheckCircle, XCircle, Download, RefreshCw,
+  Award, Calendar, CheckCircle, XCircle, RefreshCw,
   Settings, HelpCircle, Moon, Sun, Filter, MoreVertical,
   Navigation, Radio, Wifi, WifiOff, BookOpen
 } from 'lucide-react';
@@ -52,7 +52,6 @@ function HomePage() {
     updateTime();
     const timer = setInterval(updateTime, 1000);
     
-    // Refresh data every 30 seconds
     const refreshInterval = setInterval(fetchDashboardData, 30000);
     
     return () => {
@@ -63,7 +62,6 @@ function HomePage() {
 
   const fetchDashboardData = async () => {
     try {
-      // Fetch all data in parallel
       const [
         studentsData, 
         busesData, 
@@ -76,31 +74,28 @@ function HomePage() {
         tripsData
       ] = await Promise.all([
         supabase.from('students').select('id', { count: 'exact', head: true }),
-        supabase.from('buses').select('id, puc_expiry, insurance_expiry, fitness_expiry, permit_expiry'),
-        supabase.from('complaints').select('id, created_at').order('created_at', { ascending: false }).limit(200),
-        supabase.from('drivers_new').select('id, bus_id', { count: 'exact' }),
+        supabase.from('buses').select('id, bus_number, puc_expiry, insurance_expiry, fitness_expiry, permit_expiry'),
+        supabase.from('complaints').select('id, created_at, title, description, status, student_id').order('created_at', { ascending: false }).limit(200),
+        supabase.from('drivers_new').select('id, name, bus_id', { count: 'exact' }),
         supabase.from('announcements').select('*').order('created_at', { ascending: false }).limit(3),
         supabase.from('notices').select('*').order('created_at', { ascending: false }).limit(3),
-        supabase.from('fees').select('id', { count: 'exact', head: true }),
+        supabase.from('fees').select('id, amount, student_id, payment_date', { count: 'exact', head: false }).limit(5),
         supabase.from('bus_locations').select('bus_id, updated_at').gte('updated_at', new Date(Date.now() - 5*60000).toISOString()),
-        supabase.from('driver_trips').select('id, start_time, end_time, trip_type').order('start_time', { ascending: false })
+        supabase.from('driver_trips').select('id, start_time, end_time, trip_type, driver_id, bus_id').order('start_time', { ascending: false })
       ]);
 
-      // Calculate statistics
       const totalStudents = studentsData.count || 0;
       const totalBuses = busesData.data?.length || 0;
       const totalComplaints = complaintsData.data?.length || 0;
       const totalDrivers = driversData.count || driversData.data?.length || 0;
       const busesWithDriver = driversData.data?.filter(d => d.bus_id).length || 0;
       
-      // Today's complaints
       const today = new Date().toDateString();
       const dailyComplaints = complaintsData.data?.filter(c => {
         const complaintDate = c.created_at ? new Date(c.created_at).toDateString() : null;
         return complaintDate === today;
       }).length || 0;
 
-      // Expiring documents (next 30 days)
       const today_date = new Date();
       const thirtyDaysFromNow = new Date();
       thirtyDaysFromNow.setDate(today_date.getDate() + 30);
@@ -113,7 +108,6 @@ function HomePage() {
         });
       }).length || 0;
 
-      // Calculate live buses (unique buses with location updates in last 5 minutes)
       let liveBusesCount = 0;
       if (busLocationsData.data && busLocationsData.data.length > 0) {
         const uniqueBusIds = new Set();
@@ -125,7 +119,6 @@ function HomePage() {
         liveBusesCount = uniqueBusIds.size;
       }
 
-      // Calculate trip statistics
       const trips = tripsData.data || [];
       const activeTrips = trips.filter(t => !t.end_time).length;
       const morningTrips = trips.filter(t => t.trip_type === 'morning').length;
@@ -154,10 +147,8 @@ function HomePage() {
 
       setNotifications(expiringDocuments + dailyComplaints + activeTrips);
 
-      // Create recent activities from real data
       const activities = [];
 
-      // Add active trips to activities
       trips.filter(t => !t.end_time).slice(0, 3).forEach(trip => {
         activities.push({
           action: `Active trip: ${trip.trip_type || 'Unknown'} trip`,
@@ -168,7 +159,6 @@ function HomePage() {
         });
       });
 
-      // Add complaint activities
       complaintsData.data?.slice(0, 3).forEach(complaint => {
         activities.push({
           action: `New complaint: ${complaint.title || complaint.description?.substring(0, 30) || 'New complaint'}...`,
@@ -179,21 +169,7 @@ function HomePage() {
         });
       });
 
-      // Add bus tracking activities
-      busesData.data?.slice(0, 2).forEach(bus => {
-        if (bus.last_updated) {
-          activities.push({
-            action: `Bus #${bus.bus_number || bus.id} location updated`,
-            user: `Route ${bus.route || 'Unknown'}`,
-            time: formatTimeAgo(bus.last_updated),
-            type: 'tracking',
-            status: 'success'
-          });
-        }
-      });
-
-      // Add fee payment activities
-      feesData.data?.slice(0, 2).forEach(fee => {
+      feesData.data?.slice(0, 3).forEach(fee => {
         if (fee.payment_date) {
           activities.push({
             action: `Fee payment received`,
@@ -205,49 +181,6 @@ function HomePage() {
         }
       });
 
-      // Add expiring document alerts
-      busesData.data?.forEach(bus => {
-        const expiringDocs = [];
-        if (bus.puc_expiry) {
-          const daysUntil = daysUntilDate(bus.puc_expiry);
-          if (daysUntil <= 30 && daysUntil >= 0) {
-            expiringDocs.push('PUC');
-          }
-        }
-        if (bus.insurance_expiry) {
-          const daysUntil = daysUntilDate(bus.insurance_expiry);
-          if (daysUntil <= 30 && daysUntil >= 0) {
-            expiringDocs.push('Insurance');
-          }
-        }
-        if (bus.fitness_expiry) {
-          const daysUntil = daysUntilDate(bus.fitness_expiry);
-          if (daysUntil <= 30 && daysUntil >= 0) {
-            expiringDocs.push('Fitness');
-          }
-        }
-        if (bus.permit_expiry) {
-          const daysUntil = daysUntilDate(bus.permit_expiry);
-          if (daysUntil <= 30 && daysUntil >= 0) {
-            expiringDocs.push('Permit');
-          }
-        }
-        
-        if (expiringDocs.length > 0) {
-          activities.push({
-            action: `Document expiring: ${expiringDocs.join(', ')}`,
-            user: `Bus #${bus.bus_number || bus.id}`,
-            time: `${Math.min(...expiringDocs.map(doc => {
-              const date = bus[`${doc.toLowerCase()}_expiry`];
-              return daysUntilDate(date);
-            }))} days left`,
-            type: 'alert',
-            status: 'warning'
-          });
-        }
-      });
-
-      // Add announcement activities
       announcementsData.data?.forEach(announcement => {
         activities.push({
           action: `New announcement: ${announcement.title}`,
@@ -258,7 +191,6 @@ function HomePage() {
         });
       });
 
-      // Add notice activities
       noticesData.data?.forEach(notice => {
         activities.push({
           action: `New notice: ${notice.title}`,
@@ -269,7 +201,6 @@ function HomePage() {
         });
       });
 
-      // Sort activities by time (most recent first) and take top 10
       const sortedActivities = activities
         .sort((a, b) => {
           const timeA = a.time.includes('min') ? parseInt(a.time) : 
@@ -289,7 +220,6 @@ function HomePage() {
     }
   };
 
-  // Helper function to format time ago
   const formatTimeAgo = (dateString) => {
     if (!dateString) return 'recently';
     
@@ -311,19 +241,6 @@ function HomePage() {
     }
   };
 
-  // Helper function to calculate days until a date
-  const daysUntilDate = (dateString) => {
-    if (!dateString) return 999;
-    try {
-      const date = new Date(dateString);
-      const now = new Date();
-      const diffMs = date - now;
-      return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-    } catch (e) {
-      return 999;
-    }
-  };
-
   const handleLogout = () => {
     localStorage.removeItem('isLoggedIn');
     localStorage.removeItem('adminMobile');
@@ -336,6 +253,8 @@ function HomePage() {
     { id: 'drivers', name: 'Drivers Management', description: 'Complete driver oversight with license tracking', icon: Truck, href: '/drivers', accent: '#f59e0b', gradient: 'from-amber-500 to-orange-600', tag: 'Fleet Ops', metrics: `${stats.totalDrivers} drivers` },
     { id: 'buses', name: 'Bus Management', description: 'Fleet maintenance, documents, and scheduling', icon: Bus, href: '/buses', accent: '#10b981', gradient: 'from-emerald-500 to-teal-600', tag: 'Fleet', metrics: `${stats.totalBuses} vehicles` },
     { id: 'bus-trips', name: 'Bus Trips', description: 'Track driver trips, attendance, and trip history', icon: BookOpen, href: '/bus-trips', accent: '#8b5cf6', gradient: 'from-violet-500 to-purple-600', tag: 'Trips', metrics: `${tripStats.activeTrips} active` },
+    { id: 'bus-stops', name: 'Bus Stops', description: 'Manage bus stops, locations, and landmarks for all routes', icon: MapPin, href: '/bus-stops', accent: '#10b981', gradient: 'from-emerald-500 to-teal-600', tag: 'Routes', metrics: 'Manage stops' },
+    { id: 'bus-route-mapper', name: 'Bus Route Planner', description: 'Create and edit bus routes by clicking on map', icon: Map, href: '/bus-route-mapper', accent: '#8b5cf6', gradient: 'from-violet-500 to-purple-600', tag: 'Planner', metrics: 'Visual builder' },
     { id: 'fees', name: 'Fees Management', description: 'Real-time payment tracking and financial insights', icon: CreditCard, href: '/fees', accent: '#3b82f6', gradient: 'from-blue-500 to-cyan-600', tag: 'Finance', metrics: 'Track payments' },
     { id: 'bus-locations', name: 'Live Tracking', description: 'Real-time GPS tracking and route optimization', icon: MapPin, href: '/bus-locations', accent: '#ef4444', gradient: 'from-rose-500 to-pink-600', tag: 'Live', metrics: `${stats.liveBuses} live now` },
     { id: 'bus-details', name: 'Bus Details', description: 'Vehicle specifications and route information', icon: Bus, href: '/bus-details', accent: '#8b5cf6', gradient: 'from-violet-500 to-purple-600', tag: 'Info', metrics: `${stats.totalBuses} buses` },
@@ -1451,14 +1370,10 @@ function HomePage() {
                   <RefreshCw size={16} />
                   Refresh
                 </button>
-                <button className="action-button primary">
-                  <Download size={16} />
-                  Export Report
-                </button>
               </div>
             </div>
 
-            {/* Categories Section - STARTS HERE (No stats grid above) */}
+            {/* Categories Section */}
             <div className="section-header-modern">
               <div className="section-title-wrapper">
                 <div className="section-icon">
@@ -1738,23 +1653,16 @@ function HomePage() {
                 { label: 'Add Bus', icon: Bus, href: '/buses', accent: '#10b981' },
                 { label: 'Add Driver', icon: Truck, href: '/drivers', accent: '#f59e0b' },
                 { label: 'View Trips', icon: BookOpen, href: '/bus-trips', accent: '#8b5cf6' },
+                { label: 'Manage Stops', icon: MapPin, href: '/bus-stops', accent: '#10b981' },
+                { label: 'Route Planner', icon: Map, href: '/bus-route-mapper', accent: '#8b5cf6' },
               ].map((action, i) => {
                 const Icon = action.icon;
-                const isTripsAction = action.label === 'View Trips';
                 return (
                   <Link key={i} href={action.href} className="quick-action-card">
                     <div className="quick-action-icon" style={{ background: `${action.accent}15`, position: 'relative' }}>
                       <Icon size={20} style={{ color: action.accent }} />
-                      {isTripsAction && tripStats.activeTrips > 0 && (
-                        <div style={{ position: 'absolute', top: -2, right: -2, width: 10, height: 10, background: action.accent, borderRadius: '50%', border: '2px solid var(--bg-card)' }}></div>
-                      )}
                     </div>
-                    <span className="quick-action-label">
-                      {action.label}
-                      {isTripsAction && tripStats.activeTrips > 0 && (
-                        <span style={{ marginLeft: 4, fontSize: 9, color: action.accent }}>({tripStats.activeTrips} active)</span>
-                      )}
-                    </span>
+                    <span className="quick-action-label">{action.label}</span>
                   </Link>
                 );
               })}
