@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
+// Admin numbers list (add multiple admins here)
+const ADMIN_NUMBERS = ['9480072737', '7204326912', '919480072737'];
+
 export async function POST(request) {
   try {
     const payload = await request.json();
@@ -22,16 +25,23 @@ export async function POST(request) {
     }
     
     let cleanNumber = senderNumber.toString();
-    if (cleanNumber.startsWith('91')) {
+    // Remove country code if present (91, +91, etc.)
+    if (cleanNumber.startsWith('+91')) {
+      cleanNumber = cleanNumber.substring(3);
+    } else if (cleanNumber.startsWith('91')) {
       cleanNumber = cleanNumber.substring(2);
     }
     
-    const isAdmin = (cleanNumber === '9480072737');
+    // Check if sender is admin (any number in ADMIN_NUMBERS list)
+    const isAdmin = ADMIN_NUMBERS.includes(cleanNumber);
+    
+    console.log(`🧹 Clean Number: ${cleanNumber}`);
+    console.log(`👑 Is Admin: ${isAdmin}`);
     
     // Convert to uppercase for case-insensitive matching
     const upperMsg = userMessage?.toUpperCase() || '';
     
-    // If not authorized
+    // If not authorized, only allow basic commands
     if (!isAdmin) {
       let reply = await handlePublicCommands(userMessage, upperMsg);
       if (reply) await sendWhatsAppMessage(senderNumber, reply);
@@ -39,7 +49,7 @@ export async function POST(request) {
     }
     
     // ============================================
-    // AUTHORIZED USER MENU
+    // ADMIN USER - FULL ACCESS
     // ============================================
     
     let replyMessage = '';
@@ -64,7 +74,7 @@ export async function POST(request) {
     else if (upperMsg === 'FEE' || upperMsg === 'FEE CHECK' || upperMsg === '5') {
       replyMessage = getFeeFormat();
     }
-    else if (upperMsg === 'FEE DUE' || upperMsg === '6') {
+    else if (upperMsg === 'FEE DUE' || upperMsg === '6' || upperMsg === 'DUE LIST') {
       replyMessage = await getCompleteDueFeesList();
     }
     else if (upperMsg === 'FEE SUMMARY' || upperMsg === '7') {
@@ -96,7 +106,7 @@ export async function POST(request) {
       replyMessage = getShortcutGuide();
     }
     
-    // SEARCH with argument
+    // SEARCH with argument (case insensitive)
     else if (userMessage?.match(/^search\s/i)) {
       const query = userMessage.replace(/^search\s/i, '');
       replyMessage = await searchStudent(query);
@@ -172,10 +182,10 @@ export async function POST(request) {
 // ============================================
 
 function getMainMenu() {
-  return `╔════════════════════════╗
-║   🤖 *SGI BUS BOT*    ║
-║      Admin Panel       ║
-╚════════════════════════╝
+  return `╔════════════════════════════╗
+║   🤖 *SGI BUS BOT*       ║
+║      Admin Panel          ║
+╚════════════════════════════╝
 
 ┌─────────────────────────┐
 │  🚌 *BUS MENU*          │
@@ -209,19 +219,9 @@ function getMainMenu() {
 │ 13️⃣  DRIVERS           │
 └─────────────────────────┘
 
-┌─────────────────────────┐
-│  ⚡ *QUICK ACTIONS*     │
-├─────────────────────────┤
-│ • FEE <USN>             │
-│ • SEARCH <USN/Name>     │
-│ • ADD <name>|<usn>|<br> │
-│ • UPDATE <usn>|<amount> │
-│ • DELETE <usn>          │
-│ • BROADCAST <msg>       │
-└─────────────────────────┘
+💡 *Commands:* FEE <USN>, SEARCH <name>, DUE LIST, FEE SUMMARY
 
-💡 *Tip:* Send *SHORTCUT* for guide
-👑 *Admin:* 9480072737`;
+👑 *Admins:* 9480072737`;
 }
 
 function getShortcutGuide() {
@@ -233,26 +233,16 @@ function getShortcutGuide() {
 │ 📚 *STUDENT SHORTCUTS*      │
 ├─────────────────────────────┤
 │ ADD <name>|<usn>|<br>|<ph>  │
-│ ▸ ADD Raj|3TS25CS100|CS|98  │
-│                             │
 │ DELETE <usn>                │
-│ ▸ DELETE 3TS25CS100         │
-│                             │
 │ SEARCH <usn or name>        │
-│ ▸ SEARCH 3TS25CS004         │
-│ ▸ SEARCH Raj                │
 └─────────────────────────────┘
 
 ┌─────────────────────────────┐
 │ 💰 *FEES SHORTCUTS*         │
 ├─────────────────────────────┤
 │ FEE <usn>                   │
-│ ▸ FEE 3TS25CS004            │
-│                             │
 │ UPDATE <usn>|<amount>       │
-│ ▸ UPDATE 3TS25CS004|5000    │
-│                             │
-│ FEE DUE - Pending list      │
+│ DUE LIST - Pending list     │
 │ FEE SUMMARY - Stats         │
 └─────────────────────────────┘
 
@@ -262,15 +252,6 @@ function getShortcutGuide() {
 │ BUS LIST - All buses        │
 │ STOPS <bus_no>              │
 │ DETAILS <bus_no>            │
-└─────────────────────────────┘
-
-┌─────────────────────────────┐
-│ 📢 *OTHER SHORTCUTS*        │
-├─────────────────────────────┤
-│ BROADCAST <message>         │
-│ COMPLAINT <title>|<desc>    │
-│ NOTICES - Latest            │
-│ DRIVERS - All drivers       │
 └─────────────────────────────┘
 
 ✨ *Commands are case-insensitive*`;
@@ -286,10 +267,7 @@ function getSearchFormat() {
 │ 📌 *Examples:*          │
 │ SEARCH 3TS25CS004       │
 │ SEARCH Rohit            │
-└─────────────────────────┘
-
-✨ *Shows:* Name, USN, Branch, 
-Phone, Email, Due Amount`;
+└─────────────────────────┘`;
 }
 
 function getFeeFormat() {
@@ -301,10 +279,7 @@ function getFeeFormat() {
 ├─────────────────────────┤
 │ 📌 *Example:*           │
 │ FEE 3TS25CS004          │
-└─────────────────────────┘
-
-✨ *Shows:* Total Fees, Paid, 
-Due, Last Payment, Method`;
+└─────────────────────────┘`;
 }
 
 function getBusStopsFormat() {
@@ -313,9 +288,6 @@ function getBusStopsFormat() {
 ┌─────────────────────────┐
 │ 📝 *Format:*            │
 │ STOPS <bus_number>      │
-├─────────────────────────┤
-│ 📌 *Example:*           │
-│ STOPS KA01AB1234        │
 └─────────────────────────┘`;
 }
 
@@ -325,9 +297,6 @@ function getBusDetailsFormat() {
 ┌─────────────────────────┐
 │ 📝 *Format:*            │
 │ DETAILS <bus_number>    │
-├─────────────────────────┤
-│ 📌 *Example:*           │
-│ DETAILS KA01AB1234      │
 └─────────────────────────┘`;
 }
 
@@ -341,10 +310,7 @@ function getComplaintFormat() {
 │ 📌 *Example:*           │
 │ COMPLAINT Bus late|Bus  │
 │ is coming 30 mins late  │
-└─────────────────────────┘
-
-✨ *Status:* Pending
-⏰ *Response:* Within 24hrs`;
+└─────────────────────────┘`;
 }
 
 // ============================================
@@ -355,8 +321,7 @@ async function getStudentList() {
   const { data: students, error } = await supabase
     .from('students')
     .select('full_name, usn, branch, phone_number, email')
-    .order('full_name')
-    .limit(30);
+    .order('full_name');
   
   if (error) return '❌ *Database Error*';
   if (!students || students.length === 0) return '📭 *No students found*';
@@ -367,16 +332,15 @@ async function getStudentList() {
   message += `╚════════════════════════════╝\n\n`;
   
   students.forEach((s, i) => {
-    message += `┌───────────── ${i+1} ─────────────┐\n`;
+    message += `┌───────── ${i+1} ─────────┐\n`;
     message += `│ 👤 *${s.full_name}*\n`;
-    message += `│ 📋 USN: ${s.usn}\n`;
-    message += `│ 📚 Branch: ${s.branch || 'N/A'}\n`;
-    if (s.phone_number) message += `│ 📞 Phone: ${s.phone_number}\n`;
-    if (s.email) message += `│ 📧 Email: ${s.email}\n`;
-    message += `└─────────────────────────────┘\n\n`;
+    message += `│ 📋 ${s.usn}\n`;
+    message += `│ 📚 ${s.branch || 'N/A'}\n`;
+    if (s.phone_number) message += `│ 📞 ${s.phone_number}\n`;
+    if (s.email) message += `│ 📧 ${s.email}\n`;
+    message += `└─────────────────────────┘\n\n`;
   });
   
-  message += `✨ *Send SEARCH <USN> for details*`;
   return message;
 }
 
@@ -417,14 +381,14 @@ async function searchStudent(query) {
   const { data: students, error } = await supabase
     .from('students')
     .select('*')
-    .or(`usn.ilike.%${query}%, full_name.ilike.%${query}%`)
-    .limit(5);
+    .or(`usn.ilike.%${query}%, full_name.ilike.%${query}%`);
   
   if (error) return '❌ *Database Error*';
   if (!students || students.length === 0) return `❌ *No student found for:* ${query}`;
   
   let message = `╔════════════════════════════╗\n`;
   message += `║   🔍 *SEARCH RESULTS*   ║\n`;
+  message += `║   Found: ${students.length}         ║\n`;
   message += `╚════════════════════════════╝\n\n`;
   
   for (const s of students) {
@@ -432,18 +396,14 @@ async function searchStudent(query) {
     message += `│ 👤 *${s.full_name}*\n`;
     message += `│ 📋 USN: ${s.usn}\n`;
     message += `│ 📚 Branch: ${s.branch || 'N/A'}\n`;
-    message += `│ 🎓 Class: ${s.class || s.semester || 'N/A'}\n`;
     message += `│ 📞 Phone: ${s.phone_number || s.phone || 'N/A'}\n`;
     message += `│ 📧 Email: ${s.email || 'N/A'}\n`;
     message += `├─────────────────────────────┤\n`;
-    message += `│ 💰 *FEE DETAILS*           │\n`;
-    message += `│ Total: ₹${s.total_fees || 0}\n`;
-    message += `│ Paid: ₹${s.paid_amount || 0}\n`;
-    message += `│ Due: ₹${s.due_amount || 0}\n`;
-    message += `│ Status: ${s.fees_due ? '🔴 PENDING' : '🟢 PAID'}\n`;
-    if (s.last_payment_date) message += `│ Last Payment: ${s.last_payment_date}\n`;
-    if (s.payment_mode) message += `│ Payment Mode: ${s.payment_mode}\n`;
-    if (s.next_payment_date) message += `│ Next Payment: ${s.next_payment_date}\n`;
+    message += `│ 💰 Total Fees: ₹${s.total_fees || 0}\n`;
+    message += `│ ✅ Paid: ₹${s.paid_amount || 0}\n`;
+    message += `│ ⚠️ Due: ₹${s.due_amount || 0}\n`;
+    message += `│ 📊 Status: ${s.fees_due ? '🔴 PENDING' : '🟢 PAID'}\n`;
+    if (s.last_payment_date) message += `│ 📅 Last Payment: ${s.last_payment_date}\n`;
     message += `└─────────────────────────────┘\n\n`;
   }
   
@@ -473,11 +433,9 @@ async function getStudentFeeDetails(usn) {
   message += `│ 📋 ${student.usn}\n`;
   message += `│ 📚 ${student.branch || 'N/A'}\n`;
   message += `├─────────────────────────────┤\n`;
-  message += `│ 💰 *FINANCIAL SUMMARY*     │\n`;
-  message += `├─────────────────────────────┤\n`;
-  message += `│ Total Fees:  ₹${student.total_fees || 0}\n`;
-  message += `│ Paid Amount: ₹${student.paid_amount || 0}\n`;
-  message += `│ Due Amount:  ₹${student.due_amount || 0}\n`;
+  message += `│ 💰 Total Fees:  ₹${student.total_fees || 0}\n`;
+  message += `│ ✅ Paid: ₹${student.paid_amount || 0}\n`;
+  message += `│ ⚠️ Due:  ₹${student.due_amount || 0}\n`;
   message += `├─────────────────────────────┤\n`;
   message += `│ 📊 Status: ${student.fees_due ? '🔴 PENDING' : '🟢 PAID'}\n`;
   
@@ -488,11 +446,7 @@ async function getStudentFeeDetails(usn) {
   if (student.last_payment_date) {
     message += `├─────────────────────────────┤\n`;
     message += `│ 📅 Last Payment: ${student.last_payment_date}\n`;
-    message += `│ 💳 Payment Mode: ${student.payment_mode || 'N/A'}\n`;
-  }
-  
-  if (student.next_payment_date) {
-    message += `│ ⏰ Next Payment: ${student.next_payment_date}\n`;
+    message += `│ 💳 Mode: ${student.payment_mode || 'N/A'}\n`;
   }
   
   message += `└─────────────────────────────┘`;
@@ -532,20 +486,14 @@ async function getCompleteDueFeesList() {
   
   message += `┌──────── *DUE LIST* ─────────┐\n`;
   
-  students.slice(0, 20).forEach((s, i) => {
+  students.forEach((s, i) => {
     const status = s.paid_amount === 0 ? '🔴 FULL' : '🟡 PARTIAL';
     message += `│ ${i+1}. *${s.full_name}*\n`;
     message += `│    USN: ${s.usn}\n`;
-    message += `│    Branch: ${s.branch || 'N/A'}\n`;
     message += `│    Due: ₹${s.due_amount}\n`;
     message += `│    Status: ${status}\n`;
-    if (s.last_payment_date) message += `│    Last Paid: ${s.last_payment_date}\n`;
     message += `├─────────────────────────────┤\n`;
   });
-  
-  if (students.length > 20) {
-    message += `│ 📌 +${students.length - 20} more...\n`;
-  }
   
   message += `└─────────────────────────────┘\n\n`;
   message += `💡 *Send FEE <USN> for details*`;
@@ -593,7 +541,7 @@ async function getFeesSummary() {
   message += `│ 📈 Collection Rate: ${((totalPaid/totalFees)*100).toFixed(1)}%\n`;
   message += `│ 🟢 Fully Paid: ${paidCount}\n`;
   message += `│ 🔴 Pending: ${dueCount}\n`;
-  message += `│ 👥 Total: ${students.length}\n`;
+  message += `│ 👥 Total Students: ${students.length}\n`;
   message += `└─────────────────────────────┘\n\n`;
   
   message += `┌──────── *BRANCH WISE* ──────┐\n`;
@@ -753,9 +701,6 @@ async function registerComplaint(phoneNumber, complaintText) {
 │ 📝 ${description}
 ├─────────────────────────────┤
 │ 📊 Status: Pending
-│ 🆔 ID: ${Date.now().toString().slice(-8)}
-├─────────────────────────────┤
-│ ⏰ Response within 24hrs
 └─────────────────────────────┘
 
 ✨ *Thank you for reporting*`;
@@ -825,16 +770,15 @@ async function addStudent(data) {
 ┌─────────────────────────────┐
 │ 📝 Format:                  │
 │ ADD <name>|<usn>|<branch>   │
-│      |<phone>|<email>       │
+│      |<phone>               │
 ├─────────────────────────────┤
 │ 📌 Example:                 │
 │ ADD Raj Kumar|3TS25CS100|   │
 │ Computer Science|9876543210 │
-│ |raj@email.com              │
 └─────────────────────────────┘`;
   }
   
-  const [name, usn, branch, phone, email] = data;
+  const [name, usn, branch, phone] = data;
   
   const { error } = await supabase
     .from('students')
@@ -843,7 +787,6 @@ async function addStudent(data) {
       usn: usn,
       branch: branch,
       phone_number: phone,
-      email: email,
       total_fees: 0,
       paid_amount: 0,
       due_amount: 0,
@@ -861,7 +804,6 @@ async function addStudent(data) {
 │ 📋 USN: ${usn}
 │ 📚 Branch: ${branch}
 │ 📞 Phone: ${phone || 'N/A'}
-│ 📧 Email: ${email || 'N/A'}
 ├─────────────────────────────┤
 │ 📊 Status: Active
 └─────────────────────────────┘`;
