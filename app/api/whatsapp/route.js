@@ -5,52 +5,31 @@ export async function POST(request) {
   try {
     const payload = await request.json();
     
-    console.log("=========================================");
-    console.log("📦 Full Payload:", JSON.stringify(payload, null, 2));
-    console.log("=========================================");
-    
-    // ViralBoostUp ka payload structure
     const eventData = payload.data;
     
     let senderNumber = null;
     let userMessage = null;
-    let recipientPhoneNumberId = null;
     
     if (eventData) {
-      if (eventData.senderPhoneNumber) {
-        senderNumber = eventData.senderPhoneNumber;
-      }
-      if (eventData.content && eventData.content.text) {
-        userMessage = eventData.content.text;
-      }
-      if (eventData.recipientPhoneNumberId) {
-        recipientPhoneNumberId = eventData.recipientPhoneNumberId;
-      }
+      senderNumber = eventData.senderPhoneNumber;
+      userMessage = eventData.content?.text;
     }
     
     console.log(`📱 Sender: ${senderNumber}`);
     console.log(`💬 Message: ${userMessage}`);
-    console.log(`🆔 Phone Number ID: ${recipientPhoneNumberId}`);
     
-    // Agar sender number nahi mila
     if (!senderNumber) {
-      console.log("❌ No sender number found");
       return NextResponse.json({ success: true });
     }
     
-    // Clean number (remove 91 if present)
     let cleanNumber = senderNumber.toString();
     if (cleanNumber.startsWith('91')) {
       cleanNumber = cleanNumber.substring(2);
     }
     
-    console.log(`🧹 Clean Number: ${cleanNumber}`);
-    console.log(`🔐 Authorized Number: 9480072737`);
-    
-    // Sirf authorized number se LIST aaye toh bhejo
-    if (cleanNumber === '9480072737' && userMessage && userMessage.toUpperCase() === 'LIST') {
+    if (cleanNumber === '9480072737' && userMessage?.toUpperCase() === 'LIST') {
       
-      console.log("✅ Authorized user! Fetching students from Supabase...");
+      console.log("✅ Fetching students from Supabase...");
       
       const { data: students, error } = await supabase
         .from('students')
@@ -75,26 +54,19 @@ export async function POST(request) {
         replyMessage += `━━━━━━━━━━━━━━━\n📊 Total: ${students.length} students`;
       }
       
-      console.log("📤 Sending reply:", replyMessage.substring(0, 200) + "...");
-      
-      // Send reply to same number
       const apiKey = process.env.VIRALBOOSTUP_API_KEY;
       
       if (!apiKey) {
-        console.log("❌ VIRALBOOSTUP_API_KEY is missing!");
-        return NextResponse.json({ success: false, error: "API Key missing" });
+        console.log("❌ API Key missing!");
+        return NextResponse.json({ success: false });
       }
       
-      console.log("🔑 API Key found, sending message...");
-      
-      // ViralBoostUp API requires phone_number_id
+      // Correct format as per API docs
       const requestBody = {
-        phone_number_id: recipientPhoneNumberId || "595231930349201", // From payload
-        to: senderNumber,
+        to: senderNumber,           // "919480072737"
+        phoneNoId: "595231930349201", // Phone number ID
         type: "text",
-        text: {
-          body: replyMessage
-        }
+        text: replyMessage
       };
       
       console.log("📨 Request Body:", JSON.stringify(requestBody, null, 2));
@@ -117,21 +89,16 @@ export async function POST(request) {
         console.log("✅ Message sent successfully to WhatsApp!");
       } else {
         console.log("❌ Failed to send message!");
-        console.log("Error details:", result);
       }
     }
     else {
-      console.log(`❌ Not authorized or not LIST command`);
-      console.log(`   Authorized: ${cleanNumber === '9480072737'}`);
-      console.log(`   Is LIST: ${userMessage?.toUpperCase() === 'LIST'}`);
-      console.log(`   Message was: ${userMessage}`);
+      console.log(`❌ Not authorized: ${cleanNumber} sent "${userMessage}"`);
     }
     
-    console.log("=========================================");
     return NextResponse.json({ success: true });
     
   } catch (error) {
-    console.error("🔥 Webhook Error:", error);
+    console.error("🔥 Error:", error);
     return NextResponse.json({ error: "Failed" }, { status: 200 });
   }
 }
