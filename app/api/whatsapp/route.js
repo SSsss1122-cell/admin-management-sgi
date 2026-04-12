@@ -1,76 +1,44 @@
-import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
-
-export async function OPTIONS() {
-  return new NextResponse(null, {
-    status: 200,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    },
-  });
-}
-
-export async function POST(request) {
-  const headers = {
-    'Access-Control-Allow-Origin': '*',
-  };
-  
+export default function handler(req, res) {
   try {
-    const payload = await request.json();
-    const senderNumber = payload.data?.senderPhoneNumber;
-    const userMessage = payload.data?.content?.text?.trim() || '';
-    
-    if (!senderNumber) {
-      return NextResponse.json({ 
-        isAdmin: false,
-        reply: "No sender number found" 
-      }, { headers });
+    const { message, userId, phone } = req.body;
+
+    // Normalize phone (optional)
+    const cleanPhone = phone?.replace(/\D/g, "");
+
+    console.log("📱 Received from:", cleanPhone);
+    console.log("💬 Message:", message);
+
+    // 🔐 ADMIN CHECK (replace with your real admin numbers)
+    const ADMIN_NUMBERS = ["9480072737", "919480072737"];
+
+    const isAdmin = ADMIN_NUMBERS.includes(cleanPhone);
+
+    console.log("🔐 Is Admin:", isAdmin);
+
+    // 🧠 DEFAULT RESPONSE
+    let response = {
+      isAdmin: isAdmin,
+      name: isAdmin ? "Admin" : "Student",
+      reply: ""
+    };
+
+    // 👨‍💼 ADMIN RESPONSE
+    if (isAdmin) {
+      response.reply = "Welcome Admin 👨‍💼";
+    } 
+    // ❌ NON ADMIN RESPONSE
+    else {
+      response.reply = "⛔ Access Denied - Only Admin allowed";
     }
-    
-    // Clean the number
-    let cleanNumber = senderNumber.toString();
-    if (cleanNumber.startsWith('+91')) {
-      cleanNumber = cleanNumber.substring(3);
-    } else if (cleanNumber.startsWith('91')) {
-      cleanNumber = cleanNumber.substring(2);
-    }
-    cleanNumber = cleanNumber.replace(/\D/g, '');
-    
-    // Check if admin exists in admins table
-    const { data: admin, error: adminError } = await supabase
-      .from('admins')
-      .select('id, mobile_number, admin_name')
-      .eq('mobile_number', cleanNumber)
-      .single();
-    
-    // ============================================
-    // RETURN THE EXACT FORMAT YOU WANT
-    // ============================================
-    
-    if (adminError || !admin) {
-      // Not an admin
-      return NextResponse.json({ 
-        isAdmin: false,
-        name: null,
-        reply: "⛔ Access Denied. You are not authorized."
-      }, { headers });
-    }
-    
-    // Is Admin - Return this format
-    return NextResponse.json({ 
-      isAdmin: true,
-      name: admin.admin_name || admin.mobile_number,
-      reply: `Welcome ${admin.admin_name || 'Admin'}`
-    }, { headers });
-    
+
+    return res.status(200).json(response);
+
   } catch (error) {
-    console.error("🔥 Error:", error);
-    return NextResponse.json({ 
+    console.error("❌ API Error:", error);
+
+    return res.status(500).json({
       isAdmin: false,
-      name: null,
-      reply: "Server error. Please try again."
-    }, { headers });
+      reply: "Server Error"
+    });
   }
 }
