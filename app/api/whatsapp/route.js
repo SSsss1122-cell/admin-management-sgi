@@ -7,36 +7,31 @@ export async function POST(request) {
     
     console.log("Full Payload:", JSON.stringify(payload, null, 2));
     
-    // Safely extract sender number - check multiple possible locations
+    // ViralBoostUp ka payload structure
+    // Data inside "data" object
+    const eventData = payload.data;
+    
     let senderNumber = null;
-    
-    if (payload.messages && payload.messages[0] && payload.messages[0].from) {
-      senderNumber = payload.messages[0].from;
-    } 
-    else if (payload.from) {
-      senderNumber = payload.from;
-    }
-    else if (payload.contact && payload.contact.wa_id) {
-      senderNumber = payload.contact.wa_id;
-    }
-    
     let userMessage = null;
-    if (payload.messages && payload.messages[0] && payload.messages[0].text) {
-      userMessage = payload.messages[0].text.body;
-    }
-    else if (payload.message && payload.message.text) {
-      userMessage = payload.message.text.body;
-    }
-    else if (payload.body) {
-      userMessage = payload.body;
+    
+    if (eventData) {
+      // Number extract karo
+      if (eventData.senderPhoneNumber) {
+        senderNumber = eventData.senderPhoneNumber;
+      }
+      
+      // Message extract karo
+      if (eventData.content && eventData.content.text) {
+        userMessage = eventData.content.text;
+      }
     }
     
     console.log("Sender:", senderNumber);
     console.log("Message:", userMessage);
     
-    // Agar sender number nahi mila toh return
+    // Agar sender number nahi mila
     if (!senderNumber) {
-      console.log("No sender number found in payload");
+      console.log("No sender number found");
       return NextResponse.json({ success: true });
     }
     
@@ -49,7 +44,7 @@ export async function POST(request) {
     console.log("Clean Number:", cleanNumber);
     console.log("Authorized Number: 9480072737");
     
-    // Sirf authorized number (9480072737) se LIST aaye toh bhejo
+    // Sirf authorized number se LIST aaye toh bhejo
     if (cleanNumber === '9480072737' && userMessage && userMessage.toUpperCase() === 'LIST') {
       
       console.log("✅ Authorized! Fetching students...");
@@ -65,40 +60,47 @@ export async function POST(request) {
         console.error("Supabase error:", error);
       } 
       else if (!students || students.length === 0) {
-        replyMessage = '📭 No students found';
+        replyMessage = '📭 No students found in database';
       }
       else {
-        replyMessage = "📋 STUDENT LIST\n\n";
+        replyMessage = "📋 *STUDENT LIST*\n\n";
         students.forEach((s, i) => {
           replyMessage += `${i+1}. ${s.full_name}\n`;
-          replyMessage += `   ${s.usn}\n\n`;
+          replyMessage += `   📍 USN: ${s.usn}\n\n`;
         });
-        replyMessage += `Total: ${students.length} students`;
+        replyMessage += `━━━━━━━━━━━━━━━\n📊 Total: ${students.length} students`;
       }
       
-      // Send reply
+      console.log("Sending reply:", replyMessage);
+      
+      // Send reply to same number
       const apiKey = process.env.VIRALBOOSTUP_API_KEY;
       if (apiKey) {
-        await fetch("https://app.viralboostup.in/api/v2/whatsapp-business/messages", {
+        const response = await fetch("https://app.viralboostup.in/api/v2/whatsapp-business/messages", {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${apiKey}`,
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            to: senderNumber,
+            to: senderNumber,  // Original number with 91
             type: "text",
             text: { body: replyMessage }
           })
         });
-        console.log("✅ Reply sent");
+        
+        const result = await response.json();
+        console.log("API Response:", result);
+        console.log("✅ Reply sent to", senderNumber);
       } else {
-        console.log("❌ API Key missing");
+        console.log("❌ API Key missing!");
       }
     }
     else {
-      console.log("❌ Not authorized or not LIST command");
-      console.log(`Authorized: ${cleanNumber === '9480072737'}, Is LIST: ${userMessage?.toUpperCase() === 'LIST'}`);
+      console.log(`❌ Not authorized or not LIST command`);
+      console.log(`- Authorized: ${cleanNumber === '9480072737'}`);
+      console.log(`- Is LIST: ${userMessage?.toUpperCase() === 'LIST'}`);
+      console.log(`- Message was: ${userMessage}`);
     }
     
     return NextResponse.json({ success: true });
