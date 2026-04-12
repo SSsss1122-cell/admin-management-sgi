@@ -54,7 +54,7 @@ export async function POST(req) {
       await fetch("https://app.viralboostup.in/api/v2/whatsapp-business/messages", {
         method: "POST",
         headers: {
-          "Authorization": "Bearer YOUR_API_KEY",
+          "Authorization": "Bearer eb7db4336bcf69a13505744bace3ffdb221f72eb7f19bc8e4a1a17e097f42bab",
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
