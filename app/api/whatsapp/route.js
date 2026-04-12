@@ -14,6 +14,7 @@ export async function POST(request) {
     
     let senderNumber = null;
     let userMessage = null;
+    let recipientPhoneNumberId = null;
     
     if (eventData) {
       if (eventData.senderPhoneNumber) {
@@ -22,10 +23,14 @@ export async function POST(request) {
       if (eventData.content && eventData.content.text) {
         userMessage = eventData.content.text;
       }
+      if (eventData.recipientPhoneNumberId) {
+        recipientPhoneNumberId = eventData.recipientPhoneNumberId;
+      }
     }
     
     console.log(`📱 Sender: ${senderNumber}`);
     console.log(`💬 Message: ${userMessage}`);
+    console.log(`🆔 Phone Number ID: ${recipientPhoneNumberId}`);
     
     // Agar sender number nahi mila
     if (!senderNumber) {
@@ -70,21 +75,22 @@ export async function POST(request) {
         replyMessage += `━━━━━━━━━━━━━━━\n📊 Total: ${students.length} students`;
       }
       
-      console.log("📤 Sending reply:", replyMessage);
+      console.log("📤 Sending reply:", replyMessage.substring(0, 200) + "...");
       
       // Send reply to same number
       const apiKey = process.env.VIRALBOOSTUP_API_KEY;
       
       if (!apiKey) {
-        console.log("❌ VIRALBOOSTUP_API_KEY is missing in environment variables!");
+        console.log("❌ VIRALBOOSTUP_API_KEY is missing!");
         return NextResponse.json({ success: false, error: "API Key missing" });
       }
       
       console.log("🔑 API Key found, sending message...");
       
-      // Try different formats
+      // ViralBoostUp API requires phone_number_id
       const requestBody = {
-        to: senderNumber,  // 919480072737
+        phone_number_id: recipientPhoneNumberId || "595231930349201", // From payload
+        to: senderNumber,
         type: "text",
         text: {
           body: replyMessage
