@@ -6,16 +6,17 @@ export async function POST(req) {
 
     console.log("📦 Full Body:", body);
 
-    // 🚫 Ignore non-message events
+    // 🚫 Ignore status / non-message events
     if (body.event !== "message") {
       console.log("⏭ Ignored Event:", body.event);
+
       return NextResponse.json({
-        isAdmin: false,
-        ignore: true
+        isAdmin: "false",
+        ignore: "true"
       });
     }
 
-    // ✅ CORRECT EXTRACTION
+    // ✅ Extract sender phone
     const phone = body?.data?.senderPhoneNumber;
 
     console.log("📱 Extracted Phone:", phone);
@@ -24,22 +25,31 @@ export async function POST(req) {
 
     console.log("📱 Clean Phone:", cleanPhone);
 
+    // 🔐 Admin numbers (later you can fetch from DB)
     const ADMIN_NUMBERS = ["9480072737"];
 
     const isAdmin = ADMIN_NUMBERS.includes(cleanPhone);
 
     console.log("🔐 Is Admin:", isAdmin);
 
+    // ✅ FINAL RESPONSE (STRING FORMAT — IMPORTANT)
     return NextResponse.json({
-      isAdmin,
-      ignore: false
+      isAdmin: isAdmin ? "true" : "false",
+      ignore: "false",
+      reply: isAdmin
+        ? "Welcome Admin 👨‍💼"
+        : "⛔ You are not admin"
     });
 
   } catch (error) {
     console.error("❌ Error:", error);
 
     return NextResponse.json(
-      { isAdmin: false, ignore: true },
+      {
+        isAdmin: "false",
+        ignore: "true",
+        error: "Server error"
+      },
       { status: 500 }
     );
   }
