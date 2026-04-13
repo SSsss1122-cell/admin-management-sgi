@@ -1,20 +1,52 @@
 export default function handler(req, res) {
+  console.log("📥 Incoming Request Method:", req.method);
+
+  // ❌ METHOD CHECK
   if (req.method !== "POST") {
+    console.log("❌ Wrong Method:", req.method);
+
     return res.status(405).json({
       error: "Method Not Allowed - Use POST"
     });
   }
 
-  const { message, phone } = req.body || {};
+  try {
+    // 📦 BODY DATA
+    const { message, phone } = req.body || {};
 
-  const ADMIN_NUMBERS = ["9480072737"];
+    console.log("💬 Message:", message);
+    console.log("📱 Raw Phone:", phone);
 
-const cleanPhone = phone?.replace(/\D/g, "").slice(-10);
+    // 🔧 CLEAN PHONE
+    const cleanPhone = phone?.replace(/\D/g, "").slice(-10);
 
-const isAdmin = ADMIN_NUMBERS.includes(cleanPhone);
+    console.log("🧹 Clean Phone:", cleanPhone);
 
-  return res.status(200).json({
-    isAdmin,
-    reply: isAdmin ? "Welcome Admin 👨‍💼" : "⛔ Access Denied"
-  });
+    // 🔐 ADMIN CHECK
+    const ADMIN_NUMBERS = ["9480072737"];
+
+    const isAdmin = ADMIN_NUMBERS.includes(cleanPhone);
+
+    console.log("🔐 Is Admin:", isAdmin);
+
+    // ✅ FINAL RESPONSE
+    const response = {
+      isAdmin,
+      reply: isAdmin
+        ? "Welcome Admin 👨‍💼"
+        : "⛔ Access Denied"
+    };
+
+    console.log("📤 Sending Response:", response);
+
+    return res.status(200).json(response);
+
+  } catch (error) {
+    console.error("🔥 ERROR OCCURRED:", error);
+
+    return res.status(500).json({
+      isAdmin: false,
+      error: error.message || "Server Error"
+    });
+  }
 }
