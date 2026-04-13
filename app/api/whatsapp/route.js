@@ -6,8 +6,8 @@ export async function POST(req) {
 
     console.log("📦 Full Body:", body);
 
-    // ✅ CORRECT PHONE EXTRACTION
-    const phone = body?.data?.recipientPhoneNumber;
+    // ✅ CORRECT PHONE
+    const phone = body?.data?.senderPhoneNumber;
 
     console.log("📱 Extracted Phone:", phone);
 
