@@ -1,4 +1,5 @@
 export default function handler(req, res) {
+  // CORS FIX (VERY IMPORTANT)
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -7,15 +8,28 @@ export default function handler(req, res) {
     return res.status(200).end();
   }
 
-  const { message, phone } = req.body || {};
+  try {
+    const { message, phone } = req.body || {};
 
-  const ADMIN_NUMBERS = ["9480072737"];
+    console.log("📱 Phone:", phone);
+    console.log("💬 Message:", message);
 
-  const cleanPhone = phone?.replace(/\D/g, "");
-  const isAdmin = ADMIN_NUMBERS.includes(cleanPhone);
+    const ADMIN_NUMBERS = ["9480072737"];
+    const cleanPhone = phone?.replace(/\D/g, "");
 
-  return res.status(200).json({
-    isAdmin,
-    reply: isAdmin ? "Welcome Admin 👨‍💼" : "⛔ Access Denied"
-  });
+    const isAdmin = ADMIN_NUMBERS.includes(cleanPhone);
+
+    return res.status(200).json({
+      isAdmin: isAdmin,
+      reply: isAdmin
+        ? "Welcome Admin 👨‍💼"
+        : "⛔ Access Denied"
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      isAdmin: false,
+      reply: "Server Error"
+    });
+  }
 }
