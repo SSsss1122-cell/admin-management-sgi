@@ -6,7 +6,13 @@ export async function POST(req) {
 
     console.log("📦 Full Body:", body);
 
-    // ✅ CORRECT PHONE
+    // 🚫 IGNORE STATUS EVENTS
+    if (body.event !== "message") {
+      console.log("⏭ Ignored event:", body.event);
+      return NextResponse.json({ skip: true });
+    }
+
+    // ✅ ONLY FOR MESSAGE
     const phone = body?.data?.senderPhoneNumber;
 
     console.log("📱 Extracted Phone:", phone);
@@ -30,7 +36,7 @@ export async function POST(req) {
     console.error("❌ Error:", error);
 
     return NextResponse.json(
-      { isAdmin: false, error: "Server error" },
+      { isAdmin: false },
       { status: 500 }
     );
   }
