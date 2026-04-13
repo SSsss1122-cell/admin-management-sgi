@@ -8,9 +8,10 @@ export default function handler(req, res) {
   const { message, phone } = req.body || {};
 
   const ADMIN_NUMBERS = ["9480072737"];
-  const cleanPhone = phone?.replace(/\D/g, "");
 
-  const isAdmin = ADMIN_NUMBERS.includes(cleanPhone);
+const cleanPhone = phone?.replace(/\D/g, "").slice(-10);
+
+const isAdmin = ADMIN_NUMBERS.includes(cleanPhone);
 
   return res.status(200).json({
     isAdmin,
