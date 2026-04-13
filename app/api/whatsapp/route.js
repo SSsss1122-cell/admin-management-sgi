@@ -1,52 +1,51 @@
-export default function handler(req, res) {
-  console.log("📥 Incoming Request Method:", req.method);
+import { createClient } from "@supabase/supabase-js";
 
-  // ❌ METHOD CHECK
-  if (req.method !== "POST") {
-    console.log("❌ Wrong Method:", req.method);
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
-    return res.status(405).json({
-      error: "Method Not Allowed - Use POST"
-    });
+export default async function handler(req, res) {
+  console.log("📥 Method:", req.method);
+
+  let phone = "";
+
+  // ✅ SUPPORT BOTH (IMPORTANT for your bot)
+  if (req.method === "POST") {
+    phone = req.body?.phone;
+  } else if (req.method === "GET") {
+    phone = req.query?.phone;
   }
 
+  console.log("📱 Incoming Phone:", phone);
+
+  const cleanPhone = phone?.replace(/\D/g, "").slice(-10);
+
   try {
-    // 📦 BODY DATA
-    const { message, phone } = req.body || {};
+    // 🔐 CHECK IN SUPABASE
+    const { data, error } = await supabase
+      .from("users")
+      .select("phone")
+      .eq("phone", cleanPhone)
+      .single();
 
-    console.log("💬 Message:", message);
-    console.log("📱 Raw Phone:", phone);
-
-    // 🔧 CLEAN PHONE
-    const cleanPhone = phone?.replace(/\D/g, "").slice(-10);
-
-    console.log("🧹 Clean Phone:", cleanPhone);
-
-    // 🔐 ADMIN CHECK
-    const ADMIN_NUMBERS = ["9480072737"];
-
-    const isAdmin = ADMIN_NUMBERS.includes(cleanPhone);
+    const isAdmin = !!data;
 
     console.log("🔐 Is Admin:", isAdmin);
 
-    // ✅ FINAL RESPONSE
-    const response = {
+    return res.status(200).json({
       isAdmin,
       reply: isAdmin
         ? "Welcome Admin 👨‍💼"
-        : "⛔ Access Denied"
-    };
+        : "⛔ You are not admin"
+    });
 
-    console.log("📤 Sending Response:", response);
-
-    return res.status(200).json(response);
-
-  } catch (error) {
-    console.error("🔥 ERROR OCCURRED:", error);
+  } catch (err) {
+    console.error("❌ Error:", err);
 
     return res.status(500).json({
       isAdmin: false,
-      error: error.message || "Server Error"
+      reply: "Server Error"
     });
   }
 }
