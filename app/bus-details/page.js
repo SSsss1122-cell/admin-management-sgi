@@ -26,7 +26,14 @@ import {
   Edit,
   Trash2,
   Save,
-  X
+  X,
+  Users,
+  Battery,
+  Wind,
+  Thermometer,
+  CheckCircle,
+  AlertCircle,
+  XCircle
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import withAuth from '../../components/withAuth';
@@ -61,7 +68,6 @@ function BusDetails() {
   useEffect(() => {
     fetchBuses();
     
-    // Update time
     const updateTime = () => {
       const now = new Date();
       setCurrentTime(now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
@@ -71,7 +77,6 @@ function BusDetails() {
     return () => clearInterval(timer);
   }, []);
 
-  // Auto-hide toast after 3 seconds
   useEffect(() => {
     if (toast.show) {
       const timer = setTimeout(() => {
@@ -90,19 +95,13 @@ function BusDetails() {
       setLoading(true);
       setError(null);
       
-      console.log('Fetching buses...');
-      
       const { data, error } = await supabase
         .from('buses')
         .select('*')
         .order('bus_number');
 
-      if (error) {
-        console.error('Supabase error:', error);
-        throw error;
-      }
+      if (error) throw error;
 
-      console.log('Fetched buses:', data);
       setBuses(data || []);
       
     } catch (error) {
@@ -121,7 +120,6 @@ function BusDetails() {
     setExpandedBus(expandedBus === busId ? null : busId);
   };
 
-  // Function to calculate remaining days
   const getRemainingDays = (expiryDate) => {
     if (!expiryDate) return null;
     
@@ -133,16 +131,16 @@ function BusDetails() {
     return daysUntilExpiry;
   };
 
-  // Function to check expiry status and get display info
   const getExpiryInfo = (expiryDate) => {
     if (!expiryDate) {
       return {
         status: 'not-set',
-        text: 'Not set',
+        text: 'Not Set',
         badgeClass: 'badge-not-set',
         icon: '⚠️',
         daysText: '',
-        days: null
+        days: null,
+        color: '#9ca3af'
       };
     }
     
@@ -155,7 +153,8 @@ function BusDetails() {
         badgeClass: 'badge-expired',
         icon: '❌',
         daysText: `${Math.abs(days)} days ago`,
-        days: days
+        days: days,
+        color: '#ef4444'
       };
     } else if (days <= 7) {
       return {
@@ -164,16 +163,18 @@ function BusDetails() {
         badgeClass: 'badge-critical',
         icon: '🔥',
         daysText: `${days} days left`,
-        days: days
+        days: days,
+        color: '#f97316'
       };
     } else if (days <= 30) {
       return {
         status: 'warning',
-        text: 'Expiring Soon',
+        text: 'Warning',
         badgeClass: 'badge-warning',
         icon: '⚠️',
         daysText: `${days} days left`,
-        days: days
+        days: days,
+        color: '#eab308'
       };
     } else {
       return {
@@ -182,12 +183,12 @@ function BusDetails() {
         badgeClass: 'badge-valid',
         icon: '✅',
         daysText: `${days} days left`,
-        days: days
+        days: days,
+        color: '#10b981'
       };
     }
   };
 
-  // Function to format date for display
   const formatDate = (dateString) => {
     if (!dateString) return 'Not set';
     return new Date(dateString).toLocaleDateString('en-IN', {
@@ -197,23 +198,22 @@ function BusDetails() {
     });
   };
 
-  // Function to format date for input
   const formatDateForInput = (dateString) => {
     if (!dateString) return '';
     const date = new Date(dateString);
     return date.toISOString().split('T')[0];
   };
 
-  // Function to get service status
   const getServiceInfo = (nextServiceDate, currentKm, nextServiceKm) => {
     if (!nextServiceDate && !nextServiceKm) {
       return {
         status: 'not-set',
-        text: 'Not set',
+        text: 'Not Set',
         badgeClass: 'badge-not-set',
         icon: '⚙️',
         daysText: '',
-        kmText: ''
+        kmText: '',
+        color: '#9ca3af'
       };
     }
 
@@ -221,7 +221,6 @@ function BusDetails() {
     let daysText = '';
     let kmText = '';
 
-    // Check date-based service
     if (nextServiceDate) {
       const days = getRemainingDays(nextServiceDate);
       if (days <= 0) {
@@ -235,7 +234,6 @@ function BusDetails() {
       }
     }
 
-    // Check KM-based service
     if (nextServiceKm && currentKm) {
       const current = parseInt(currentKm);
       const next = parseInt(nextServiceKm);
@@ -264,17 +262,16 @@ function BusDetails() {
       badgeClass,
       icon: status === 'critical' ? '🔥' : status === 'warning' ? '⚠️' : '✅',
       daysText,
-      kmText
+      kmText,
+      color: status === 'critical' ? '#ef4444' : status === 'warning' ? '#eab308' : '#10b981'
     };
   };
 
-  // Filter buses based on search term
   const filteredBuses = buses.filter(bus =>
     bus.bus_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     bus.route_name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Calculate stats
   const expiredDocumentsCount = buses.filter(bus => 
     getExpiryInfo(bus.puc_expiry).status === 'expired' ||
     getExpiryInfo(bus.insurance_expiry).status === 'expired' ||
@@ -294,7 +291,6 @@ function BusDetails() {
     getServiceInfo(bus.next_service_due, bus.current_km, bus.next_service_km).status !== 'valid'
   ).length;
 
-  // NEW: Delete bus function
   const deleteBus = async (busId, busNumber) => {
     if (!window.confirm(`⚠️ Are you sure you want to delete Bus ${busNumber}?\n\nThis action cannot be undone.`)) return;
     
@@ -307,14 +303,13 @@ function BusDetails() {
       if (error) throw error;
 
       showToast(`Bus ${busNumber} deleted successfully!`, 'success');
-      fetchBuses(); // Refresh the list
+      fetchBuses();
     } catch (error) {
       console.error('Error deleting bus:', error);
       showToast('Error deleting bus: ' + error.message, 'error');
     }
   };
 
-  // NEW: Open edit modal
   const openEditModal = (bus) => {
     setEditingBus(bus);
     setEditFormData({
@@ -334,13 +329,11 @@ function BusDetails() {
     setShowEditModal(true);
   };
 
-  // NEW: Handle edit form input changes
   const handleEditInputChange = (e) => {
     const { name, value } = e.target;
     setEditFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  // NEW: Save edited bus
   const handleSaveEdit = async (e) => {
     e.preventDefault();
     
@@ -370,7 +363,7 @@ function BusDetails() {
       showToast(`Bus ${editFormData.bus_number} updated successfully!`, 'success');
       setShowEditModal(false);
       setEditingBus(null);
-      fetchBuses(); // Refresh the list
+      fetchBuses();
     } catch (error) {
       console.error('Error updating bus:', error);
       showToast('Error updating bus: ' + error.message, 'error');
@@ -521,6 +514,11 @@ function BusDetails() {
           50% { filter: blur(80px) opacity(0.8); }
         }
         
+        @keyframes shimmer {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
+        }
+        
         .animate-fade-in { animation: fadeIn 0.3s ease forwards; }
         .animate-slide-in { animation: slideIn 0.3s ease forwards; }
         .animate-scale-in { animation: scaleIn 0.2s ease forwards; }
@@ -546,9 +544,9 @@ function BusDetails() {
         }
         
         .badge-critical {
-          background: rgba(239, 68, 68, 0.1);
-          color: #ef4444;
-          border: 1px solid rgba(239, 68, 68, 0.2);
+          background: rgba(249, 115, 22, 0.1);
+          color: #f97316;
+          border: 1px solid rgba(249, 115, 22, 0.2);
         }
         
         .badge-expired {
@@ -561,6 +559,38 @@ function BusDetails() {
           background: rgba(107, 114, 128, 0.1);
           color: #9ca3af;
           border: 1px solid rgba(107, 114, 128, 0.2);
+        }
+        
+        .status-card {
+          background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-secondary) 100%);
+          border-radius: 20px;
+          padding: 20px;
+          position: relative;
+          overflow: hidden;
+          transition: all 0.3s ease;
+          border: 1px solid var(--border);
+        }
+        
+        .status-card::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 3px;
+          background: linear-gradient(90deg, var(--accent-orange), var(--accent-yellow));
+          transform: scaleX(0);
+          transition: transform 0.3s ease;
+        }
+        
+        .status-card:hover::before {
+          transform: scaleX(1);
+        }
+        
+        .status-card:hover {
+          transform: translateY(-4px);
+          border-color: var(--border-hover);
+          box-shadow: 0 20px 40px -12px rgba(0,0,0,0.3);
         }
         
         .search-bar {
@@ -576,38 +606,6 @@ function BusDetails() {
           box-shadow: 0 0 0 3px rgba(249,115,22,0.2);
         }
         
-        .stat-card {
-          background: var(--bg-card);
-          border: 1px solid var(--border);
-          border-radius: 20px;
-          padding: 20px;
-          transition: all 0.3s ease;
-          position: relative;
-          overflow: hidden;
-        }
-        
-        .stat-card::before {
-          content: '';
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          height: 3px;
-          background: linear-gradient(90deg, #f97316, #eab308);
-          opacity: 0;
-          transition: opacity 0.3s ease;
-        }
-        
-        .stat-card:hover {
-          transform: translateY(-4px);
-          background: var(--bg-card-hover);
-          border-color: var(--border-hover);
-        }
-        
-        .stat-card:hover::before {
-          opacity: 1;
-        }
-        
         .bus-card {
           background: var(--bg-card);
           border: 1px solid var(--border);
@@ -619,10 +617,11 @@ function BusDetails() {
         .bus-card:hover {
           border-color: #f97316;
           box-shadow: 0 10px 30px -10px rgba(249,115,22,0.3);
+          transform: translateY(-2px);
         }
         
         .bus-header {
-          background: rgba(255,255,255,0.02);
+          background: linear-gradient(135deg, rgba(249,115,22,0.05) 0%, rgba(234,179,8,0.02) 100%);
           border-bottom: 1px solid var(--border);
           padding: 16px;
           cursor: pointer;
@@ -630,7 +629,7 @@ function BusDetails() {
         }
         
         .bus-header:hover {
-          background: rgba(249,115,22,0.05);
+          background: linear-gradient(135deg, rgba(249,115,22,0.1) 0%, rgba(234,179,8,0.05) 100%);
         }
         
         .action-button {
@@ -652,17 +651,19 @@ function BusDetails() {
           background: var(--bg-card-hover);
           border-color: #f97316;
           color: #f97316;
+          transform: translateY(-1px);
         }
         
         .action-button.primary {
           background: linear-gradient(135deg, #f97316, #eab308);
           color: white;
           border: none;
+          box-shadow: 0 4px 12px rgba(249,115,22,0.3);
         }
         
         .action-button.primary:hover {
           transform: translateY(-2px);
-          box-shadow: 0 10px 25px -5px #f97316;
+          box-shadow: 0 8px 20px -5px #f97316;
         }
         
         .action-button.edit {
@@ -687,18 +688,23 @@ function BusDetails() {
           border-color: rgba(239, 68, 68, 0.4);
         }
         
-        .document-grid {
+        .info-grid {
           display: grid;
-          grid-template-columns: repeat(2, 1fr);
-          gap: 12px;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap: 16px;
         }
         
-        .document-item {
+        .info-card {
           background: rgba(255,255,255,0.02);
           border: 1px solid var(--border);
-          border-radius: 12px;
-          padding: 12px;
-          text-align: center;
+          border-radius: 16px;
+          padding: 16px;
+          transition: all 0.2s ease;
+        }
+        
+        .info-card:hover {
+          background: rgba(255,255,255,0.04);
+          border-color: rgba(249,115,22,0.3);
         }
         
         .modal-backdrop {
@@ -736,7 +742,8 @@ function BusDetails() {
         }
         
         @media (max-width: 768px) {
-          .stat-card { padding: 16px; }
+          .info-grid { grid-template-columns: 1fr; gap: 12px; }
+          .status-card { padding: 16px; }
           .bus-card { margin-bottom: 12px; }
         }
       `}</style>
@@ -762,7 +769,7 @@ function BusDetails() {
             minWidth: 320,
             border: '1px solid rgba(255,255,255,0.1)'
           }}>
-            {toast.type === 'success' ? <AlertTriangle size={20} /> : <AlertTriangle size={20} />}
+            {toast.type === 'success' ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
             <span style={{ flex: 1, fontSize: 14, fontWeight: 500 }}>{toast.message}</span>
             <button
               onClick={() => setToast({ show: false, message: '', type: 'success' })}
@@ -778,7 +785,6 @@ function BusDetails() {
       {showEditModal && (
         <div className="modal-backdrop">
           <div className="modal-content">
-            {/* Modal Header */}
             <div style={{
               padding: 24,
               borderBottom: '1px solid var(--border)',
@@ -826,14 +832,17 @@ function BusDetails() {
             </div>
 
             <form onSubmit={handleSaveEdit} style={{ padding: 24 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
+              <div className="info-grid">
                 {/* Basic Info */}
                 <div style={{ gridColumn: 'span 2' }}>
-                  <h4 style={{ fontSize: 16, fontWeight: 600, color: '#f97316', marginBottom: 12 }}>Basic Information</h4>
+                  <h4 style={{ fontSize: 16, fontWeight: 600, color: '#f97316', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Bus size={18} />
+                    Basic Information
+                  </h4>
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>
+                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 8 }}>
                     Bus Number <span style={{ color: '#ef4444' }}>*</span>
                   </label>
                   <input
@@ -860,7 +869,7 @@ function BusDetails() {
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>Route Name</label>
+                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 8 }}>Route Name</label>
                   <input
                     type="text"
                     name="route_name"
@@ -885,11 +894,14 @@ function BusDetails() {
 
                 {/* Documents Section */}
                 <div style={{ gridColumn: 'span 2', marginTop: 8 }}>
-                  <h4 style={{ fontSize: 16, fontWeight: 600, color: '#f97316', marginBottom: 12 }}>Document Expiry Dates</h4>
+                  <h4 style={{ fontSize: 16, fontWeight: 600, color: '#f97316', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <FileText size={18} />
+                    Document Expiry Dates
+                  </h4>
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>PUC Expiry</label>
+                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 8 }}>PUC Expiry</label>
                   <input
                     type="date"
                     name="puc_expiry"
@@ -912,7 +924,7 @@ function BusDetails() {
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>Insurance Expiry</label>
+                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 8 }}>Insurance Expiry</label>
                   <input
                     type="date"
                     name="insurance_expiry"
@@ -935,7 +947,7 @@ function BusDetails() {
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>Fitness Expiry</label>
+                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 8 }}>Fitness Expiry</label>
                   <input
                     type="date"
                     name="fitness_expiry"
@@ -958,7 +970,7 @@ function BusDetails() {
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>Permit Expiry</label>
+                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 8 }}>Permit Expiry</label>
                   <input
                     type="date"
                     name="permit_expiry"
@@ -982,11 +994,14 @@ function BusDetails() {
 
                 {/* Service Section */}
                 <div style={{ gridColumn: 'span 2', marginTop: 8 }}>
-                  <h4 style={{ fontSize: 16, fontWeight: 600, color: '#f97316', marginBottom: 12 }}>Service Information</h4>
+                  <h4 style={{ fontSize: 16, fontWeight: 600, color: '#f97316', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Wrench size={18} />
+                    Service Information
+                  </h4>
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>Current KM</label>
+                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 8 }}>Current KM</label>
                   <input
                     type="number"
                     name="current_km"
@@ -1010,7 +1025,7 @@ function BusDetails() {
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>Last Service Date</label>
+                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 8 }}>Last Service Date</label>
                   <input
                     type="date"
                     name="last_service_date"
@@ -1033,7 +1048,7 @@ function BusDetails() {
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>Last Service KM</label>
+                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 8 }}>Last Service KM</label>
                   <input
                     type="number"
                     name="last_service_km"
@@ -1057,7 +1072,7 @@ function BusDetails() {
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>Next Service Due Date</label>
+                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 8 }}>Next Service Due Date</label>
                   <input
                     type="date"
                     name="next_service_due"
@@ -1080,7 +1095,7 @@ function BusDetails() {
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>Next Service Due KM</label>
+                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 8 }}>Next Service Due KM</label>
                   <input
                     type="number"
                     name="next_service_km"
@@ -1105,7 +1120,7 @@ function BusDetails() {
 
                 {/* Remarks */}
                 <div style={{ gridColumn: 'span 2' }}>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>Remarks</label>
+                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 8 }}>Remarks</label>
                   <textarea
                     name="remarks"
                     value={editFormData.remarks}
@@ -1130,7 +1145,6 @@ function BusDetails() {
                 </div>
               </div>
 
-              {/* Form Actions */}
               <div style={{
                 marginTop: 24,
                 paddingTop: 20,
@@ -1334,92 +1348,84 @@ function BusDetails() {
           {/* Summary Cards */}
           <div style={{ 
             display: 'grid', 
-            gridTemplateColumns: 'repeat(2, 1fr)',
-            gap: 12,
-            marginBottom: 20
+            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+            gap: 16,
+            marginBottom: 24
           }}>
-            {/* Expired Documents Card */}
-            <div className="stat-card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Expired Docs</p>
-                  <p style={{ fontSize: 28, fontWeight: 700, color: '#ef4444', marginTop: 4 }}>{expiredDocumentsCount}</p>
-                </div>
+            <div className="status-card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                 <div style={{ 
-                  width: 40, 
-                  height: 40, 
-                  borderRadius: 12, 
+                  width: 48, 
+                  height: 48, 
+                  borderRadius: 16, 
                   background: 'rgba(239,68,68,0.1)', 
                   display: 'flex', 
                   alignItems: 'center', 
                   justifyContent: 'center'
                 }}>
-                  <AlertTriangle size={20} color="#ef4444" />
+                  <XCircle size={24} color="#ef4444" />
                 </div>
+                <div style={{ fontSize: 28, fontWeight: 700, color: '#ef4444' }}>{expiredDocumentsCount}</div>
               </div>
+              <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>Expired Documents</h3>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Documents past expiry date</p>
             </div>
 
-            {/* Critical Alerts Card */}
-            <div className="stat-card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Critical</p>
-                  <p style={{ fontSize: 28, fontWeight: 700, color: '#f97316', marginTop: 4 }}>{criticalAlertsCount}</p>
-                </div>
+            <div className="status-card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                 <div style={{ 
-                  width: 40, 
-                  height: 40, 
-                  borderRadius: 12, 
+                  width: 48, 
+                  height: 48, 
+                  borderRadius: 16, 
                   background: 'rgba(249,115,22,0.1)', 
                   display: 'flex', 
                   alignItems: 'center', 
                   justifyContent: 'center'
                 }}>
-                  <Clock size={20} color="#f97316" />
+                  <AlertCircle size={24} color="#f97316" />
                 </div>
+                <div style={{ fontSize: 28, fontWeight: 700, color: '#f97316' }}>{criticalAlertsCount}</div>
               </div>
+              <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>Critical Alerts</h3>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Requires immediate attention</p>
             </div>
 
-            {/* Service Due Card */}
-            <div className="stat-card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Service Due</p>
-                  <p style={{ fontSize: 28, fontWeight: 700, color: '#eab308', marginTop: 4 }}>{dueForServiceCount}</p>
-                </div>
+            <div className="status-card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                 <div style={{ 
-                  width: 40, 
-                  height: 40, 
-                  borderRadius: 12, 
+                  width: 48, 
+                  height: 48, 
+                  borderRadius: 16, 
                   background: 'rgba(234,179,8,0.1)', 
                   display: 'flex', 
                   alignItems: 'center', 
                   justifyContent: 'center'
                 }}>
-                  <Wrench size={20} color="#eab308" />
+                  <Wrench size={24} color="#eab308" />
                 </div>
+                <div style={{ fontSize: 28, fontWeight: 700, color: '#eab308' }}>{dueForServiceCount}</div>
               </div>
+              <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>Service Due</h3>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Buses requiring maintenance</p>
             </div>
 
-            {/* Total Buses Card */}
-            <div className="stat-card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Total Buses</p>
-                  <p style={{ fontSize: 28, fontWeight: 700, color: '#3b82f6', marginTop: 4 }}>{buses.length}</p>
-                </div>
+            <div className="status-card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                 <div style={{ 
-                  width: 40, 
-                  height: 40, 
-                  borderRadius: 12, 
+                  width: 48, 
+                  height: 48, 
+                  borderRadius: 16, 
                   background: 'rgba(59,130,246,0.1)', 
                   display: 'flex', 
                   alignItems: 'center', 
                   justifyContent: 'center'
                 }}>
-                  <Bus size={20} color="#3b82f6" />
+                  <Bus size={24} color="#3b82f6" />
                 </div>
+                <div style={{ fontSize: 28, fontWeight: 700, color: '#3b82f6' }}>{buses.length}</div>
               </div>
+              <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>Total Buses</h3>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Active fleet vehicles</p>
             </div>
           </div>
 
@@ -1448,100 +1454,132 @@ function BusDetails() {
               </Link>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {/* Mobile Card View */}
-              <div style={{ display: 'block' }}>
-                {filteredBuses.map((bus) => (
-                  <div key={bus.id} className="bus-card" style={{ marginBottom: 12 }}>
-                    {/* Bus Header */}
-                    <div 
-                      className="bus-header"
-                      onClick={() => toggleBusExpansion(bus.id)}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div>
-                          <h3 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>
-                            Bus {bus.bus_number}
-                          </h3>
-                          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>
-                            {bus.route_name || 'No route set'}
-                          </p>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span className={`badge-${getExpiryInfo(bus.puc_expiry).status === 'expired' ? 'expired' : getExpiryInfo(bus.puc_expiry).status}`} style={{
-                            padding: '4px 8px',
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {filteredBuses.map((bus) => (
+                <div key={bus.id} className="bus-card animate-fade-in">
+                  {/* Bus Header */}
+                  <div 
+                    className="bus-header"
+                    onClick={() => toggleBusExpansion(bus.id)}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+                          <div style={{
+                            width: 48,
+                            height: 48,
                             borderRadius: 12,
-                            fontSize: 10,
-                            fontWeight: 600
+                            background: 'linear-gradient(135deg, #f97316, #eab308)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
                           }}>
-                            {getExpiryInfo(bus.puc_expiry).status === 'expired' ? 'EXPIRED' : 
-                             getExpiryInfo(bus.puc_expiry).status === 'critical' ? 'CRITICAL' : 'OK'}
-                          </span>
-                          {expandedBus === bus.id ? 
-                            <ChevronUp size={16} color="var(--text-muted)" /> : 
-                            <ChevronDown size={16} color="var(--text-muted)" />
-                          }
+                            <Bus size={24} color="white" />
+                          </div>
+                          <div>
+                            <h3 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>
+                              Bus {bus.bus_number}
+                            </h3>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                              <MapPin size={12} color="var(--text-muted)" />
+                              <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                                {bus.route_name || 'No route assigned'}
+                              </p>
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
-
-                    {/* Expandable Content */}
-                    {expandedBus === bus.id && (
-                      <div style={{ padding: 16 }}>
-                        {/* Action Buttons */}
-                        <div style={{ 
-                          display: 'flex', 
-                          gap: 8, 
-                          marginBottom: 16,
-                          paddingBottom: 16,
-                          borderBottom: '1px solid var(--border)'
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <div className={`badge-${getExpiryInfo(bus.puc_expiry).status === 'expired' ? 'expired' : getExpiryInfo(bus.puc_expiry).status}`} style={{
+                          padding: '6px 12px',
+                          borderRadius: 20,
+                          fontSize: 11,
+                          fontWeight: 600,
+                          whiteSpace: 'nowrap'
                         }}>
-                          <button
-                            onClick={() => openEditModal(bus)}
-                            className="action-button edit"
-                            style={{ padding: '8px 16px' }}
-                          >
-                            <Edit size={14} />
-                            <span>Edit</span>
-                          </button>
-                          <button
-                            onClick={() => deleteBus(bus.id, bus.bus_number)}
-                            className="action-button delete"
-                            style={{ padding: '8px 16px' }}
-                          >
-                            <Trash2 size={14} />
-                            <span>Delete</span>
-                          </button>
+                          {getExpiryInfo(bus.puc_expiry).status === 'expired' ? '⚠️ EXPIRED' : 
+                           getExpiryInfo(bus.puc_expiry).status === 'critical' ? '🔥 CRITICAL' : 
+                           getExpiryInfo(bus.puc_expiry).status === 'warning' ? '⚠️ WARNING' : '✅ OK'}
                         </div>
+                        {expandedBus === bus.id ? 
+                          <ChevronUp size={20} color="var(--text-muted)" /> : 
+                          <ChevronDown size={20} color="var(--text-muted)" />
+                        }
+                      </div>
+                    </div>
+                  </div>
 
+                  {/* Expandable Content */}
+                  {expandedBus === bus.id && (
+                    <div style={{ padding: 20 }}>
+                      {/* Action Buttons */}
+                      <div style={{ 
+                        display: 'flex', 
+                        gap: 12, 
+                        marginBottom: 24,
+                        paddingBottom: 20,
+                        borderBottom: '1px solid var(--border)'
+                      }}>
+                        <button
+                          onClick={() => openEditModal(bus)}
+                          className="action-button edit"
+                          style={{ padding: '10px 20px' }}
+                        >
+                          <Edit size={16} />
+                          <span>Edit Bus</span>
+                        </button>
+                        <button
+                          onClick={() => deleteBus(bus.id, bus.bus_number)}
+                          className="action-button delete"
+                          style={{ padding: '10px 20px' }}
+                        >
+                          <Trash2 size={16} />
+                          <span>Delete Bus</span>
+                        </button>
+                      </div>
+
+                      <div className="info-grid">
                         {/* Document Expiry */}
-                        <div style={{ marginBottom: 16 }}>
-                          <h4 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 12 }}>
+                        <div className="info-card">
+                          <h4 style={{ fontSize: 15, fontWeight: 600, color: '#f97316', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <FileText size={16} />
                             Document Expiry
                           </h4>
-                          <div className="document-grid">
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                             {[
-                              { label: 'PUC', expiry: bus.puc_expiry, icon: '📄' },
+                              { label: 'PUC Certificate', expiry: bus.puc_expiry, icon: '📄' },
                               { label: 'Insurance', expiry: bus.insurance_expiry, icon: '🛡️' },
-                              { label: 'Fitness', expiry: bus.fitness_expiry, icon: '✅' },
+                              { label: 'Fitness Certificate', expiry: bus.fitness_expiry, icon: '✅' },
                               { label: 'Permit', expiry: bus.permit_expiry, icon: '📋' }
                             ].map((doc) => {
                               const info = getExpiryInfo(doc.expiry);
                               return (
-                                <div key={doc.label} className="document-item">
-                                  <div style={{ fontSize: 18, marginBottom: 4 }}>{doc.icon}</div>
-                                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>{doc.label}</div>
-                                  <span className={info.badgeClass} style={{
-                                    padding: '2px 6px',
-                                    borderRadius: 8,
-                                    fontSize: 9,
-                                    fontWeight: 600,
-                                    display: 'inline-block'
-                                  }}>
-                                    {info.text}
-                                  </span>
-                                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
-                                    {formatDate(doc.expiry)}
+                                <div key={doc.label} style={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  padding: '8px 0',
+                                  borderBottom: '1px solid var(--border)'
+                                }}>
+                                  <div>
+                                    <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{doc.label}</div>
+                                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{formatDate(doc.expiry)}</div>
+                                  </div>
+                                  <div>
+                                    <span className={info.badgeClass} style={{
+                                      padding: '4px 12px',
+                                      borderRadius: 20,
+                                      fontSize: 11,
+                                      fontWeight: 600,
+                                      display: 'inline-block'
+                                    }}>
+                                      {info.text}
+                                    </span>
+                                    {info.daysText && (
+                                      <div style={{ fontSize: 10, color: info.color, marginTop: 4, textAlign: 'center' }}>
+                                        {info.daysText}
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                               );
@@ -1550,76 +1588,99 @@ function BusDetails() {
                         </div>
 
                         {/* Service Information */}
-                        <div>
-                          <h4 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 12 }}>
+                        <div className="info-card">
+                          <h4 style={{ fontSize: 15, fontWeight: 600, color: '#f97316', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <Wrench size={16} />
                             Service Information
                           </h4>
-                          <div style={{ 
-                            background: 'rgba(255,255,255,0.02)', 
-                            border: '1px solid var(--border)', 
-                            borderRadius: 12,
-                            padding: 12
-                          }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Next Service</span>
-                              <span className={getServiceInfo(bus.next_service_due, bus.current_km, bus.next_service_km).badgeClass} style={{
-                                padding: '4px 8px',
-                                borderRadius: 12,
-                                fontSize: 10,
-                                fontWeight: 600
-                              }}>
-                                {getServiceInfo(bus.next_service_due, bus.current_km, bus.next_service_km).text}
-                              </span>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                            <div style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              padding: '8px 0',
+                              borderBottom: '1px solid var(--border)'
+                            }}>
+                              <div>
+                                <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>Current KM</div>
+                                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Odometer reading</div>
+                              </div>
+                              <div style={{ fontSize: 16, fontWeight: 700, color: '#3b82f6' }}>
+                                {bus.current_km ? `${parseInt(bus.current_km).toLocaleString()} km` : 'Not set'}
+                              </div>
                             </div>
-                            {bus.current_km && (
-                              <div style={{ 
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                gap: 8,
-                                fontSize: 12,
-                                color: 'var(--text-secondary)',
-                                marginBottom: 4
-                              }}>
-                                <Gauge size={14} color="#3b82f6" />
-                                <span>Current KM: <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{bus.current_km}</span></span>
-                              </div>
-                            )}
+
                             {bus.last_service_date && (
-                              <div style={{ 
-                                fontSize: 11, 
-                                color: 'var(--text-muted)',
-                                background: 'rgba(0,0,0,0.2)',
-                                padding: '6px 8px',
-                                borderRadius: 8,
-                                marginTop: 8
+                              <div style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                padding: '8px 0',
+                                borderBottom: '1px solid var(--border)'
                               }}>
-                                Last service: {formatDate(bus.last_service_date)}
-                                {bus.last_service_km && ` at ${bus.last_service_km} KM`}
+                                <div>
+                                  <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>Last Service</div>
+                                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{formatDate(bus.last_service_date)}</div>
+                                </div>
+                                <div style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
+                                  {bus.last_service_km && `${parseInt(bus.last_service_km).toLocaleString()} km`}
+                                </div>
                               </div>
                             )}
+
+                            <div style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              padding: '8px 0'
+                            }}>
+                              <div>
+                                <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>Next Service</div>
+                                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                                  {bus.next_service_due ? formatDate(bus.next_service_due) : 'Not scheduled'}
+                                </div>
+                              </div>
+                              <div>
+                                <span className={getServiceInfo(bus.next_service_due, bus.current_km, bus.next_service_km).badgeClass} style={{
+                                  padding: '4px 12px',
+                                  borderRadius: 20,
+                                  fontSize: 11,
+                                  fontWeight: 600,
+                                  display: 'inline-block'
+                                }}>
+                                  {getServiceInfo(bus.next_service_due, bus.current_km, bus.next_service_km).text}
+                                </span>
+                                {getServiceInfo(bus.next_service_due, bus.current_km, bus.next_service_km).kmText && (
+                                  <div style={{ fontSize: 10, color: '#eab308', marginTop: 4, textAlign: 'center' }}>
+                                    {getServiceInfo(bus.next_service_due, bus.current_km, bus.next_service_km).kmText}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         </div>
 
+                        {/* Remarks */}
                         {bus.remarks && (
-                          <div style={{ marginTop: 12 }}>
-                            <h4 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>Remarks</h4>
+                          <div className="info-card" style={{ gridColumn: 'span 2' }}>
+                            <h4 style={{ fontSize: 15, fontWeight: 600, color: '#f97316', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <Info size={16} />
+                              Remarks
+                            </h4>
                             <p style={{ 
-                              fontSize: 12, 
+                              fontSize: 13, 
                               color: 'var(--text-secondary)',
-                              background: 'rgba(255,255,255,0.02)',
-                              border: '1px solid var(--border)',
-                              borderRadius: 8,
-                              padding: 8
+                              lineHeight: 1.6
                             }}>
                               {bus.remarks}
                             </p>
                           </div>
                         )}
                       </div>
-                    )}
-                  </div>
-                ))}
-              </div>
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           )}
         </div>

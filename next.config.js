@@ -2,6 +2,12 @@
 const nextConfig = {
   reactStrictMode: true,
   
+  // Turbopack configuration for Next.js 16
+  turbopack: {
+    // Empty config to acknowledge Turbopack usage
+    // If you need to configure turbopack specifically, add rules here
+  },
+  
   // Ignore TypeScript errors from supabase/functions folder
   typescript: {
     ignoreBuildErrors: true,
