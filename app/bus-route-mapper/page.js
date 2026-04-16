@@ -31,33 +31,25 @@ function BusRouteMapper() {
   const [leafletLoaded, setLeafletLoaded] = useState(false);
   const [showExistingStops, setShowExistingStops] = useState(false);
   const [availableStops, setAvailableStops] = useState([]);
-  const [mapStyle, setMapStyle] = useState('streets'); // streets, satellite, dark
+  const [mapStyle, setMapStyle] = useState('streets'); // streets, satellite
   
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const router = useRouter();
 
-  // Tile layer URLs for different map styles
+  // Tile layer URLs for different map styles (Google Maps like)
   const tileLayers = {
     streets: {
       url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-      subdomains: 'abcd'
-    },
-    dark: {
-      url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-      subdomains: 'abcd'
+      subdomains: 'abcd',
+      name: 'Street Map'
     },
     satellite: {
       url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-      attribution: '&copy; <a href="https://www.esri.com">Esri</a>',
-      subdomains: ''
-    },
-    outdoor: {
-      url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
-      attribution: '&copy; <a href="https://opentopomap.org">OpenTopoMap</a>',
-      subdomains: 'abc'
+      attribution: '&copy; <a href="https://www.esri.com">Esri</a> | &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      subdomains: '',
+      name: 'Satellite'
     }
   };
 
@@ -165,7 +157,7 @@ function BusRouteMapper() {
 
       const mapInstance = L.map(mapContainerRef.current).setView([17.289382, 76.869064], 13);
       
-      // Add default tile layer
+      // Add default tile layer (Street Map)
       const currentLayer = tileLayers[mapStyle];
       const tileLayer = L.tileLayer(currentLayer.url, {
         attribution: currentLayer.attribution,
@@ -300,7 +292,7 @@ function BusRouteMapper() {
     
     setMarkers(newMarkers);
     
-    // Draw route line connecting stops with gradient effect
+    // Draw route line connecting stops
     if (stopsList.length > 1) {
       if (window.routeLine && mapInstanceRef.current) mapInstanceRef.current.removeLayer(window.routeLine);
       
@@ -722,25 +714,14 @@ function BusRouteMapper() {
                   color: mapStyle === 'streets' ? 'white' : '#a0a0c0',
                   cursor: 'pointer',
                   fontSize: 11,
-                  fontWeight: 500
+                  fontWeight: 500,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4
                 }}
               >
+                <MapIcon size={12} />
                 Streets
-              </button>
-              <button
-                onClick={() => changeMapStyle('dark')}
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: 30,
-                  background: mapStyle === 'dark' ? '#3b82f6' : 'transparent',
-                  border: 'none',
-                  color: mapStyle === 'dark' ? 'white' : '#a0a0c0',
-                  cursor: 'pointer',
-                  fontSize: 11,
-                  fontWeight: 500
-                }}
-              >
-                Dark
               </button>
               <button
                 onClick={() => changeMapStyle('satellite')}
@@ -752,9 +733,13 @@ function BusRouteMapper() {
                   color: mapStyle === 'satellite' ? 'white' : '#a0a0c0',
                   cursor: 'pointer',
                   fontSize: 11,
-                  fontWeight: 500
+                  fontWeight: 500,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4
                 }}
               >
+                <Layers size={12} />
                 Satellite
               </button>
             </div>
