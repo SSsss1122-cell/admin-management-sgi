@@ -20,7 +20,6 @@ function BusRouteMapper() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
-  const [map, setMap] = useState(null);
   const [markers, setMarkers] = useState([]);
   const [showNameInput, setShowNameInput] = useState(false);
   const [tempName, setTempName] = useState('');
@@ -29,15 +28,18 @@ function BusRouteMapper() {
   const [draggedIndex, setDraggedIndex] = useState(null);
   const [existingStops, setExistingStops] = useState([]);
   const [leafletLoaded, setLeafletLoaded] = useState(false);
-  const [showExistingStops, setShowExistingStops] = useState(false);
   const [availableStops, setAvailableStops] = useState([]);
-  const [mapStyle, setMapStyle] = useState('streets'); // streets, satellite
+  const [mapStyle, setMapStyle] = useState('streets');
+  const [mapInitialized, setMapInitialized] = useState(false);
   
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
+  const markersRef = useRef([]);
+  const routeLineRef = useRef(null);
+  const dashLineRef = useRef(null);
   const router = useRouter();
 
-  // Tile layer URLs for different map styles (Google Maps like)
+  // Tile layer URLs for different map styles
   const tileLayers = {
     streets: {
       url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
@@ -56,6 +58,13 @@ function BusRouteMapper() {
   // Fetch buses
   useEffect(() => {
     fetchBuses();
+    return () => {
+      // Cleanup map on component unmount
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
+    };
   }, []);
 
   const fetchBuses = async () => {
@@ -73,19 +82,29 @@ function BusRouteMapper() {
   // Clear stops when bus changes
   useEffect(() => {
     if (selectedBus) {
+      clearAllMarkersAndLines();
       setStops([]);
       setExistingStops([]);
       setAvailableStops([]);
-      // Clear markers from map
-      if (markers.length > 0) {
-        markers.forEach(marker => {
-          if (mapInstanceRef.current) mapInstanceRef.current.removeLayer(marker);
-        });
-        setMarkers([]);
-        if (window.routeLine && mapInstanceRef.current) mapInstanceRef.current.removeLayer(window.routeLine);
-      }
     }
   }, [selectedBus, direction]);
+
+  const clearAllMarkersAndLines = () => {
+    if (mapInstanceRef.current) {
+      markersRef.current.forEach(marker => {
+        if (mapInstanceRef.current) mapInstanceRef.current.removeLayer(marker);
+      });
+      markersRef.current = [];
+      if (routeLineRef.current && mapInstanceRef.current) {
+        mapInstanceRef.current.removeLayer(routeLineRef.current);
+        routeLineRef.current = null;
+      }
+      if (dashLineRef.current && mapInstanceRef.current) {
+        mapInstanceRef.current.removeLayer(dashLineRef.current);
+        dashLineRef.current = null;
+      }
+    }
+  };
 
   // Load existing stops when "Show Stops" is clicked
   const loadExistingStops = async () => {
@@ -141,65 +160,71 @@ function BusRouteMapper() {
 
   // Initialize map
   useEffect(() => {
-    if (!mapContainerRef.current || mapInstanceRef.current) return;
+    if (!mapContainerRef.current || mapInitialized) return;
 
     const initMap = async () => {
-      const L = await import('leaflet');
-      await import('leaflet/dist/leaflet.css');
-      
-      // Fix leaflet icon issue
-      delete L.Icon.Default.prototype._getIconUrl;
-      L.Icon.Default.mergeOptions({
-        iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
-        iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
-        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
-      });
+      try {
+        const L = await import('leaflet');
+        await import('leaflet/dist/leaflet.css');
+        
+        // Fix leaflet icon issue
+        delete L.Icon.Default.prototype._getIconUrl;
+        L.Icon.Default.mergeOptions({
+          iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
+          iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
+          shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+        });
 
-      const mapInstance = L.map(mapContainerRef.current).setView([17.289382, 76.869064], 13);
-      
-      // Add default tile layer (Street Map)
-      const currentLayer = tileLayers[mapStyle];
-      const tileLayer = L.tileLayer(currentLayer.url, {
-        attribution: currentLayer.attribution,
-        maxZoom: 19,
-        subdomains: currentLayer.subdomains || 'abc'
-      }).addTo(mapInstance);
-      
-      mapInstance.tileLayer = tileLayer;
+        const mapInstance = L.map(mapContainerRef.current).setView([17.289382, 76.869064], 13);
+        
+        // Add default tile layer (Street Map)
+        const currentLayer = tileLayers[mapStyle];
+        const tileLayer = L.tileLayer(currentLayer.url, {
+          attribution: currentLayer.attribution,
+          maxZoom: 19,
+          subdomains: currentLayer.subdomains || 'abc'
+        }).addTo(mapInstance);
+        
+        mapInstance.tileLayer = tileLayer;
 
-      // DOUBLE CLICK handler to add stops
-      mapInstance.on('dblclick', (e) => {
-        if (!selectedBus) {
-          setMessage({ type: 'error', text: 'Please select a bus first' });
-          setTimeout(() => setMessage({ type: '', text: '' }), 2000);
-          return;
-        }
-        const { lat, lng } = e.latlng;
-        setTempLatLng({ lat: lat.toFixed(8), lng: lng.toFixed(8) });
-        setTempName('');
-        setEditingIndex(null);
-        setShowNameInput(true);
-      });
+        // DOUBLE CLICK handler to add stops
+        mapInstance.on('dblclick', (e) => {
+          if (!selectedBus) {
+            setMessage({ type: 'error', text: 'Please select a bus first' });
+            setTimeout(() => setMessage({ type: '', text: '' }), 2000);
+            return;
+          }
+          const { lat, lng } = e.latlng;
+          setTempLatLng({ lat: lat.toFixed(8), lng: lng.toFixed(8) });
+          setTempName('');
+          setEditingIndex(null);
+          setShowNameInput(true);
+        });
 
-      mapInstanceRef.current = mapInstance;
-      setLeafletLoaded(true);
-      
-      // Add zoom controls
-      L.control.zoom({ position: 'topright' }).addTo(mapInstance);
-      
-      // Add scale bar
-      L.control.scale({ metric: true, imperial: false, position: 'bottomleft' }).addTo(mapInstance);
+        mapInstanceRef.current = mapInstance;
+        setMapInitialized(true);
+        setLeafletLoaded(true);
+        
+        // Add zoom controls
+        L.control.zoom({ position: 'topright' }).addTo(mapInstance);
+        
+        // Add scale bar
+        L.control.scale({ metric: true, imperial: false, position: 'bottomleft' }).addTo(mapInstance);
+      } catch (error) {
+        console.error('Error initializing map:', error);
+      }
     };
 
     initMap();
 
     return () => {
-      if (mapInstanceRef.current) {
+      if (mapInstanceRef.current && !mapContainerRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
+        setMapInitialized(false);
       }
     };
-  }, [selectedBus]);
+  }, [mapInitialized]);
 
   // Change map style
   const changeMapStyle = (style) => {
@@ -223,11 +248,10 @@ function BusRouteMapper() {
     const L = window.L;
     
     // Clear existing markers
-    markers.forEach(marker => {
+    markersRef.current.forEach(marker => {
       if (mapInstanceRef.current) mapInstanceRef.current.removeLayer(marker);
     });
-    
-    const newMarkers = [];
+    markersRef.current = [];
     
     stopsList.forEach((stop, index) => {
       // Create custom marker with number and color based on sequence
@@ -287,19 +311,24 @@ function BusRouteMapper() {
         setStops(updatedStops);
       });
       
-      newMarkers.push(marker);
+      markersRef.current.push(marker);
     });
     
-    setMarkers(newMarkers);
+    setMarkers(markersRef.current);
     
     // Draw route line connecting stops
     if (stopsList.length > 1) {
-      if (window.routeLine && mapInstanceRef.current) mapInstanceRef.current.removeLayer(window.routeLine);
+      if (routeLineRef.current && mapInstanceRef.current) {
+        mapInstanceRef.current.removeLayer(routeLineRef.current);
+      }
+      if (dashLineRef.current && mapInstanceRef.current) {
+        mapInstanceRef.current.removeLayer(dashLineRef.current);
+      }
       
       const routePoints = stopsList.map(s => [s.lat, s.lng]);
       
       // Main route line
-      window.routeLine = L.polyline(routePoints, {
+      routeLineRef.current = L.polyline(routePoints, {
         color: '#3b82f6',
         weight: 5,
         opacity: 0.9,
@@ -308,15 +337,13 @@ function BusRouteMapper() {
       }).addTo(mapInstanceRef.current);
       
       // Add dashed line effect for better visibility
-      const dashLine = L.polyline(routePoints, {
+      dashLineRef.current = L.polyline(routePoints, {
         color: '#06b6d4',
         weight: 2,
         opacity: 0.5,
         lineJoin: 'round',
         dashArray: '10, 10'
       }).addTo(mapInstanceRef.current);
-      
-      window.dashLine = dashLine;
     }
   };
 
@@ -483,6 +510,7 @@ function BusRouteMapper() {
 
   const clearAllStops = () => {
     if (confirm('Are you sure you want to clear all stops?')) {
+      clearAllMarkersAndLines();
       setStops([]);
       setMessage({ type: 'success', text: 'All stops cleared!' });
       setTimeout(() => setMessage({ type: '', text: '' }), 2000);
@@ -497,33 +525,17 @@ function BusRouteMapper() {
     setExistingStops([]);
     setAvailableStops([]);
     setMessage({ type: '', text: '' });
-    // Clear markers from map
-    if (markers.length > 0) {
-      markers.forEach(marker => {
-        if (mapInstanceRef.current) mapInstanceRef.current.removeLayer(marker);
-      });
-      setMarkers([]);
-      if (window.routeLine && mapInstanceRef.current) mapInstanceRef.current.removeLayer(window.routeLine);
-      if (window.dashLine && mapInstanceRef.current) mapInstanceRef.current.removeLayer(window.dashLine);
-    }
+    clearAllMarkersAndLines();
   };
 
   const handleBusChange = (busId) => {
     setSelectedBus(busId);
     const bus = buses.find(b => b.id === parseInt(busId));
     setSelectedBusNumber(bus?.bus_number || '');
-    // Clear stops when bus changes
+    clearAllMarkersAndLines();
     setStops([]);
     setExistingStops([]);
     setAvailableStops([]);
-    if (markers.length > 0) {
-      markers.forEach(marker => {
-        if (mapInstanceRef.current) mapInstanceRef.current.removeLayer(marker);
-      });
-      setMarkers([]);
-      if (window.routeLine && mapInstanceRef.current) mapInstanceRef.current.removeLayer(window.routeLine);
-      if (window.dashLine && mapInstanceRef.current) mapInstanceRef.current.removeLayer(window.dashLine);
-    }
   };
 
   const getBusName = () => {
