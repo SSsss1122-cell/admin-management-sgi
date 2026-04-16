@@ -7,7 +7,7 @@ import {
   ArrowLeft, CheckCircle, AlertCircle, ChevronLeft,
   GripVertical, Navigation, Sun, Moon, RefreshCw,
   Layers, Map as MapIcon, List, Download, Upload, Maximize2, Minimize2,
-  Eye
+  Eye, Route
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
@@ -31,10 +31,35 @@ function BusRouteMapper() {
   const [leafletLoaded, setLeafletLoaded] = useState(false);
   const [showExistingStops, setShowExistingStops] = useState(false);
   const [availableStops, setAvailableStops] = useState([]);
+  const [mapStyle, setMapStyle] = useState('streets'); // streets, satellite, dark
   
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const router = useRouter();
+
+  // Tile layer URLs for different map styles
+  const tileLayers = {
+    streets: {
+      url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      subdomains: 'abcd'
+    },
+    dark: {
+      url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      subdomains: 'abcd'
+    },
+    satellite: {
+      url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      attribution: '&copy; <a href="https://www.esri.com">Esri</a>',
+      subdomains: ''
+    },
+    outdoor: {
+      url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+      attribution: '&copy; <a href="https://opentopomap.org">OpenTopoMap</a>',
+      subdomains: 'abc'
+    }
+  };
 
   // Fetch buses
   useEffect(() => {
@@ -140,10 +165,15 @@ function BusRouteMapper() {
 
       const mapInstance = L.map(mapContainerRef.current).setView([17.289382, 76.869064], 13);
       
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors',
+      // Add default tile layer
+      const currentLayer = tileLayers[mapStyle];
+      const tileLayer = L.tileLayer(currentLayer.url, {
+        attribution: currentLayer.attribution,
         maxZoom: 19,
+        subdomains: currentLayer.subdomains || 'abc'
       }).addTo(mapInstance);
+      
+      mapInstance.tileLayer = tileLayer;
 
       // DOUBLE CLICK handler to add stops
       mapInstance.on('dblclick', (e) => {
@@ -153,7 +183,6 @@ function BusRouteMapper() {
           return;
         }
         const { lat, lng } = e.latlng;
-        const nextSequence = stops.length + 1;
         setTempLatLng({ lat: lat.toFixed(8), lng: lng.toFixed(8) });
         setTempName('');
         setEditingIndex(null);
@@ -165,6 +194,9 @@ function BusRouteMapper() {
       
       // Add zoom controls
       L.control.zoom({ position: 'topright' }).addTo(mapInstance);
+      
+      // Add scale bar
+      L.control.scale({ metric: true, imperial: false, position: 'bottomleft' }).addTo(mapInstance);
     };
 
     initMap();
@@ -176,6 +208,21 @@ function BusRouteMapper() {
       }
     };
   }, [selectedBus]);
+
+  // Change map style
+  const changeMapStyle = (style) => {
+    setMapStyle(style);
+    if (mapInstanceRef.current && mapInstanceRef.current.tileLayer) {
+      mapInstanceRef.current.removeLayer(mapInstanceRef.current.tileLayer);
+      const currentLayer = tileLayers[style];
+      const newTileLayer = L.tileLayer(currentLayer.url, {
+        attribution: currentLayer.attribution,
+        maxZoom: 19,
+        subdomains: currentLayer.subdomains || 'abc'
+      }).addTo(mapInstanceRef.current);
+      mapInstanceRef.current.tileLayer = newTileLayer;
+    }
+  };
 
   // Update markers and route line when stops change
   const updateMapMarkers = (stopsList) => {
@@ -191,36 +238,48 @@ function BusRouteMapper() {
     const newMarkers = [];
     
     stopsList.forEach((stop, index) => {
-      // Create custom marker with number
+      // Create custom marker with number and color based on sequence
+      const gradient = index === 0 ? '#10b981' : index === stopsList.length - 1 ? '#ef4444' : '#3b82f6';
       const customIcon = L.divIcon({
         html: `<div style="
-          width: 32px;
-          height: 32px;
-          background: linear-gradient(135deg, #3b82f6, #06b6d4);
+          width: 34px;
+          height: 34px;
+          background: linear-gradient(135deg, ${gradient}, ${gradient === '#3b82f6' ? '#06b6d4' : gradient === '#10b981' ? '#34d399' : '#f87171'});
           border-radius: 50%;
-          border: 2px solid white;
+          border: 3px solid white;
           display: flex;
           align-items: center;
           justify-content: center;
           font-weight: bold;
-          font-size: 12px;
+          font-size: 13px;
           color: white;
-          box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+          box-shadow: 0 4px 8px rgba(0,0,0,0.3);
           cursor: pointer;
+          transition: transform 0.2s;
         ">${index + 1}</div>`,
         className: 'stop-marker',
-        iconSize: [32, 32],
-        iconAnchor: [16, 16]
+        iconSize: [34, 34],
+        iconAnchor: [17, 17]
       });
       
       const marker = L.marker([stop.lat, stop.lng], { icon: customIcon, draggable: true }).addTo(mapInstanceRef.current);
       
+      // Add hover effect
+      marker.on('mouseover', function() {
+        this.openPopup();
+      });
+      
       marker.bindPopup(`
-        <div style="padding: 8px; min-width: 150px;">
-          <strong>Stop ${index + 1}: ${stop.name}</strong>
-          <div style="margin-top: 8px;">
-            <button onclick="window.editStop(${index})" style="margin-right: 8px; padding: 4px 8px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer;">✏️ Edit</button>
-            <button onclick="window.deleteStop(${index})" style="padding: 4px 8px; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer;">🗑️ Delete</button>
+        <div style="padding: 10px; min-width: 180px; font-family: system-ui;">
+          <div style="font-weight: bold; margin-bottom: 8px; color: #1f2937;">
+            🚏 Stop ${index + 1}: ${stop.name}
+          </div>
+          <div style="font-size: 11px; color: #6b7280; margin-bottom: 8px;">
+            📍 ${stop.lat.toFixed(6)}, ${stop.lng.toFixed(6)}
+          </div>
+          <div style="display: flex; gap: 8px; margin-top: 8px;">
+            <button onclick="window.editStop(${index})" style="padding: 4px 12px; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">✏️ Edit</button>
+            <button onclick="window.deleteStop(${index})" style="padding: 4px 12px; background: #ef4444; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">🗑️ Delete</button>
           </div>
         </div>
       `);
@@ -241,16 +300,31 @@ function BusRouteMapper() {
     
     setMarkers(newMarkers);
     
-    // Draw route line connecting stops
+    // Draw route line connecting stops with gradient effect
     if (stopsList.length > 1) {
       if (window.routeLine && mapInstanceRef.current) mapInstanceRef.current.removeLayer(window.routeLine);
+      
       const routePoints = stopsList.map(s => [s.lat, s.lng]);
+      
+      // Main route line
       window.routeLine = L.polyline(routePoints, {
         color: '#3b82f6',
-        weight: 4,
-        opacity: 0.8,
-        lineJoin: 'round'
+        weight: 5,
+        opacity: 0.9,
+        lineJoin: 'round',
+        lineCap: 'round'
       }).addTo(mapInstanceRef.current);
+      
+      // Add dashed line effect for better visibility
+      const dashLine = L.polyline(routePoints, {
+        color: '#06b6d4',
+        weight: 2,
+        opacity: 0.5,
+        lineJoin: 'round',
+        dashArray: '10, 10'
+      }).addTo(mapInstanceRef.current);
+      
+      window.dashLine = dashLine;
     }
   };
 
@@ -438,6 +512,7 @@ function BusRouteMapper() {
       });
       setMarkers([]);
       if (window.routeLine && mapInstanceRef.current) mapInstanceRef.current.removeLayer(window.routeLine);
+      if (window.dashLine && mapInstanceRef.current) mapInstanceRef.current.removeLayer(window.dashLine);
     }
   };
 
@@ -455,6 +530,7 @@ function BusRouteMapper() {
       });
       setMarkers([]);
       if (window.routeLine && mapInstanceRef.current) mapInstanceRef.current.removeLayer(window.routeLine);
+      if (window.dashLine && mapInstanceRef.current) mapInstanceRef.current.removeLayer(window.dashLine);
     }
   };
 
@@ -482,6 +558,11 @@ function BusRouteMapper() {
           to { opacity: 1; transform: translateX(0); }
         }
         
+        @keyframes pulse {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.05); }
+        }
+        
         .action-button {
           background: rgba(255,255,255,0.05);
           border: 1px solid rgba(255,255,255,0.08);
@@ -501,6 +582,7 @@ function BusRouteMapper() {
           background: rgba(255,255,255,0.1);
           border-color: #3b82f6;
           color: #3b82f6;
+          transform: translateY(-1px);
         }
         
         .action-button.primary {
@@ -512,6 +594,17 @@ function BusRouteMapper() {
         .action-button.primary:hover {
           transform: translateY(-2px);
           box-shadow: 0 10px 25px -5px #3b82f6;
+        }
+        
+        .action-button.danger {
+          background: rgba(239,68,68,0.1);
+          border-color: rgba(239,68,68,0.3);
+          color: #ef4444;
+        }
+        
+        .action-button.danger:hover {
+          background: rgba(239,68,68,0.2);
+          border-color: #ef4444;
         }
         
         .input-field {
@@ -548,13 +641,38 @@ function BusRouteMapper() {
         }
         
         .leaflet-control-zoom a {
-          background: rgba(22,22,42,0.9) !important;
+          background: rgba(22,22,42,0.95) !important;
           color: white !important;
           border: 1px solid rgba(255,255,255,0.1) !important;
+          border-radius: 8px !important;
+          margin: 4px !important;
+          width: 36px !important;
+          height: 36px !important;
+          line-height: 36px !important;
         }
         
         .leaflet-control-zoom a:hover {
           background: #3b82f6 !important;
+        }
+        
+        .leaflet-control-attribution {
+          background: rgba(0,0,0,0.7) !important;
+          color: #a0a0c0 !important;
+          font-size: 10px !important;
+          padding: 4px 8px !important;
+          border-radius: 8px !important;
+        }
+        
+        .leaflet-control-attribution a {
+          color: #3b82f6 !important;
+        }
+        
+        .stop-marker {
+          transition: transform 0.2s;
+        }
+        
+        .stop-marker:hover {
+          transform: scale(1.1);
         }
       `}</style>
 
@@ -591,29 +709,75 @@ function BusRouteMapper() {
               <p style={{ fontSize: 12, color: '#6b6b8b' }}>Double-click on map to add stops • Drag markers to reposition</p>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 10 }}>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {/* Map Style Selector */}
+            <div style={{ display: 'flex', gap: 4, background: 'rgba(0,0,0,0.3)', borderRadius: 40, padding: 4 }}>
+              <button
+                onClick={() => changeMapStyle('streets')}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: 30,
+                  background: mapStyle === 'streets' ? '#3b82f6' : 'transparent',
+                  border: 'none',
+                  color: mapStyle === 'streets' ? 'white' : '#a0a0c0',
+                  cursor: 'pointer',
+                  fontSize: 11,
+                  fontWeight: 500
+                }}
+              >
+                Streets
+              </button>
+              <button
+                onClick={() => changeMapStyle('dark')}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: 30,
+                  background: mapStyle === 'dark' ? '#3b82f6' : 'transparent',
+                  border: 'none',
+                  color: mapStyle === 'dark' ? 'white' : '#a0a0c0',
+                  cursor: 'pointer',
+                  fontSize: 11,
+                  fontWeight: 500
+                }}
+              >
+                Dark
+              </button>
+              <button
+                onClick={() => changeMapStyle('satellite')}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: 30,
+                  background: mapStyle === 'satellite' ? '#3b82f6' : 'transparent',
+                  border: 'none',
+                  color: mapStyle === 'satellite' ? 'white' : '#a0a0c0',
+                  cursor: 'pointer',
+                  fontSize: 11,
+                  fontWeight: 500
+                }}
+              >
+                Satellite
+              </button>
+            </div>
             <button
               onClick={loadExistingStops}
               disabled={!selectedBus || loading}
               className="action-button"
-              style={{ padding: '8px 16px', background: loading ? 'rgba(255,255,255,0.02)' : 'rgba(59,130,246,0.1)', borderColor: '#3b82f6', color: '#3b82f6' }}
+              style={{ background: loading ? 'rgba(255,255,255,0.02)' : 'rgba(59,130,246,0.1)', borderColor: '#3b82f6', color: '#3b82f6' }}
             >
               <Eye size={16} />
-              <span>{loading ? 'Loading...' : 'Show Existing Stops'}</span>
+              <span>{loading ? 'Loading...' : 'Show Stops'}</span>
             </button>
             <button
               onClick={fitMapToStops}
               disabled={stops.length === 0}
               className="action-button"
-              style={{ padding: '8px 16px' }}
             >
               <MapIcon size={16} />
               <span>Fit Map</span>
             </button>
             <button
               onClick={clearAllStops}
-              className="action-button"
-              style={{ padding: '8px 16px' }}
+              className="action-button danger"
             >
               <Trash2 size={16} />
               <span>Clear All</span>
@@ -621,7 +785,6 @@ function BusRouteMapper() {
             <button
               onClick={resetForm}
               className="action-button"
-              style={{ padding: '8px 16px' }}
             >
               <RefreshCw size={16} />
               <span>Reset</span>
@@ -630,7 +793,6 @@ function BusRouteMapper() {
               onClick={saveRoute}
               disabled={saving || !selectedBus || stops.length === 0}
               className="action-button primary"
-              style={{ padding: '8px 20px' }}
             >
               <Save size={16} />
               <span>{saving ? 'Saving...' : 'Save Route'}</span>
@@ -648,14 +810,16 @@ function BusRouteMapper() {
           zIndex: 30,
           padding: '12px 20px',
           borderRadius: 12,
-          background: message.type === 'error' ? 'rgba(239,68,68,0.9)' : 
-                     message.type === 'success' ? 'rgba(16,185,129,0.9)' :
-                     'rgba(59,130,246,0.9)',
+          background: message.type === 'error' ? 'rgba(239,68,68,0.95)' : 
+                     message.type === 'success' ? 'rgba(16,185,129,0.95)' :
+                     'rgba(59,130,246,0.95)',
           color: 'white',
           fontSize: 14,
           backdropFilter: 'blur(8px)',
-          animation: 'fadeIn 0.3s ease'
+          animation: 'fadeIn 0.3s ease',
+          boxShadow: '0 10px 25px -5px rgba(0,0,0,0.2)'
         }}>
+          {message.type === 'success' ? '✅ ' : message.type === 'error' ? '❌ ' : 'ℹ️ '}
           {message.text}
         </div>
       )}
@@ -663,7 +827,7 @@ function BusRouteMapper() {
       {/* Main Content */}
       <div style={{ 
         display: 'grid', 
-        gridTemplateColumns: '1fr 320px',
+        gridTemplateColumns: '1fr 360px',
         gap: 0,
         height: 'calc(100vh - 70px)'
       }}>
@@ -676,23 +840,54 @@ function BusRouteMapper() {
             position: 'absolute',
             bottom: 20,
             left: 20,
-            background: 'rgba(0,0,0,0.7)',
+            background: 'rgba(0,0,0,0.8)',
             backdropFilter: 'blur(8px)',
-            padding: '8px 16px',
-            borderRadius: 20,
+            padding: '10px 18px',
+            borderRadius: 30,
             fontSize: 12,
             color: '#a0a0c0',
             pointerEvents: 'none',
-            zIndex: 10
+            zIndex: 10,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8
           }}>
-            <MapPin size={14} style={{ display: 'inline', marginRight: 6 }} />
-            Double-click anywhere on map to add a stop • Drag markers to move
+            <div style={{ width: 8, height: 8, background: '#10b981', borderRadius: '50%', animation: 'pulse 2s infinite' }}></div>
+            <MapPin size={14} />
+            <span>Double-click to add stop</span>
+            <span style={{ width: 1, height: 12, background: '#4b4b6b', margin: '0 4px' }}></span>
+            <span>🖱️ Drag markers to reposition</span>
           </div>
+          
+          {/* Route Summary Overlay */}
+          {stops.length > 0 && (
+            <div style={{
+              position: 'absolute',
+              top: 20,
+              right: 20,
+              background: 'rgba(0,0,0,0.8)',
+              backdropFilter: 'blur(8px)',
+              padding: '8px 16px',
+              borderRadius: 20,
+              fontSize: 12,
+              color: 'white',
+              pointerEvents: 'none',
+              zIndex: 10,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8
+            }}>
+              <Route size={14} color="#3b82f6" />
+              <span><strong style={{ color: '#3b82f6' }}>{stops.length}</strong> stops in route</span>
+              <span style={{ width: 1, height: 12, background: '#4b4b6b' }}></span>
+              <span>🚏 {stops[0]?.name} → {stops[stops.length - 1]?.name}</span>
+            </div>
+          )}
         </div>
 
         {/* Stops List Section */}
         <div style={{
-          background: 'rgba(22, 22, 42, 0.95)',
+          background: 'rgba(22, 22, 42, 0.98)',
           borderLeft: '1px solid rgba(255,255,255,0.08)',
           display: 'flex',
           flexDirection: 'column',
@@ -735,11 +930,12 @@ function BusRouteMapper() {
                     color: direction === 'morning' ? '#f59e0b' : '#a0a0c0',
                     cursor: 'pointer',
                     fontSize: 13,
-                    fontWeight: 500
+                    fontWeight: 500,
+                    transition: 'all 0.2s'
                   }}
                 >
                   <Sun size={14} style={{ display: 'inline', marginRight: 6 }} />
-                  Morning (Aland → College)
+                  Morning
                 </button>
                 <button
                   onClick={() => setDirection('evening')}
@@ -752,25 +948,25 @@ function BusRouteMapper() {
                     color: direction === 'evening' ? '#3b82f6' : '#a0a0c0',
                     cursor: 'pointer',
                     fontSize: 13,
-                    fontWeight: 500
+                    fontWeight: 500,
+                    transition: 'all 0.2s'
                   }}
                 >
                   <Moon size={14} style={{ display: 'inline', marginRight: 6 }} />
-                  Evening (College → Aland)
+                  Evening
                 </button>
               </div>
             </div>
 
             {selectedBus && (
               <div style={{
-                background: 'rgba(59,130,246,0.1)',
-                borderRadius: 10,
-                padding: '10px',
-                fontSize: 12,
-                color: '#3b82f6'
+                background: 'linear-gradient(135deg, rgba(59,130,246,0.15), rgba(6,182,212,0.1))',
+                borderRadius: 12,
+                padding: '12px',
+                border: '1px solid rgba(59,130,246,0.3)'
               }}>
-                <Bus size={14} style={{ display: 'inline', marginRight: 6 }} />
-                {getBusName()}
+                <Bus size={14} style={{ display: 'inline', marginRight: 8, color: '#3b82f6' }} />
+                <span style={{ fontSize: 13, color: '#3b82f6', fontWeight: 500 }}>{getBusName()}</span>
               </div>
             )}
           </div>
@@ -778,21 +974,20 @@ function BusRouteMapper() {
           {/* Stops List */}
           <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h3 style={{ fontSize: 14, fontWeight: 600, color: 'white' }}>
+              <h3 style={{ fontSize: 14, fontWeight: 600, color: 'white', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <MapPin size={16} color="#3b82f6" />
                 Route Stops ({stops.length})
               </h3>
-              <div style={{ display: 'flex', gap: 8 }}>
-                {stops.length > 0 && (
-                  <button
-                    onClick={fitMapToStops}
-                    className="action-button"
-                    style={{ padding: '4px 12px', fontSize: 11 }}
-                  >
-                    <MapIcon size={12} />
-                    <span>Fit Map</span>
-                  </button>
-                )}
-              </div>
+              {stops.length > 0 && (
+                <button
+                  onClick={fitMapToStops}
+                  className="action-button"
+                  style={{ padding: '4px 12px', fontSize: 11 }}
+                >
+                  <MapIcon size={12} />
+                  <span>Fit Map</span>
+                </button>
+              )}
             </div>
 
             {stops.length === 0 ? (
@@ -826,9 +1021,11 @@ function BusRouteMapper() {
                   >
                     <div style={{ display: 'flex', alignItems: 'center', padding: '12px' }}>
                       <div style={{
-                        width: 28,
-                        height: 28,
-                        background: 'linear-gradient(135deg, #3b82f6, #06b6d4)',
+                        width: 32,
+                        height: 32,
+                        background: index === 0 ? 'linear-gradient(135deg, #10b981, #34d399)' : 
+                                   index === stops.length - 1 ? 'linear-gradient(135deg, #ef4444, #f87171)' :
+                                   'linear-gradient(135deg, #3b82f6, #06b6d4)',
                         borderRadius: '50%',
                         display: 'flex',
                         alignItems: 'center',
@@ -836,14 +1033,15 @@ function BusRouteMapper() {
                         fontSize: 12,
                         fontWeight: 'bold',
                         color: 'white',
-                        marginRight: 12
+                        marginRight: 12,
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
                       }}>
                         {index + 1}
                       </div>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 500, color: 'white', fontSize: 14 }}>{stop.name}</div>
-                        <div style={{ fontSize: 10, color: '#6b6b8b', fontFamily: 'monospace' }}>
-                          {stop.lat.toFixed(6)}, {stop.lng.toFixed(6)}
+                        <div style={{ fontWeight: 600, color: 'white', fontSize: 13 }}>{stop.name}</div>
+                        <div style={{ fontSize: 10, color: '#6b6b8b', fontFamily: 'monospace', marginTop: 2 }}>
+                          {stop.lat.toFixed(6)}°, {stop.lng.toFixed(6)}°
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: 6 }}>
@@ -851,13 +1049,15 @@ function BusRouteMapper() {
                           onClick={() => moveStopUp(index)}
                           disabled={index === 0}
                           style={{
-                            width: 28,
-                            height: 28,
-                            borderRadius: 6,
+                            width: 30,
+                            height: 30,
+                            borderRadius: 8,
                             background: 'rgba(255,255,255,0.05)',
                             border: 'none',
                             color: index === 0 ? '#4b4b6b' : '#a0a0c0',
-                            cursor: index === 0 ? 'not-allowed' : 'pointer'
+                            cursor: index === 0 ? 'not-allowed' : 'pointer',
+                            fontSize: 14,
+                            transition: 'all 0.2s'
                           }}
                         >
                           ↑
@@ -866,13 +1066,15 @@ function BusRouteMapper() {
                           onClick={() => moveStopDown(index)}
                           disabled={index === stops.length - 1}
                           style={{
-                            width: 28,
-                            height: 28,
-                            borderRadius: 6,
+                            width: 30,
+                            height: 30,
+                            borderRadius: 8,
                             background: 'rgba(255,255,255,0.05)',
                             border: 'none',
                             color: index === stops.length - 1 ? '#4b4b6b' : '#a0a0c0',
-                            cursor: index === stops.length - 1 ? 'not-allowed' : 'pointer'
+                            cursor: index === stops.length - 1 ? 'not-allowed' : 'pointer',
+                            fontSize: 14,
+                            transition: 'all 0.2s'
                           }}
                         >
                           ↓
@@ -880,13 +1082,14 @@ function BusRouteMapper() {
                         <button
                           onClick={() => removeStop(index)}
                           style={{
-                            width: 28,
-                            height: 28,
-                            borderRadius: 6,
-                            background: 'rgba(239,68,68,0.1)',
+                            width: 30,
+                            height: 30,
+                            borderRadius: 8,
+                            background: 'rgba(239,68,68,0.15)',
                             border: 'none',
                             color: '#ef4444',
-                            cursor: 'pointer'
+                            cursor: 'pointer',
+                            transition: 'all 0.2s'
                           }}
                         >
                           <Trash2 size={14} />
@@ -904,75 +1107,117 @@ function BusRouteMapper() {
             <div style={{
               padding: 16,
               borderTop: '1px solid rgba(255,255,255,0.08)',
-              background: 'rgba(0,0,0,0.2)'
+              background: 'rgba(0,0,0,0.3)'
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                 <span style={{ fontSize: 12, color: '#6b6b8b' }}>Total Stops</span>
-                <span style={{ fontSize: 14, fontWeight: 600, color: '#3b82f6' }}>{stops.length}</span>
+                <span style={{ fontSize: 16, fontWeight: 700, color: '#3b82f6' }}>{stops.length}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 12, color: '#6b6b8b' }}>Sequence</span>
-                <span style={{ fontSize: 12, color: '#a0a0c0' }}>1 → {stops.length}</span>
+                <span style={{ fontSize: 12, color: '#6b6b8b' }}>Route Sequence</span>
+                <span style={{ fontSize: 12, color: '#a0a0c0' }}>
+                  <span style={{ color: '#10b981' }}>Start</span> → <span style={{ color: '#ef4444' }}>End</span>
+                </span>
+              </div>
+              <div style={{ marginTop: 12, height: 4, background: 'rgba(255,255,255,0.05)', borderRadius: 2, overflow: 'hidden' }}>
+                <div style={{
+                  width: '100%',
+                  height: '100%',
+                  background: 'linear-gradient(90deg, #10b981, #3b82f6, #ef4444)',
+                  borderRadius: 2
+                }}></div>
               </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* Add/Edit Stop Modal with Sequence Number */}
+      {/* Add/Edit Stop Modal */}
       {showNameInput && (
         <div style={{
           position: 'fixed',
           inset: 0,
-          background: 'rgba(0,0,0,0.8)',
-          backdropFilter: 'blur(4px)',
+          background: 'rgba(0,0,0,0.85)',
+          backdropFilter: 'blur(8px)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          zIndex: 1000
+          zIndex: 1000,
+          animation: 'fadeIn 0.2s ease'
         }}>
           <div style={{
-            background: '#16162a',
-            borderRadius: 24,
-            maxWidth: 400,
+            background: 'linear-gradient(135deg, #16162a, #1a1a35)',
+            borderRadius: 28,
+            maxWidth: 420,
             width: '90%',
-            padding: 24,
-            border: '1px solid rgba(255,255,255,0.1)'
+            padding: 28,
+            border: '1px solid rgba(255,255,255,0.1)',
+            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)'
           }}>
-            <h3 style={{ fontSize: 18, fontWeight: 600, color: 'white', marginBottom: 16 }}>
-              {editingIndex !== null ? 'Edit Stop' : `Add Stop ${stops.length + 1}`}
-            </h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+              <div style={{
+                width: 48,
+                height: 48,
+                background: 'linear-gradient(135deg, #3b82f6, #06b6d4)',
+                borderRadius: 24,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <MapPin size={24} color="white" />
+              </div>
+              <div>
+                <h3 style={{ fontSize: 20, fontWeight: 700, color: 'white', margin: 0 }}>
+                  {editingIndex !== null ? 'Edit Stop' : `Add Stop #${stops.length + 1}`}
+                </h3>
+                <p style={{ fontSize: 12, color: '#6b6b8b', marginTop: 4 }}>
+                  {editingIndex !== null ? 'Modify stop details' : 'Enter a name for this location'}
+                </p>
+              </div>
+            </div>
             
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ fontSize: 12, color: '#6b6b8b', marginBottom: 6, display: 'block' }}>
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#6b6b8b', marginBottom: 8, display: 'block' }}>
                 Stop Name
               </label>
               <input
                 type="text"
                 value={tempName}
                 onChange={(e) => setTempName(e.target.value)}
-                placeholder="e.g., SGI College, Bus Stand"
+                placeholder="e.g., SGI College Main Gate"
                 autoFocus
                 className="input-field"
                 style={{ width: '100%' }}
+                onKeyPress={(e) => e.key === 'Enter' && addStop()}
               />
             </div>
             
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 12, color: '#6b6b8b', marginBottom: 6, display: 'block' }}>
+            <div style={{ marginBottom: 24 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#6b6b8b', marginBottom: 8, display: 'block' }}>
                 Location Coordinates
               </label>
-              <div style={{ background: 'rgba(0,0,0,0.3)', padding: '8px 12px', borderRadius: 8 }}>
-                <code style={{ fontSize: 11, color: '#a0a0c0' }}>
-                  📍 Lat: {tempLatLng?.lat}, Lng: {tempLatLng?.lng}
+              <div style={{ 
+                background: 'rgba(0,0,0,0.4)', 
+                padding: '10px 14px', 
+                borderRadius: 12,
+                border: '1px solid rgba(255,255,255,0.05)'
+              }}>
+                <code style={{ fontSize: 12, color: '#a0a0c0', display: 'block', textAlign: 'center' }}>
+                  📍 {tempLatLng?.lat}, {tempLatLng?.lng}
                 </code>
               </div>
             </div>
             
             {!editingIndex && (
-              <div style={{ marginBottom: 20, padding: '8px 12px', background: 'rgba(59,130,246,0.1)', borderRadius: 8 }}>
-                <code style={{ fontSize: 11, color: '#3b82f6' }}>
-                  🔢 This will be Stop #{stops.length + 1} in the route
+              <div style={{ 
+                marginBottom: 24, 
+                padding: '10px 14px', 
+                background: 'rgba(59,130,246,0.1)', 
+                borderRadius: 12,
+                border: '1px solid rgba(59,130,246,0.3)'
+              }}>
+                <code style={{ fontSize: 12, color: '#3b82f6', display: 'block', textAlign: 'center' }}>
+                  🔢 This will be Stop #{stops.length + 1} in the route sequence
                 </code>
               </div>
             )}
@@ -986,16 +1231,16 @@ function BusRouteMapper() {
                   setEditingIndex(null);
                 }}
                 className="action-button"
-                style={{ flex: 1, justifyContent: 'center' }}
+                style={{ flex: 1, justifyContent: 'center', padding: '12px' }}
               >
                 Cancel
               </button>
               <button
                 onClick={addStop}
                 className="action-button primary"
-                style={{ flex: 1, justifyContent: 'center' }}
+                style={{ flex: 1, justifyContent: 'center', padding: '12px' }}
               >
-                {editingIndex !== null ? 'Update Stop' : `Add Stop ${stops.length + 1}`}
+                {editingIndex !== null ? 'Update Stop' : `Add Stop #${stops.length + 1}`}
               </button>
             </div>
           </div>
