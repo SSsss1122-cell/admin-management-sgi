@@ -1,21 +1,32 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+const greetedUsers = new Set();
 
 // ===============================
 // HELPERS
 // ===============================
-
 async function getStudentByPhone(phone) {
   const variants = [phone, `91${phone}`, `+91${phone}`];
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('students')
-    .select('*')
-    .or(`phone.in.(${variants.join(',')}),phone_number.in.(${variants.join(',')})`)
-    .limit(1)
+    .select('*') // ✅ FIXED
+    .or(
+      variants
+        .map(v => `phone.eq.${v},phone_number.eq.${v}`)
+        .join(',')
+    )
     .maybeSingle();
 
-  return data || null;
+  if (error) {
+    console.log("Student fetch error:", error);
+    return null;
+  }
+
+  console.log("📞 Searching:", variants);
+  console.log("🎓 Found student:", data);
+
+  return data;
 }
 
 async function getAdminNumbers() {
@@ -51,6 +62,21 @@ export async function POST(request) {
     let cleanNumber = senderNumber.toString();
     if (cleanNumber.startsWith('+91')) cleanNumber = cleanNumber.slice(3);
     else if (cleanNumber.startsWith('91')) cleanNumber = cleanNumber.slice(2);
+
+    // ✅ AUTO WELCOME (only first time)
+if (!greetedUsers.has(cleanNumber)) {
+  greetedUsers.add(cleanNumber);
+
+  let name = "User";
+
+  if (isStudent) name = student.full_name;
+  if (isAdmin) name = "Admin";
+
+  await sendWhatsAppMessage(
+    senderNumber,
+    `Hi ${name} 👋\nWelcome to SGI Bot`
+  );
+}
 
     const upperMsg = userMessage.toUpperCase();
 
@@ -123,25 +149,63 @@ async function handleAdminCommands(msg, upperMsg, phone) {
     return await addStudent(msg.replace(/^add\s/i, '').split('|'));
   }
 
-  return `❌ Unknown Command\n\n${getMainMenu()}`;
+  return getMainMenu();
 }
 
 // ===============================
 // STUDENT COMMANDS
 // ===============================
-
 async function handleStudentCommands(student, msg, upperMsg) {
-  if (upperMsg === 'MENU') return getStudentMenu(student);
+  const cleanMsg = msg.trim().toLowerCase();
 
-  if (upperMsg === '1') return getStudentProfile(student);
+  let reply = "";
 
-  if (upperMsg === '2') return getMyFees(student);
+  // MENU
+  if (['menu', 'help', 'start'].includes(cleanMsg)) {
+    reply = getStudentMenu(student);
+  }
 
-  if (upperMsg === '3') return await getMyComplaints(student);
+  // PROFILE
+  else if (
+    cleanMsg === '1' ||
+    cleanMsg.includes('profile') ||
+    cleanMsg.includes('my details')
+  ) {
+    reply = getStudentProfile(student);
+  }
 
-  if (upperMsg === '4') return await getMyBus(student);
+  // FEES
+  else if (
+    cleanMsg === '2' ||
+    cleanMsg.includes('fee') ||
+    cleanMsg.includes('my fees') ||
+    cleanMsg.includes('fees details')
+  ) {
+    reply = getMyFees(student);
+  }
 
-  return `❌ Invalid\n\n${getStudentMenu(student)}`;
+  // COMPLAINT
+  else if (
+    cleanMsg === '3' ||
+    cleanMsg.includes('complaint')
+  ) {
+    reply = await getMyComplaints(student);
+  }
+
+  // BUS
+  else if (
+    cleanMsg === '4' ||
+    cleanMsg.includes('bus') ||
+    cleanMsg.includes('bus details')
+  ) {
+    reply = await getMyBus(student);
+  }
+
+  else {
+    reply = "❌ Invalid option";
+  }
+
+  return `${reply}\n\n-------------------\n${getStudentMenu(student)}`;
 }
 
 // ===============================
@@ -190,21 +254,24 @@ async function sendWhatsAppMessage(to, message) {
 // ===============================
 
 function getMainMenu() {
-  return `🤖 SGI ADMIN PANEL
+  return `🤖 *SGI ADMIN PANEL*
 
-1 BUS LIST
-8 STUDENT LIST
-SEARCH <name>
-FEE <USN>`;
+1️⃣ BUS LIST  
+8️⃣ STUDENT LIST  
+
+🔍 SEARCH <name>  
+💰 FEE <USN>`;
 }
 
 function getStudentMenu(student) {
-  return `🎓 STUDENT PANEL
+  return `🎓 *STUDENT PANEL*
 
-1 PROFILE
-2 FEES
-3 COMPLAINT
-4 BUS`;
+1️⃣ PROFILE  
+2️⃣ FEES  
+3️⃣ COMPLAINT  
+4️⃣ BUS  
+
+💡 Type number or text (e.g., "my fees")`;
 }
 
 function getStudentProfile(s) {
@@ -283,3 +350,6 @@ async function addStudent(data) {
 
   return `✅ Added ${name}`;
 }
+
+console.log("📞 Searching for:", variants);
+console.log("🎓 Student found:", student);
