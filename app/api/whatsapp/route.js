@@ -45,7 +45,6 @@ async function getAdminNumbers() {
 // ===============================
 // MAIN API
 // ===============================
-
 export async function POST(request) {
   try {
     const payload = await request.json();
@@ -58,64 +57,76 @@ export async function POST(request) {
       return NextResponse.json({ success: true });
     }
 
-    // normalize number
+    // ===============================
+    // NORMALIZE NUMBER
+    // ===============================
     let cleanNumber = senderNumber.toString();
     if (cleanNumber.startsWith('+91')) cleanNumber = cleanNumber.slice(3);
     else if (cleanNumber.startsWith('91')) cleanNumber = cleanNumber.slice(2);
 
-    // ✅ AUTO WELCOME (only first time)
-if (!greetedUsers.has(cleanNumber)) {
-  greetedUsers.add(cleanNumber);
+    const text = userMessage.trim();
+    const upperMsg = text.toUpperCase();
 
-  let name = "User";
-
-  if (isStudent) name = student.full_name;
-  if (isAdmin) name = "Admin";
-
-  await sendWhatsAppMessage(
-    senderNumber,
-    `Hi ${name} 👋\nWelcome to SGI Bot`
-  );
-}
-
-    const upperMsg = userMessage.toUpperCase();
-
+    // ===============================
+    // FETCH DATA FIRST (IMPORTANT)
+    // ===============================
     const adminNumbers = await getAdminNumbers();
     const student = await getStudentByPhone(cleanNumber);
 
     const isAdmin = adminNumbers.includes(cleanNumber);
     const isStudent = !!student;
 
-    console.log({ cleanNumber, isAdmin, isStudent, userMessage });
+    console.log({ cleanNumber, isAdmin, isStudent, text });
 
     // ===============================
-    // ADMIN
+    // AUTO WELCOME (FIXED + SAFE)
     // ===============================
+    if (!greetedUsers.has(cleanNumber)) {
+      greetedUsers.add(cleanNumber);
+
+      let name = "User";
+
+      if (isStudent) name = student.full_name || "Student";
+      else if (isAdmin) name = "Admin";
+
+      await sendWhatsAppMessage(
+        senderNumber,
+        `Hi ${name} 👋\nWelcome to SGI Bot`
+      );
+    }
+
+    // ===============================
+    // ROUTING (SMART ORDER)
+    // ===============================
+
+    let reply = null;
+
+    // 🟢 ADMIN
     if (isAdmin) {
-      const reply = await handleAdminCommands(userMessage, upperMsg, cleanNumber);
-      if (reply) await sendWhatsAppMessage(senderNumber, reply);
-      return NextResponse.json({ success: true });
+      reply = await handleAdminCommands(text, upperMsg, cleanNumber);
+    }
+
+    // 🟡 STUDENT
+    else if (isStudent) {
+      reply = await handleStudentCommands(student, text, upperMsg);
+    }
+
+    // 🔵 PUBLIC
+    else {
+      reply = await handlePublicCommands(text, upperMsg);
     }
 
     // ===============================
-    // STUDENT
+    // SEND RESPONSE
     // ===============================
-    if (isStudent) {
-      const reply = await handleStudentCommands(student, userMessage, upperMsg);
-      if (reply) await sendWhatsAppMessage(senderNumber, reply);
-      return NextResponse.json({ success: true });
+    if (reply) {
+      await sendWhatsAppMessage(senderNumber, reply);
     }
-
-    // ===============================
-    // PUBLIC
-    // ===============================
-    const reply = await handlePublicCommands(userMessage, upperMsg);
-    if (reply) await sendWhatsAppMessage(senderNumber, reply);
 
     return NextResponse.json({ success: true });
 
   } catch (err) {
-    console.error(err);
+    console.error("BOT ERROR:", err);
     return NextResponse.json({ error: 'failed' }, { status: 200 });
   }
 }
@@ -124,94 +135,109 @@ if (!greetedUsers.has(cleanNumber)) {
 // ADMIN COMMANDS
 // ===============================
 
-async function handleAdminCommands(msg, upperMsg, phone) {
-  if (upperMsg === 'MENU' || upperMsg === 'HELP' || upperMsg === 'START') {
+async function handleAdminCommands(msg) {
+  const text = msg.trim().toLowerCase();
+
+  // MENU
+  if (text.includes('menu') || text.includes('help') || text.includes('start')) {
     return getMainMenu();
   }
 
-  if (upperMsg === 'STUDENT LIST' || upperMsg === '8') {
-    return await getStudentList();
-  }
-
-  if (upperMsg === 'BUS LIST' || upperMsg === '1') {
+  // BUS
+  if (
+    text === '1' ||
+    text.includes('bus')
+  ) {
     return await getBusList();
   }
 
-  if (msg.match(/^search\s/i)) {
-    return await searchStudent(msg.replace(/^search\s/i, ''));
+  // STUDENTS
+  if (
+    text === '8' ||
+    text.includes('student')
+  ) {
+    return await getStudentList();
   }
 
-  if (msg.match(/^fee\s/i)) {
-    return await getStudentFeeDetails(msg.replace(/^fee\s/i, ''));
+  // SEARCH (remove < > also)
+  if (text.includes('search')) {
+    const query = text
+  .replace(/search/i, '')
+  .replace(/[<>:]/g, '')
+  .trim();
+    return await searchStudent(query);
   }
 
-  if (msg.match(/^add\s/i)) {
-    return await addStudent(msg.replace(/^add\s/i, '').split('|'));
+  // FEE
+  if (text.includes('fee')) {
+    const usn = text.replace('fee', '').trim();
+    return await getStudentFeeDetails(usn);
   }
 
-  return getMainMenu();
+  return getMainMenu(); // no error ❌
 }
 
 // ===============================
 // STUDENT COMMANDS
 // ===============================
 async function handleStudentCommands(student, msg) {
-  const cleanMsg = msg.trim().toLowerCase();
+  const text = msg.trim().toLowerCase();
 
   let reply = "";
 
-  // 👋 GREETING + MENU
+  // 👋 GREETING / MENU
   if (
-    cleanMsg === '' ||
-    cleanMsg.includes('hi') ||
-    cleanMsg.includes('hello') ||
-    cleanMsg.includes('hey') ||
-    cleanMsg.includes('menu') ||
-    cleanMsg.includes('help') ||
-    cleanMsg.includes('start')
+    text === '' ||
+    text.includes('hi') ||
+    text.includes('hello') ||
+    text.includes('hey') ||
+    text.includes('menu') ||
+    text.includes('help')
   ) {
-    reply = `Hi ${student.full_name} 👋\n\n${getStudentMenu()}`;
+    reply = `Hi ${student.full_name} 👋`;
   }
 
   // 👤 PROFILE
   else if (
-    cleanMsg === '1' ||
-    cleanMsg.includes('profile') ||
-    cleanMsg.includes('details')
+    text === '1' ||
+    text.includes('profile') ||
+    text.includes('details')
   ) {
     reply = getStudentProfile(student);
   }
 
   // 💰 FEES
   else if (
-    cleanMsg === '2' ||
-    cleanMsg.includes('fee')
+    text === '2' ||
+    text.includes('fee') ||
+    text.includes('fees') ||
+    text.includes('my fee')
   ) {
     reply = getMyFees(student);
   }
 
   // 🛠 COMPLAINT
   else if (
-    cleanMsg === '3' ||
-    cleanMsg.includes('complaint')
+    text === '3' ||
+    text.includes('complaint')
   ) {
     reply = await getMyComplaints(student);
   }
 
   // 🚌 BUS
   else if (
-    cleanMsg === '4' ||
-    cleanMsg.includes('bus')
+    text === '4' ||
+    text.includes('bus')
   ) {
     reply = await getMyBus(student);
   }
 
-  // 🤖 DEFAULT (NO INVALID ❌)
+  // 🤖 DEFAULT (NO ❌)
   else {
-    reply = `🤖 I didn’t understand that.\n\n${getStudentMenu()}`;
+    reply = `🤖 Try using options below 👇`;
   }
 
-  return `${reply}\n\n-------------------\n${getStudentMenu()}`;
+  return `${reply}\n\n${getStudentMenu()}`;
 }
 
 // ===============================
@@ -298,7 +324,10 @@ function getMyFees(s) {
 
 async function getStudentList() {
   const { data } = await supabase.from('students').select('*').limit(10);
-  return data?.map(s => `${s.full_name} (${s.usn})`).join('\n') || 'No students';
+
+  return data?.map(s =>
+    `${s.full_name || "No Name"} (${s.usn || "No USN"})`
+  ).join('\n') || 'No students';
 }
 
 async function searchStudent(q) {
@@ -360,6 +389,3 @@ async function addStudent(data) {
 
   return `✅ Added ${name}`;
 }
-
-console.log("📞 Searching for:", variants);
-console.log("🎓 Student found:", student);
