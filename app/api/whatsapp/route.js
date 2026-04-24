@@ -1,8 +1,26 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
-// Admin numbers list (add multiple admins here)
-const ADMIN_NUMBERS = ['9480072737', '7204326912', '919480072737'];
+
+
+async function getAdminNumbers() {
+  const { data, error } = await supabase
+    .from('admins')
+    .select('mobile_number');
+
+  if (error) {
+    console.error('❌ Admin fetch error:', error);
+    return [];
+  }
+
+  // Normalize numbers (remove +91 / 91)
+  return data.map(a => {
+    let num = a.mobile_number.toString();
+    if (num.startsWith('+91')) num = num.slice(3);
+    else if (num.startsWith('91')) num = num.slice(2);
+    return num;
+  });
+}
 
 export async function POST(request) {
   try {
@@ -33,7 +51,8 @@ export async function POST(request) {
     }
     
     // Check if sender is admin (any number in ADMIN_NUMBERS list)
-    const isAdmin = ADMIN_NUMBERS.includes(cleanNumber);
+    const adminNumbers = await getAdminNumbers();
+    const isAdmin = adminNumbers.includes(cleanNumber);
     
     console.log(`🧹 Clean Number: ${cleanNumber}`);
     console.log(`👑 Is Admin: ${isAdmin}`);
