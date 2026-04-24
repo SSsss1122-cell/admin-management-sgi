@@ -155,36 +155,42 @@ async function handleAdminCommands(msg, upperMsg, phone) {
 // ===============================
 // STUDENT COMMANDS
 // ===============================
-async function handleStudentCommands(student, msg, upperMsg) {
+async function handleStudentCommands(student, msg) {
   const cleanMsg = msg.trim().toLowerCase();
 
   let reply = "";
 
-  // MENU
-  if (['menu', 'help', 'start'].includes(cleanMsg)) {
-    reply = getStudentMenu(student);
+  // 👋 GREETING + MENU
+  if (
+    cleanMsg === '' ||
+    cleanMsg.includes('hi') ||
+    cleanMsg.includes('hello') ||
+    cleanMsg.includes('hey') ||
+    cleanMsg.includes('menu') ||
+    cleanMsg.includes('help') ||
+    cleanMsg.includes('start')
+  ) {
+    reply = `Hi ${student.full_name} 👋\n\n${getStudentMenu()}`;
   }
 
-  // PROFILE
+  // 👤 PROFILE
   else if (
     cleanMsg === '1' ||
     cleanMsg.includes('profile') ||
-    cleanMsg.includes('my details')
+    cleanMsg.includes('details')
   ) {
     reply = getStudentProfile(student);
   }
 
-  // FEES
+  // 💰 FEES
   else if (
     cleanMsg === '2' ||
-    cleanMsg.includes('fee') ||
-    cleanMsg.includes('my fees') ||
-    cleanMsg.includes('fees details')
+    cleanMsg.includes('fee')
   ) {
     reply = getMyFees(student);
   }
 
-  // COMPLAINT
+  // 🛠 COMPLAINT
   else if (
     cleanMsg === '3' ||
     cleanMsg.includes('complaint')
@@ -192,20 +198,20 @@ async function handleStudentCommands(student, msg, upperMsg) {
     reply = await getMyComplaints(student);
   }
 
-  // BUS
+  // 🚌 BUS
   else if (
     cleanMsg === '4' ||
-    cleanMsg.includes('bus') ||
-    cleanMsg.includes('bus details')
+    cleanMsg.includes('bus')
   ) {
     reply = await getMyBus(student);
   }
 
+  // 🤖 DEFAULT (NO INVALID ❌)
   else {
-    reply = "❌ Invalid option";
+    reply = `🤖 I didn’t understand that.\n\n${getStudentMenu()}`;
   }
 
-  return `${reply}\n\n-------------------\n${getStudentMenu(student)}`;
+  return `${reply}\n\n-------------------\n${getStudentMenu()}`;
 }
 
 // ===============================
@@ -263,7 +269,7 @@ function getMainMenu() {
 💰 FEE <USN>`;
 }
 
-function getStudentMenu(student) {
+function getStudentMenu() {
   return `🎓 *STUDENT PANEL*
 
 1️⃣ PROFILE  
@@ -271,7 +277,11 @@ function getStudentMenu(student) {
 3️⃣ COMPLAINT  
 4️⃣ BUS  
 
-💡 Type number or text (e.g., "my fees")`;
+💡 You can type:
+• hi / hello
+• my fees
+• profile
+• bus details`;
 }
 
 function getStudentProfile(s) {
