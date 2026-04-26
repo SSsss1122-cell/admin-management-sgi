@@ -103,7 +103,7 @@ export async function POST(request) {
 
     // 🟢 ADMIN
     if (isAdmin) {
-      reply = await handleAdminCommands(text, upperMsg, cleanNumber);
+      reply = await handleAdminCommands(text, cleanNumber);
     }
 
     // 🟡 STUDENT
@@ -135,46 +135,93 @@ export async function POST(request) {
 // ADMIN COMMANDS
 // ===============================
 
-async function handleAdminCommands(msg) {
+async function handleAdminCommands(msg, cleanNumber) {
   const text = msg.trim().toLowerCase();
 
   // MENU
-  if (text.includes('menu') || text.includes('help') || text.includes('start')) {
+  if (text.includes('menu') ||  text.includes('admin') || text.includes('help') || text.includes('start')) {
     return getMainMenu();
   }
 
-  // BUS
-  if (
-    text === '1' ||
-    text.includes('bus')
-  ) {
+  // ================= BUS =================
+  if (text === '1' || text.includes('bus list')) {
     return await getBusList();
   }
 
-  // STUDENTS
-  if (
-    text === '8' ||
-    text.includes('student')
-  ) {
-    return await getStudentList();
+  if (text === '3' || text.startsWith('stops')) {
+    const bus = text.replace('stops', '').trim();
+    return await getBusStops(bus);
   }
 
-  // SEARCH (remove < > also)
-  if (text.includes('search')) {
-    const query = text
-  .replace(/search/i, '')
-  .replace(/[<>:]/g, '')
-  .trim();
-    return await searchStudent(query);
+  if (text === '4' || text.startsWith('details')) {
+    const bus = text.replace('details', '').trim();
+    return await getBusDetails(bus);
   }
 
-  // FEE
-  if (text.includes('fee')) {
+  // ================= FEES =================
+  if (text === '5' || text.startsWith('fee')) {
     const usn = text.replace('fee', '').trim();
     return await getStudentFeeDetails(usn);
   }
 
-  return getMainMenu(); // no error ❌
+  if (text === '6' || text.includes('due')) {
+    return await getCompleteDueFeesList();
+  }
+
+  if (text === '7' || text.includes('summary')) {
+    return await getFeesSummary();
+  }
+
+  // ================= STUDENTS =================
+  if (text === '8' || text.includes('student list')) {
+    return await getStudentList();
+  }
+
+  if (text === '9' || text.startsWith('search')) {
+    const query = text.replace('search', '').trim();
+    return await searchStudent(query);
+  }
+
+  if (text === '10' || text.includes('count')) {
+    return await getStudentCountWithBranch();
+  }
+
+  // ================= OTHER =================
+  if (text === '11' || text.startsWith('complaint')) {
+    const data = text.replace('complaint', '').trim();
+    return await registerComplaint(cleanNumber, data);
+  }
+
+  if (text === '12' || text.includes('notices')) {
+    return await getNotices();
+  }
+
+  if (text === '13' || text.includes('drivers')) {
+    return await getDriversList();
+  }
+
+  // ================= EXTRA =================
+  if (text.startsWith('add')) {
+    const data = text.replace('add', '').split('|');
+    return await addStudent(data);
+  }
+
+  if (text.startsWith('update')) {
+    const parts = text.replace('update', '').split('|');
+    return await updateStudentFees(parts[0], parts[1]);
+  }
+
+  if (text.startsWith('delete')) {
+    const usn = text.replace('delete', '').trim();
+    return await deleteStudent(usn);
+  }
+
+  if (text.startsWith('broadcast')) {
+    const msg = text.replace('broadcast', '').trim();
+    return await broadcastMessage(msg);
+  }
+
+  return getMainMenu();
 }
 
 // ===============================
@@ -188,7 +235,7 @@ async function handleStudentCommands(student, msg) {
   // 👋 GREETING / MENU
   if (
     text === '' ||
-    text.includes('hi') ||
+    text.includes('bus') ||
     text.includes('hello') ||
     text.includes('hey') ||
     text.includes('menu') ||
@@ -288,11 +335,33 @@ async function sendWhatsAppMessage(to, message) {
 function getMainMenu() {
   return `🤖 *SGI ADMIN PANEL*
 
+🚌 *BUS MENU*
 1️⃣ BUS LIST  
-8️⃣ STUDENT LIST  
+3️⃣ BUS STOPS  
+4️⃣ BUS DETAILS  
 
-🔍 SEARCH <name>  
-💰 FEE <USN>`;
+💰 *FEES MENU*
+5️⃣ FEE CHECK  
+6️⃣ FEE DUE LIST  
+7️⃣ FEE SUMMARY  
+
+📚 *STUDENT MENU*
+8️⃣ STUDENT LIST  
+9️⃣ SEARCH STUDENT  
+🔟 STUDENT COUNT  
+
+📢 *OTHER*
+1️⃣1️⃣ COMPLAINT  
+1️⃣2️⃣ NOTICES  
+1️⃣3️⃣ DRIVERS  
+
+💡 Commands:
+• SEARCH <name>
+• FEE <USN>
+• STOPS <bus>
+• DETAILS <bus>
+• ADD <data>
+• UPDATE <usn>|<amt>`;
 }
 
 function getStudentMenu() {
