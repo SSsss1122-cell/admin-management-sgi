@@ -64,7 +64,7 @@ export async function POST(request) {
     if (cleanNumber.startsWith('+91')) cleanNumber = cleanNumber.slice(3);
     else if (cleanNumber.startsWith('91')) cleanNumber = cleanNumber.slice(2);
 
-    const text = userMessage.trim();
+    const text = normalizeInput(userMessage);
     const upperMsg = text.toUpperCase();
 
     // ===============================
@@ -107,9 +107,10 @@ export async function POST(request) {
     }
 
     // 🟡 STUDENT
-    else if (isStudent) {
-      reply = await handleStudentCommands(student, text, upperMsg);
-    }
+    // 🟡 STUDENT
+else if (isStudent) {
+  reply = await handleStudentCommands(student, text);
+}
 
     // 🔵 PUBLIC
     else {
@@ -136,31 +137,34 @@ export async function POST(request) {
 // ===============================
 
 async function handleAdminCommands(msg, cleanNumber) {
-  const text = msg.trim().toLowerCase();
+  const text = msg;
 
   // MENU
-  if (text.includes('menu') ||  text.includes('admin') || text.includes('help') || text.includes('start')) {
+  if (text === '' || text.includes('menu') || text.includes('help') || text.includes('start') || text.includes('admin')) {
     return getMainMenu();
   }
 
   // ================= BUS =================
-  if (text === '1' || text.includes('bus list')) {
+  if (text === '1' || text === 'bus' || text.includes('bus list')) {
     return await getBusList();
   }
 
   if (text === '3' || text.startsWith('stops')) {
     const bus = text.replace('stops', '').trim();
+    if (!bus) return "❌ Use: STOPS <bus_number>";
     return await getBusStops(bus);
   }
 
   if (text === '4' || text.startsWith('details')) {
     const bus = text.replace('details', '').trim();
+    if (!bus) return "❌ Use: DETAILS <bus_number>";
     return await getBusDetails(bus);
   }
 
   // ================= FEES =================
   if (text === '5' || text.startsWith('fee')) {
     const usn = text.replace('fee', '').trim();
+    if (!usn) return "❌ Use: FEE <USN>";
     return await getStudentFeeDetails(usn);
   }
 
@@ -179,6 +183,7 @@ async function handleAdminCommands(msg, cleanNumber) {
 
   if (text === '9' || text.startsWith('search')) {
     const query = text.replace('search', '').trim();
+    if (!query) return "❌ Use: SEARCH <name>";
     return await searchStudent(query);
   }
 
@@ -189,6 +194,7 @@ async function handleAdminCommands(msg, cleanNumber) {
   // ================= OTHER =================
   if (text === '11' || text.startsWith('complaint')) {
     const data = text.replace('complaint', '').trim();
+    if (!data) return "❌ Use: COMPLAINT title|desc";
     return await registerComplaint(cleanNumber, data);
   }
 
@@ -228,14 +234,13 @@ async function handleAdminCommands(msg, cleanNumber) {
 // STUDENT COMMANDS
 // ===============================
 async function handleStudentCommands(student, msg) {
-  const text = msg.trim().toLowerCase();
+  const text = msg;
 
   let reply = "";
 
-  // 👋 GREETING / MENU
   if (
     text === '' ||
-    text.includes('bus') ||
+    text.includes('hi') ||
     text.includes('hello') ||
     text.includes('hey') ||
     text.includes('menu') ||
@@ -244,42 +249,22 @@ async function handleStudentCommands(student, msg) {
     reply = `Hi ${student.full_name} 👋`;
   }
 
-  // 👤 PROFILE
-  else if (
-    text === '1' ||
-    text.includes('profile') ||
-    text.includes('details')
-  ) {
+  else if (text === '1' || text.includes('profile')) {
     reply = getStudentProfile(student);
   }
 
-  // 💰 FEES
-  else if (
-    text === '2' ||
-    text.includes('fee') ||
-    text.includes('fees') ||
-    text.includes('my fee')
-  ) {
+  else if (text === '2' || text.includes('fee')) {
     reply = getMyFees(student);
   }
 
-  // 🛠 COMPLAINT
-  else if (
-    text === '3' ||
-    text.includes('complaint')
-  ) {
+  else if (text === '3' || text.includes('complaint')) {
     reply = await getMyComplaints(student);
   }
 
-  // 🚌 BUS
-  else if (
-    text === '4' ||
-    text.includes('bus')
-  ) {
+  else if (text === '4' || text.includes('bus')) {
     reply = await getMyBus(student);
   }
 
-  // 🤖 DEFAULT (NO ❌)
   else {
     reply = `🤖 Try using options below 👇`;
   }
