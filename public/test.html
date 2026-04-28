@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WhatsApp Bot - Real-time Test</title>
+    <style>
+        body { font-family: Arial; padding: 20px; max-width: 800px; margin: 0 auto; }
+        .container { border: 1px solid #ddd; border-radius: 5px; margin: 10px 0; }
+        .header { background: #4CAF50; color: white; padding: 10px; }
+        .content { padding: 15px; }
+        input { padding: 10px; width: 70%; margin: 5px; }
+        button { padding: 10px 20px; background: #4CAF50; color: white; border: none; cursor: pointer; margin: 5px; }
+        button:hover { background: #45a049; }
+        #chat { height: 400px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; margin: 10px 0; }
+        .message { margin: 10px 0; padding: 10px; border-radius: 5px; white-space: pre-wrap; }
+        .sent { background: #e3f2fd; text-align: right; }
+        .received { background: #f5f5f5; text-align: left; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>🤖 SGI WhatsApp Bot - Live Test</h2>
+        </div>
+        <div class="content">
+            <div>
+                <label>Phone Number: </label>
+                <input type="text" id="phone" value="+919480072737" placeholder="+919480072737">
+            </div>
+            
+            <div id="chat"></div>
+            
+            <div>
+                <input type="text" id="message" placeholder="Type HELP, your USN, or name..." 
+                       onkeypress="if(event.key==='Enter') sendMessage()">
+                <button onclick="sendMessage()">Send</button>
+            </div>
+            
+            <div style="margin-top: 10px;">
+                <b>Quick Tests:</b>
+                <button onclick="quickSend('HELP')">HELP</button>
+                <button onclick="quickSend('3TS25CS004')">USN Test</button>
+                <button onclick="quickSend('MY DETAILS')">My Details</button>
+                <button onclick="quickSend('SEARCH Rahul')">Name Search</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function sendMessage() {
+            const phone = document.getElementById('phone').value;
+            const message = document.getElementById('message').value;
+            
+            if (!message) return;
+            
+            // Show sent message
+            addMessage(message, 'sent');
+            document.getElementById('message').value = '';
+            
+            try {
+                const response = await fetch('/api/student-whatsapp', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        data: {
+                            senderPhoneNumber: phone,
+                            content: { text: message }
+                        }
+                    })
+                });
+                
+                const result = await response.json();
+                
+                // Check console for the actual WhatsApp response
+                if (result.success) {
+                    addMessage('✅ Message processed! Check server console for WhatsApp response.', 'received');
+                } else {
+                    addMessage('❌ Error: ' + (result.error || 'Unknown error'), 'received');
+                }
+            } catch (error) {
+                addMessage('❌ Network error: ' + error.message, 'received');
+            }
+        }
+        
+        function quickSend(msg) {
+            document.getElementById('message').value = msg;
+            sendMessage();
+        }
+        
+        function addMessage(text, type) {
+            const chat = document.getElementById('chat');
+            const div = document.createElement('div');
+            div.className = 'message ' + type;
+            div.textContent = text;
+            chat.appendChild(div);
+            chat.scrollTop = chat.scrollHeight;
+        }
+    </script>
+</body>
+</html>
