@@ -3,41 +3,13 @@
 import { supabase } from '@/lib/supabase';
 
 export async function handleStudentCommands(userMessage, cleanNumber) {
-  const upperMsg = userMessage?.toUpperCase().trim() || '';
-  let replyMessage = '';
-  
-  // When student says Hi/Hello/Help - SHOW THEIR DETAILS DIRECTLY
-  if (['HELP', 'MENU', 'START', 'HI', 'HELLO', 'HLO'].includes(upperMsg)) {
-    // Search by their phone number
-    replyMessage = await getStudentByPhone(cleanNumber);
-  }
-  
-  // My Details command
-  else if (['MY', 'MY DETAILS', 'ME', 'MINE', 'DETAILS'].includes(upperMsg)) {
-    replyMessage = await getStudentByPhone(cleanNumber);
-  }
-  
-  // Search commands
-  else if (upperMsg.match(/^(SEARCH|FIND|INFO|CHECK)\s/i)) {
-    const query = userMessage.replace(/^(SEARCH|FIND|INFO|CHECK)\s/i, '').trim();
-    replyMessage = await searchStudentDetails(query);
-  }
-  
-  // Default - try to search by USN or name
-  else if (userMessage.trim().length >= 2) {
-    replyMessage = await searchStudentDetails(userMessage.trim());
-  }
-  
-  // Fallback
-  else {
-    replyMessage = await getStudentByPhone(cleanNumber);
-  }
-  
-  return replyMessage;
+  // ALWAYS search by phone number only - no USN or name search
+  // This ensures students can only see their OWN details
+  return await getStudentByPhone(cleanNumber);
 }
 
 // ============================================
-// GET STUDENT BY PHONE NUMBER
+// GET STUDENT BY PHONE NUMBER (ONLY METHOD)
 // ============================================
 
 async function getStudentByPhone(phoneNumber) {
@@ -48,13 +20,15 @@ async function getStudentByPhone(phoneNumber) {
   if (!phoneNum || isNaN(phoneNum)) {
     return `❌ *Phone number not registered*
 
-Please register your phone number with the college.
+Your number is not linked to any student account.
 
-📞 Contact admin: 9480072737`;
+Please contact admin to register your number.
+
+📞 *Admin Contact:* 9480072737`;
   }
   
   try {
-    // Search by phone_number or phone field
+    // Search by phone_number field (bigint in your schema)
     const { data: students, error } = await supabase
       .from('students')
       .select('*')
@@ -65,18 +39,19 @@ Please register your phone number with the college.
       console.error('Phone search error:', error);
       return `❌ *Error finding your details*
 
-📞 Contact admin: 9480072737`;
+Please try again later.
+
+📞 *Admin Contact:* 9480072737`;
     }
     
     if (!students || students.length === 0) {
-      return `❌ *No student found with this phone number*
+      return `❌ *No student found with this number*
 
 Your number: ${phoneNumber}
 
-Please send your USN to get your details.
-Example: 3TS25CS004
+Your phone number is not linked to any student record.
 
-📞 Contact admin: 9480072737`;
+📞 *Admin Contact:* 9480072737`;
     }
     
     return formatStudentDetails(students[0]);
@@ -85,76 +60,7 @@ Example: 3TS25CS004
     console.error('Error:', error);
     return `❌ *Something went wrong*
 
-📞 Contact admin: 9480072737`;
-  }
-}
-
-// ============================================
-// SEARCH STUDENT BY USN OR NAME
-// ============================================
-
-async function searchStudentDetails(query) {
-  if (!query || query.trim().length < 2) {
-    return `❌ *Please provide a valid USN or name*
-
-Send your *USN* to get your details.
-Example: 3TS25CS004`;
-  }
-  
-  query = query.trim();
-  console.log(`🔍 [Student] Searching for: "${query}"`);
-  
-  try {
-    // Try exact USN match first
-    const { data: usnMatch } = await supabase
-      .from('students')
-      .select('*')
-      .ilike('usn', query)
-      .limit(1);
-    
-    if (usnMatch && usnMatch.length > 0) {
-      return formatStudentDetails(usnMatch[0]);
-    }
-    
-    // Try partial USN match
-    const { data: partialMatch } = await supabase
-      .from('students')
-      .select('*')
-      .ilike('usn', `%${query}%`)
-      .limit(1);
-    
-    if (partialMatch && partialMatch.length > 0) {
-      return formatStudentDetails(partialMatch[0]);
-    }
-    
-    // Try name match
-    const { data: nameMatch } = await supabase
-      .from('students')
-      .select('*')
-      .ilike('full_name', `%${query}%`)
-      .limit(1);
-    
-    if (nameMatch && nameMatch.length > 0) {
-      return formatStudentDetails(nameMatch[0]);
-    }
-    
-    // No student found
-    return `❌ *No student found for:* "${query}"
-
-📋 Please check your details and try again.
-
-💡 *Examples:*
-• Your USN (e.g., 3TS25CS004)
-• Your name
-• Send HI to get your details by phone
-
-📞 Contact admin: 9480072737`;
-    
-  } catch (error) {
-    console.error('Search error:', error);
-    return `❌ *Database error*
-
-📞 Contact admin: 9480072737`;
+📞 *Admin Contact:* 9480072737`;
   }
 }
 
@@ -214,7 +120,7 @@ function formatStudentDetails(student) {
   
   message += `└─────────────────────────────┘
 
-💡 *Tip:* Send your USN anytime to view your details
+💡 *Tip:* Send any message to view your details
 
 📞 *Admin Contact:* 9480072737`;
   
