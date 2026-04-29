@@ -15,22 +15,24 @@ async function getStudentByPhone(phoneNumber) {
   console.log(`🔍 [Student] Looking up by phone: ${phoneNumber}`);
   
   if (!phoneNumber || phoneNumber.length < 10) {
-    return `📱 *Phone number not registered*
-
-Your number is not linked to any student account.
-
-📞 *Admin Contact:* 9845926992`;
+    // Return null = no reply sent
+    return null;
   }
   
   try {
-    // Search using ONLY the 'phone' column (text)
+    // Search using 'phone' column
     const { data: students, error } = await supabase
       .from('students')
       .select('*')
       .eq('phone', phoneNumber)
       .limit(1);
     
-    // If not found, try without country code
+    if (error) {
+      console.error('Database error:', error);
+      return null; // No reply
+    }
+    
+    // If not found with full number, try without country code
     if (!students || students.length === 0) {
       const shortNumber = phoneNumber.replace(/^91/, '');
       const { data: students2, error: error2 } = await supabase
@@ -42,34 +44,18 @@ Your number is not linked to any student account.
       if (!error2 && students2 && students2.length > 0) {
         return formatStudentDetails(students2[0]);
       }
+      
+      // Number not found - return null (no reply)
+      console.log('❌ Phone not registered, no reply sent');
+      return null;
     }
     
-    if (error) {
-      console.error('Database error:', error);
-      return `📱 *Phone number not registered*
-
-Your number is not linked to any student account.
-
-📞 *Admin Contact:* 9845926992`;
-    }
-    
-    if (!students || students.length === 0) {
-      return `📱 *Phone number not registered*
-
-Your number is not linked to any student account.
-
-📞 *Admin Contact:* 9845926992`;
-    }
-    
+    // Student found - send details
     return formatStudentDetails(students[0]);
     
   } catch (error) {
     console.error('Error:', error);
-    return `📱 *Phone number not registered*
-
-Your number is not linked to any student account.
-
-📞 *Admin Contact:* 9845926992`;
+    return null; // No reply on error
   }
 }
 
