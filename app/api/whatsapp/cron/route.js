@@ -2,12 +2,37 @@
 
 import { supabase } from '@/lib/supabase';
 
+// Secret key for manual access
+const CRON_SECRET = process.env.CRON_SECRET_KEY || 'sgi_bus_admin_2024';
+
 // ============================================
 // VERCEL CRON HANDLER
 // ============================================
 
 export async function GET(request) {
-  console.log('🕐 Running daily payment check...');
+  console.log('🕐 Payment check requested...');
+  
+  // ============================================
+  // SECURITY CHECK
+  // ============================================
+  const { searchParams } = new URL(request.url);
+  const providedKey = searchParams.get('key');
+  const authHeader = request.headers.get('authorization') || '';
+  
+  // Allow Vercel Cron (has specific header) OR manual with correct key
+  const isVercelCron = authHeader.includes('vercel-cron') || 
+                       request.headers.get('x-vercel-cron') === '1';
+  const hasValidKey = providedKey === CRON_SECRET;
+  
+  if (!isVercelCron && !hasValidKey) {
+    console.log('🚫 Unauthorized access attempt');
+    return Response.json({ 
+      success: false, 
+      error: 'Unauthorized. Use ?key=YOUR_SECRET_KEY' 
+    }, { status: 401 });
+  }
+  
+  console.log(`✅ Authorized (${isVercelCron ? 'Vercel Cron' : 'Manual Key'})`);
   
   try {
     const result = await sendPaymentReminders();
