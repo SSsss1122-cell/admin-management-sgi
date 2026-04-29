@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
 // Admin numbers list (add multiple admins here)
-const ADMIN_NUMBERS = ['9480072737', '7204326912', '919480072737'];
+const ADMIN_NUMBERS = ['9480072737', '919480072737'];
 
 export async function POST(request) {
   try {
