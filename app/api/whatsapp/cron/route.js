@@ -59,7 +59,7 @@ async function sendPaymentReminders() {
     // ============================================
     const { data: allStudents, error: allError } = await supabase
       .from('students')
-      .select('full_name, phone, due_amount, "next-payment-date-test", usn');
+      .select('full_name, phone, due_amount, next_payment_date, usn');
     
     if (allError) {
       console.error('❌ Error fetching all students:', allError);
@@ -67,7 +67,7 @@ async function sendPaymentReminders() {
       console.log(`📋 Total students in database: ${allStudents?.length || 0}`);
       console.log('──────────────────────────────────────────');
       allStudents?.forEach(s => {
-        const dateVal = s['next-payment-date-test'];
+        const dateVal = s.next_payment_date;
         const crossed = dateVal && dateVal < today ? '🔴 OVERDUE' : '🟢 OK';
         const hasPhone = s.phone ? '✅' : '❌';
         const hasDue = s.due_amount > 0 ? '⚠️' : '✅';
@@ -84,7 +84,7 @@ async function sendPaymentReminders() {
     const { data: students, error } = await supabase
       .from('students')
       .select('*')
-      .lt('"next-payment-date-test"', today)
+      .lt('next_payment_date', today)
       .gt('due_amount', 0)
       .not('phone', 'is', null);
     
@@ -96,26 +96,6 @@ async function sendPaymentReminders() {
     console.log(`📊 Query result: ${students?.length || 0} students found`);
     
     if (!students || students.length === 0) {
-      // Try alternative query without double quotes
-      console.log('🔄 Trying alternative query...');
-      
-      const { data: students2, error: error2 } = await supabase
-        .from('students')
-        .select('*')
-        .filter('next-payment-date-test', 'lt', today)
-        .filter('due_amount', 'gt', 0)
-        .filter('phone', 'not.is', null);
-      
-      if (error2) {
-        console.error('❌ Alternative query error:', error2);
-      } else {
-        console.log(`📊 Alternative query result: ${students2?.length || 0} students found`);
-        
-        if (students2 && students2.length > 0) {
-          return await sendRemindersToStudents(students2, today);
-        }
-      }
-      
       console.log('✅ No overdue payments today');
       return { success: true, remindersSent: 0, message: 'No overdue payments' };
     }
@@ -181,7 +161,7 @@ async function sendRemindersToStudents(students, today) {
 // ============================================
 
 function formatReminderMessage(student) {
-  const daysOverdue = calculateDaysOverdue(student['next-payment-date-test']);
+  const daysOverdue = calculateDaysOverdue(student.next_payment_date);
   
   return `╔════════════════════════════╗
 ║   ⚠️ *PAYMENT REMINDER*   ║
@@ -200,7 +180,7 @@ Your fee payment is *OVERDUE*!
 │ ✅ Paid: ₹${student.paid_amount || 0}
 │ ⚠️ Due: ₹${student.due_amount || 0}
 ├─────────────────────────────┤
-│ 📅 Due Date: ${student['next-payment-date-test'] || 'N/A'}
+│ 📅 Due Date: ${student.next_payment_date || 'N/A'}
 │ ⏰ Days Overdue: ${daysOverdue} days
 └─────────────────────────────┘
 
