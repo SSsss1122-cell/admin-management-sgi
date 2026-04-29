@@ -122,7 +122,7 @@ function formatStudentDetails(student) {
 
 💡 *Tip:* Send any message to view your details
 
-📞 *Admin Contact:* 9480072737`;
+📞 *Admin Contact:* 9845926992`;
   
   return message;
 }
