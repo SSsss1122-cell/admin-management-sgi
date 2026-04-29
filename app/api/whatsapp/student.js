@@ -3,64 +3,73 @@
 import { supabase } from '@/lib/supabase';
 
 export async function handleStudentCommands(userMessage, cleanNumber) {
-  // ALWAYS search by phone number only - no USN or name search
-  // This ensures students can only see their OWN details
+  // ALWAYS search by phone number only
   return await getStudentByPhone(cleanNumber);
 }
 
 // ============================================
-// GET STUDENT BY PHONE NUMBER (ONLY METHOD)
+// GET STUDENT BY PHONE NUMBER
 // ============================================
 
 async function getStudentByPhone(phoneNumber) {
   console.log(`🔍 [Student] Looking up by phone: ${phoneNumber}`);
   
-  const phoneNum = parseInt(phoneNumber);
-  
-  if (!phoneNum || isNaN(phoneNum)) {
-    return `❌ *Phone number not registered*
+  if (!phoneNumber || phoneNumber.length < 10) {
+    return `📱 *Phone number not registered*
 
 Your number is not linked to any student account.
 
-Please contact admin to register your number.
-
-📞 *Admin Contact:* 9480072737`;
+📞 *Admin Contact:* 9845926992`;
   }
   
   try {
-    // Search by phone_number field (bigint in your schema)
+    // Search using ONLY the 'phone' column (text)
     const { data: students, error } = await supabase
       .from('students')
       .select('*')
-      .or(`phone_number.eq.${phoneNum},phone.eq.${phoneNumber}`)
+      .eq('phone', phoneNumber)
       .limit(1);
     
+    // If not found, try without country code
+    if (!students || students.length === 0) {
+      const shortNumber = phoneNumber.replace(/^91/, '');
+      const { data: students2, error: error2 } = await supabase
+        .from('students')
+        .select('*')
+        .eq('phone', shortNumber)
+        .limit(1);
+      
+      if (!error2 && students2 && students2.length > 0) {
+        return formatStudentDetails(students2[0]);
+      }
+    }
+    
     if (error) {
-      console.error('Phone search error:', error);
-      return `❌ *Error finding your details*
+      console.error('Database error:', error);
+      return `📱 *Phone number not registered*
 
-Please try again later.
+Your number is not linked to any student account.
 
-📞 *Admin Contact:* 9480072737`;
+📞 *Admin Contact:* 9845926992`;
     }
     
     if (!students || students.length === 0) {
-      return `❌ *No student found with this number*
+      return `📱 *Phone number not registered*
 
-Your number: ${phoneNumber}
+Your number is not linked to any student account.
 
-Your phone number is not linked to any student record.
-
-📞 *Admin Contact:* 9480072737`;
+📞 *Admin Contact:* 9845926992`;
     }
     
     return formatStudentDetails(students[0]);
     
   } catch (error) {
     console.error('Error:', error);
-    return `❌ *Something went wrong*
+    return `📱 *Phone number not registered*
 
-📞 *Admin Contact:* 9480072737`;
+Your number is not linked to any student account.
+
+📞 *Admin Contact:* 9845926992`;
   }
 }
 
@@ -90,7 +99,7 @@ function formatStudentDetails(student) {
   }
   
   message += `├─────────────────────────────┤
-│ 📞 *Phone:* ${student.phone_number || student.phone || 'N/A'}
+│ 📞 *Phone:* ${student.phone || 'N/A'}
 │ 📧 *Email:* ${student.email || 'N/A'}
 `;
   
