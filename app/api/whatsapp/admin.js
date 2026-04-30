@@ -131,7 +131,7 @@ function getMainMenu() {
 │  💰 *FEES MENU*         │
 ├─────────────────────────┤
 │ 5️⃣  FEE CHECK          │
-│ 6️⃣  FEE DUE LIST       │
+│ 6️⃣  FEE DUE            │
 │ 7️⃣  FEE SUMMARY        │
 └─────────────────────────┘
 
