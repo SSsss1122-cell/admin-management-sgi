@@ -488,66 +488,78 @@ No student found with:
     return `❌ *Error*: ${error.message}`;
   }
 }
-
 async function getCompleteDueFeesList() {
   try {
-    // First, try to get students with due_amount > 0 (regardless of fees_due flag)
-    let { data: students, error } = await supabase
-      .from('students')
-      .select('full_name, usn, due_amount, paid_amount, total_fees, branch, class, phone')
-      .gt('due_amount', 0)  // due_amount greater than 0
-      .order('due_amount', { ascending: false });
+    console.log('🔍 Fetching due fees list...');
     
-    if (error) {
-      console.error('Due list error:', error);
-      return `❌ *Database Error*: ${error.message}`;
+    // First, check if students table has any data
+    const { data: allStudents, error: checkError } = await supabase
+      .from('students')
+      .select('full_name, usn, due_amount, paid_amount, total_fees', { count: 'exact' })
+      .limit(5);
+    
+    if (checkError) {
+      console.error('Check error:', checkError);
+      return `❌ *Database Error*
+
+Message: ${checkError.message}
+Code: ${checkError.code}
+
+Please check Supabase connection.`;
     }
     
-    // If no students found with due_amount > 0, try without any filter to debug
-    if (!students || students.length === 0) {
-      // Check if there are any students at all
-      const { data: allStudents, error: countError } = await supabase
-        .from('students')
-        .select('full_name, due_amount, total_fees', { count: 'exact' })
-        .limit(5);
-      
-      if (countError) {
-        return `❌ *Error checking students*: ${countError.message}`;
-      }
-      
-      if (!allStudents || allStudents.length === 0) {
-        return '📭 *No students found in database*';
-      }
-      
-      // Show debug info about existing students
-      let debugMessage = `⚠️ *No students with due_amount > 0*\n\n`;
-      debugMessage += `But here are some students in database:\n━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-      
-      allStudents.forEach((s, i) => {
-        debugMessage += `${i+1}. ${s.full_name}\n`;
-        debugMessage += `   📋 Due Amount: ₹${s.due_amount || 0}\n`;
-        debugMessage += `   💰 Total Fees: ₹${s.total_fees || 0}\n\n`;
-      });
-      
-      debugMessage += `💡 *Note:* Students show due_amount = 0\n`;
-      debugMessage += `To mark fees as due, update due_amount first.\n`;
-      debugMessage += `Use: UPDATE <usn>|<amount_to_add>`;
-      
-      return debugMessage;
+    if (!allStudents || allStudents.length === 0) {
+      return `📭 *No students found in database*
+
+Total students: 0
+
+Add students using:
+ADD <name>|<usn>|<branch>|<phone>`;
+    }
+    
+    // Show sample of what's in the database
+    let sampleMessage = `📊 *Database Sample* (First ${allStudents.length} students)\n━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+    allStudents.forEach((s, i) => {
+      sampleMessage += `${i+1}. ${s.full_name}\n`;
+      sampleMessage += `   USN: ${s.usn}\n`;
+      sampleMessage += `   Total Fees: ₹${s.total_fees || 0}\n`;
+      sampleMessage += `   Paid: ₹${s.paid_amount || 0}\n`;
+      sampleMessage += `   Due: ₹${s.due_amount || 0}\n\n`;
+    });
+    
+    // Now try to get students with due_amount > 0
+    const { data: dueStudents, error: dueError } = await supabase
+      .from('students')
+      .select('full_name, usn, due_amount, paid_amount, total_fees, branch, class, phone')
+      .gt('due_amount', 0)
+      .order('due_amount', { ascending: false });
+    
+    if (dueError) {
+      console.error('Due error:', dueError);
+      return `${sampleMessage}\n\n❌ *Error fetching due list*: ${dueError.message}`;
+    }
+    
+    if (!dueStudents || dueStudents.length === 0) {
+      return `${sampleMessage}\n\n✅ *No students with due_amount > 0*
+
+All students have paid in full or due_amount is 0.
+
+💡 To mark fees as due:
+UPDATE <usn>|<amount>
+
+Example: UPDATE 3TS25CS001|25000`;
     }
     
     let totalDue = 0;
-    let message = `⚠️ *PENDING FEES LIST* (${students.length})\n`;
+    let message = `⚠️ *PENDING FEES LIST* (${dueStudents.length} students)\n`;
     message += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
     
-    students.forEach((s, i) => {
+    dueStudents.forEach((s, i) => {
       const dueAmount = Number(s.due_amount) || 0;
       message += `${i+1}. *${s.full_name}*\n`;
-      message += `   📋 USN: ${s.usn}\n`;
-      message += `   📚 Branch: ${s.branch || 'N/A'}`;
-      if (s.class) message += ` | Class: ${s.class}`;
-      message += `\n`;
-      message += `   💰 Total Fees: ₹${Number(s.total_fees || 0).toLocaleString()}\n`;
+      message += `   📋 ${s.usn}\n`;
+      message += `   📚 ${s.branch || 'N/A'}\n`;
+      message += `   💰 Total: ₹${Number(s.total_fees || 0).toLocaleString()}\n`;
       message += `   ✅ Paid: ₹${Number(s.paid_amount || 0).toLocaleString()}\n`;
       message += `   ⚠️ Due: ₹${dueAmount.toLocaleString()}\n`;
       if (s.phone) message += `   📞 ${s.phone}\n`;
@@ -556,25 +568,26 @@ async function getCompleteDueFeesList() {
     });
     
     message += `━━━━━━━━━━━━━━━━━━━━━━\n`;
-    message += `💰 *Total Due Amount:* ₹${totalDue.toLocaleString()}\n`;
-    message += `👥 *Total Students:* ${students.length}`;
+    message += `💰 *Total Due:* ₹${totalDue.toLocaleString()}`;
     
     return message;
   } catch (error) {
-    console.error('Exception in getCompleteDueFeesList:', error);
-    return `❌ *Error*: ${error.message}`;
+    console.error('Exception:', error);
+    return `❌ *Exception Error*: ${error.message}`;
   }
 }
 
+
 async function getFeesSummary() {
   try {
+    // Get ALL students first
     const { data: students, error } = await supabase
       .from('students')
-      .select('total_fees, paid_amount, due_amount, fees_due, branch');
+      .select('total_fees, paid_amount, due_amount, fees_due, full_name, usn');
     
     if (error) {
       console.error('Summary error:', error);
-      return '❌ *Database Error*';
+      return `❌ *Database Error*: ${error.message}`;
     }
     
     if (!students || students.length === 0) {
@@ -582,54 +595,54 @@ async function getFeesSummary() {
     }
     
     let totalFees = 0, totalPaid = 0, totalDue = 0, dueCount = 0;
-    const branchStats = {};
+    const sampleStudents = [];
     
     students.forEach(s => {
       totalFees += Number(s.total_fees) || 0;
       totalPaid += Number(s.paid_amount) || 0;
       totalDue += Number(s.due_amount) || 0;
-      if (s.fees_due) dueCount++;
+      if (Number(s.due_amount) > 0) dueCount++;
       
-      const branch = s.branch || 'Unknown';
-      if (!branchStats[branch]) {
-        branchStats[branch] = { total: 0, paid: 0, due: 0, count: 0 };
+      // Collect first 3 students with dues for sample
+      if (Number(s.due_amount) > 0 && sampleStudents.length < 3) {
+        sampleStudents.push(s);
       }
-      branchStats[branch].total += Number(s.total_fees) || 0;
-      branchStats[branch].paid += Number(s.paid_amount) || 0;
-      branchStats[branch].due += Number(s.due_amount) || 0;
-      branchStats[branch].count++;
     });
     
     const collectionPercent = totalFees > 0 ? (totalPaid / totalFees) * 100 : 0;
     
-    let message = `📊 *FEE SUMMARY REPORT*
+    let message = `📊 *FEE SUMMARY*
 ━━━━━━━━━━━━━━━━━━━━━━
 
+📚 *Total Students:* ${students.length}
 💰 *Total Fees:* ₹${totalFees.toLocaleString()}
 ✅ *Collected:* ₹${totalPaid.toLocaleString()}
-⚠️ *Due:* ₹${totalDue.toLocaleString()}
+⚠️ *Total Due:* ₹${totalDue.toLocaleString()}
 
 📈 *Collection Rate:* ${collectionPercent.toFixed(1)}%
 
-👨‍🎓 *Students Summary:*
-• 🟢 Paid: ${students.length - dueCount}
-• 🔴 Pending: ${dueCount}
+👨‍🎓 *Students with Dues:* ${dueCount}
 
-━━━━━━━━━━━━━━━━━━━━━━
-📚 *Branch-wise Summary:*\n`;
+━━━━━━━━━━━━━━━━━━━━━━`;
 
-    for (const [branch, stats] of Object.entries(branchStats).sort()) {
-      const branchPercent = stats.total > 0 ? (stats.paid / stats.total) * 100 : 0;
-      message += `\n• *${branch}* (${stats.count} students)\n`;
-      message += `  Collected: ${branchPercent.toFixed(1)}% | Due: ₹${stats.due.toLocaleString()}\n`;
+    if (sampleStudents.length > 0) {
+      message += `\n📝 *Sample Students with Dues:*\n`;
+      sampleStudents.forEach(s => {
+        message += `\n• ${s.full_name}\n`;
+        message += `  USN: ${s.usn}\n`;
+        message += `  Due: ₹${Number(s.due_amount).toLocaleString()}`;
+      });
+    } else {
+      message += `\n\n✅ *No students with due_amount > 0*\n`;
+      message += `All students have due_amount = 0`;
     }
     
-    message += `\n━━━━━━━━━━━━━━━━━━━━━━\n`;
-    message += `💡 Use FEE DUE to see pending list`;
+    message += `\n\n━━━━━━━━━━━━━━━━━━━━━━\n`;
+    message += `💡 To add fees: UPDATE <usn>|<amount>`;
     
     return message;
   } catch (error) {
-    console.error('Exception in getFeesSummary:', error);
+    console.error('Exception:', error);
     return `❌ *Error*: ${error.message}`;
   }
 }
