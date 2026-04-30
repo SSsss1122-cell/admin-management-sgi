@@ -228,41 +228,9 @@ async function getStudentList() {
   try {
     console.log('📋 Fetching student list...');
     
-    // First, check what columns exist in the table
-    const { data: sample, error: sampleError } = await supabase
-      .from('students')
-      .select('*')
-      .limit(1);
-    
-    if (sampleError) {
-      console.error('Sample fetch error:', sampleError);
-      return `❌ *Database Error*: ${sampleError.message}`;
-    }
-    
-    if (!sample || sample.length === 0) {
-      return '📭 *No students found in database*';
-    }
-    
-    // Get actual column names from the table
-    const actualColumns = Object.keys(sample[0]);
-    console.log('Available columns:', actualColumns);
-    
-    // Build select query with only columns that exist
-    const selectColumns = [];
-    const possibleColumns = ['full_name', 'usn', 'branch', 'class', 'division', 'phone', 'email', 'total_fees', 'paid_amount', 'due_amount', 'fees_due'];
-    
-    for (const col of possibleColumns) {
-      if (actualColumns.includes(col)) {
-        selectColumns.push(col);
-      }
-    }
-    
-    // If no columns found, use '*'
-    const selectQuery = selectColumns.length > 0 ? selectColumns.join(',') : '*';
-    
     const { data: students, error } = await supabase
       .from('students')
-      .select(selectQuery)
+      .select('full_name, usn, branch')
       .order('full_name', { ascending: true });
     
     if (error) {
@@ -271,29 +239,21 @@ async function getStudentList() {
     }
     
     if (!students || students.length === 0) {
-      return '📭 *No students found in database*\n\nUse: ADD <name>|<usn>|<branch>|<phone>';
+      return '📭 *No students found in database*';
     }
     
     let message = `📋 *STUDENT LIST* (${students.length})\n`;
     message += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
     
-    // Use for loop to allow break
     for (let i = 0; i < students.length; i++) {
       const s = students[i];
-      message += `${i+1}. 👤 *${s.full_name || s.name || 'N/A'}*\n`;
-      message += `   📋 USN: ${s.usn || 'N/A'}\n`;
-      message += `   📚 Branch: ${s.branch || 'N/A'}`;
-      if (s.class) message += ` | Class: ${s.class}`;
-      if (s.division) message += `-${s.division}`;
-      message += `\n`;
-      if (s.phone || s.phone_number) message += `   📞 Phone: ${s.phone || s.phone_number || 'N/A'}\n`;
-      if (s.email) message += `   📧 Email: ${s.email}\n`;
-      message += `   💰 Fees: ₹${s.paid_amount || 0}/₹${s.total_fees || 0}\n`;
+      message += `${i+1}. 👤 *${s.full_name || 'N/A'}*\n`;
+      message += `   📋 ${s.usn || 'N/A'} | 📚 ${s.branch || 'N/A'}\n`;
       message += `\n`;
       
-      // Prevent message from being too long
-      if (message.length > 60000 && i < students.length - 1) {
-        message += `\n_...${students.length - i - 1} more students_\n`;
+      // Prevent message from being too long (stop at 50 students for safety)
+      if (i >= 49) {
+        message += `\n_...${students.length - 50} more students_\n`;
         break;
       }
     }
@@ -304,6 +264,8 @@ async function getStudentList() {
     return `❌ *Error*: ${error.message}`;
   }
 }
+
+
 async function getStudentCountWithBranch() {
   try {
     const { data: students, error } = await supabase
