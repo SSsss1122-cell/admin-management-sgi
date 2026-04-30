@@ -72,20 +72,6 @@ else if (upperMsg === 'PENDING' || upperMsg === 'VIEW' || upperMsg === 'LIST') {
     replyMessage = await debugDatabase();
   }
   
-  // ============ NEW: BROADCAST / ANNOUNCEMENT COMMANDS ============
-  else if (userMessage?.match(/^announce\s/i) || userMessage?.match(/^broadcast\s/i) || userMessage?.match(/^send\s/i)) {
-    let msg = userMessage;
-    if (msg.match(/^announce\s/i)) msg = msg.replace(/^announce\s/i, '');
-    if (msg.match(/^broadcast\s/i)) msg = msg.replace(/^broadcast\s/i, '');
-    if (msg.match(/^send\s/i)) msg = msg.replace(/^send\s/i, '');
-    replyMessage = await sendBroadcast(msg);
-  }
-  
-  // ============ NEW: VIEW ANNOUNCEMENTS HISTORY ============
-  else if (upperMsg === 'ANNOUNCEMENTS' || upperMsg === 'HISTORY' || upperMsg === 'PAST' || upperMsg === 'VIEW') {
-    replyMessage = await getAnnouncements();
-  }
-  
   // ============ SEARCH WITH ARGS ============
   else if (userMessage?.match(/^search\s/i)) {
     const query = userMessage.replace(/^search\s/i, '');
