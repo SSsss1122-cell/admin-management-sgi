@@ -633,7 +633,7 @@ async function getFeesSummary() {
 
     for (const [branch, stats] of Object.entries(branchStats).sort()) {
       const branchPercent = stats.total > 0 ? (stats.paid / stats.total) * 100 : 0;
-      message += `\n• *${branch}* (${stats.count} students)\n`;
+      message += `\n\n• *${branch}* (${stats.count} students)\n`;
       message += `  💰 Total: ₹${stats.total.toLocaleString()}\n`;
       message += `  ✅ Collected: ${branchPercent.toFixed(1)}%\n`;
       message += `  ⚠️ Due: ₹${stats.due.toLocaleString()}`;
