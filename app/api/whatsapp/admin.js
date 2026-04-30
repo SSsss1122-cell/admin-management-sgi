@@ -583,7 +583,7 @@ async function getFeesSummary() {
     // Get ALL students first
     const { data: students, error } = await supabase
       .from('students')
-      .select('total_fees, paid_amount, due_amount, fees_due, full_name, usn');
+      .select('total_fees, paid_amount, due_amount, fees_due, full_name, usn, branch');
     
     if (error) {
       console.error('Summary error:', error);
@@ -595,7 +595,7 @@ async function getFeesSummary() {
     }
     
     let totalFees = 0, totalPaid = 0, totalDue = 0, dueCount = 0;
-    const sampleStudents = [];
+    const branchStats = {};
     
     students.forEach(s => {
       totalFees += Number(s.total_fees) || 0;
@@ -603,15 +603,19 @@ async function getFeesSummary() {
       totalDue += Number(s.due_amount) || 0;
       if (Number(s.due_amount) > 0) dueCount++;
       
-      // Collect first 3 students with dues for sample
-      if (Number(s.due_amount) > 0 && sampleStudents.length < 3) {
-        sampleStudents.push(s);
+      const branch = s.branch || 'Unknown';
+      if (!branchStats[branch]) {
+        branchStats[branch] = { total: 0, paid: 0, due: 0, count: 0 };
       }
+      branchStats[branch].total += Number(s.total_fees) || 0;
+      branchStats[branch].paid += Number(s.paid_amount) || 0;
+      branchStats[branch].due += Number(s.due_amount) || 0;
+      branchStats[branch].count++;
     });
     
     const collectionPercent = totalFees > 0 ? (totalPaid / totalFees) * 100 : 0;
     
-    let message = `📊 *FEE SUMMARY*
+    let message = `📊 *FEE SUMMARY REPORT*
 ━━━━━━━━━━━━━━━━━━━━━━
 
 📚 *Total Students:* ${students.length}
@@ -622,23 +626,21 @@ async function getFeesSummary() {
 📈 *Collection Rate:* ${collectionPercent.toFixed(1)}%
 
 👨‍🎓 *Students with Dues:* ${dueCount}
+🟢 *Fully Paid:* ${students.length - dueCount}
 
-━━━━━━━━━━━━━━━━━━━━━━`;
+━━━━━━━━━━━━━━━━━━━━━━
+📚 *BRANCH WISE SUMMARY*\n`;
 
-    if (sampleStudents.length > 0) {
-      message += `\n📝 *Sample Students with Dues:*\n`;
-      sampleStudents.forEach(s => {
-        message += `\n• ${s.full_name}\n`;
-        message += `  USN: ${s.usn}\n`;
-        message += `  Due: ₹${Number(s.due_amount).toLocaleString()}`;
-      });
-    } else {
-      message += `\n\n✅ *No students with due_amount > 0*\n`;
-      message += `All students have due_amount = 0`;
+    for (const [branch, stats] of Object.entries(branchStats).sort()) {
+      const branchPercent = stats.total > 0 ? (stats.paid / stats.total) * 100 : 0;
+      message += `\n• *${branch}* (${stats.count} students)\n`;
+      message += `  💰 Total: ₹${stats.total.toLocaleString()}\n`;
+      message += `  ✅ Collected: ${branchPercent.toFixed(1)}%\n`;
+      message += `  ⚠️ Due: ₹${stats.due.toLocaleString()}`;
     }
     
     message += `\n\n━━━━━━━━━━━━━━━━━━━━━━\n`;
-    message += `💡 To add fees: UPDATE <usn>|<amount>`;
+    message += `💡 Use FEE DUE to see pending list`;
     
     return message;
   } catch (error) {
