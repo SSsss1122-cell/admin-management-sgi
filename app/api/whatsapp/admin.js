@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { sendBroadcast, getAnnouncements } from './broadcast';
 
 // ============================================
 // MAIN ADMIN HANDLER
@@ -61,6 +62,20 @@ export async function handleAdminCommands(userMessage, cleanNumber) {
   }
   else if (upperMsg === 'DEBUG') {
     replyMessage = await debugDatabase();
+  }
+  
+  // ============ NEW: BROADCAST / ANNOUNCEMENT COMMANDS ============
+  else if (userMessage?.match(/^announce\s/i) || userMessage?.match(/^broadcast\s/i) || userMessage?.match(/^send\s/i)) {
+    let msg = userMessage;
+    if (msg.match(/^announce\s/i)) msg = msg.replace(/^announce\s/i, '');
+    if (msg.match(/^broadcast\s/i)) msg = msg.replace(/^broadcast\s/i, '');
+    if (msg.match(/^send\s/i)) msg = msg.replace(/^send\s/i, '');
+    replyMessage = await sendBroadcast(msg);
+  }
+  
+  // ============ NEW: VIEW ANNOUNCEMENTS HISTORY ============
+  else if (upperMsg === 'ANNOUNCEMENTS' || upperMsg === 'HISTORY' || upperMsg === 'PAST' || upperMsg === 'VIEW') {
+    replyMessage = await getAnnouncements();
   }
   
   // ============ SEARCH WITH ARGS ============
@@ -144,14 +159,25 @@ function getMainMenu() {
 └─────────────────────────┘
 
 ┌─────────────────────────┐
-│  📢 *OTHER MENU*        │
+│  📢 *ANNOUNCEMENTS*     │
+├─────────────────────────┤
+│ 📢 ANNOUNCE <msg>       │
+│ 📜 HISTORY              │
+└─────────────────────────┘
+
+┌─────────────────────────┐
+│  📋 *OTHER*             │
 ├─────────────────────────┤
 │ 11️⃣  COMPLAINT         │
 │ 12️⃣  NOTICES           │
 │ 13️⃣  DRIVERS           │
 └─────────────────────────┘
 
-💡 *Commands:* FEE <USN>, SEARCH <name>, DUE LIST
+💡 *Commands:* 
+• FEE <USN/Name/Phone>
+• SEARCH <name>
+• ANNOUNCE <message>
+• HISTORY - View past announcements
 
 ⚡ *Debug:* DEBUG - Check system
 
@@ -169,7 +195,9 @@ SEARCH <usn or name>
 FEE <usn>
 UPDATE <usn>|<amount>
 STOPS <bus_no>
-DETAILS <bus_no>`;
+DETAILS <bus_no>
+ANNOUNCE <message>
+HISTORY`;
 }
 
 function getSearchFormat() {
@@ -184,8 +212,8 @@ You can search by:
 
 function getFeeFormat() {
   return `💰 *FEE CHECK*
-Format: FEE <USN>
-Example: FEE 3TS25CS004
+Format: FEE <USN or Name or Phone>
+Example: FEE 3TS25CS004 or FEE John
 
 Shows:
 • Total fees
@@ -467,6 +495,7 @@ No student found with:
     return `❌ *Error*: ${error.message}`;
   }
 }
+
 async function getCompleteDueFeesList() {
   try {
     console.log('🔍 Fetching due fees list...');
@@ -555,7 +584,6 @@ Example: UPDATE 3TS25CS001|25000`;
     return `❌ *Exception Error*: ${error.message}`;
   }
 }
-
 
 async function getFeesSummary() {
   try {
@@ -667,6 +695,7 @@ async function getBusList() {
     return `❌ *Error*: ${error.message}`;
   }
 }
+
 async function getBusStops(busNumber) {
   if (!busNumber || busNumber.trim() === '') {
     return getBusStopsFormat();
@@ -739,7 +768,7 @@ async function getBusStops(busNumber) {
       message += `📍 *ALL STOPS*\n`;
       allStops.forEach(stop => {
         message += `${stop.sequence}. ${stop.stop_name}`;
-        if (stop.is_major) message += ` .`;
+        if (stop.is_major) message += ` ⭐`;
         if (stop.estimated_time) message += ` (${stop.estimated_time} min)`;
         message += `\n`;
       });
@@ -1024,6 +1053,7 @@ async function updateStudentFees(usn, amount) {
     return `❌ *Error*: ${error.message}`;
   }
 }
+
 async function deleteStudent(usn) {
   if (!usn || usn.trim() === '') {
     return `❌ *Invalid Format*\n\nCorrect format:\nDELETE <usn>\n\nExample:\nDELETE 3TS25CS001`;
@@ -1157,7 +1187,8 @@ async function debugDatabase() {
     debugInfo += `💡 *Next Steps:*\n`;
     debugInfo += `• Use ADD to add students\n`;
     debugInfo += `• Use BUS LIST to view buses\n`;
-    debugInfo += `• Use STUDENT LIST to view all students`;
+    debugInfo += `• Use STUDENT LIST to view all students\n`;
+    debugInfo += `• Use ANNOUNCE to send broadcast message`;
     
     return debugInfo;
   } catch (error) {
