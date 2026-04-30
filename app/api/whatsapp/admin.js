@@ -629,7 +629,7 @@ async function getBusStops(busNumber) {
       message += `📍 *ALL STOPS*\n`;
       allStops.forEach(stop => {
         message += `${stop.sequence}. ${stop.stop_name}`;
-        if (stop.is_major) message += ` ⭐`;
+        if (stop.is_major) message += ` .`;
         if (stop.estimated_time) message += ` (${stop.estimated_time} min)`;
         message += `\n`;
       });
