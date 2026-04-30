@@ -5,20 +5,16 @@ const VIRALBOOST_API_URL = 'https://app.viralboostup.in/api/v2/whatsapp-business
 
 async function sendWhatsAppMessage(to, message) {
   try {
-    // Clean phone number - remove any non-digits
+    // Clean phone number
     let phoneNumber = to.toString().replace(/[^0-9]/g, '');
-    
-    // Ensure it has country code 91 for India
     if (!phoneNumber.startsWith('91') && phoneNumber.length === 10) {
       phoneNumber = `91${phoneNumber}`;
     }
     
     console.log(`📤 Sending to: ${phoneNumber}`);
-    console.log(`📝 Message: ${message}`);
     
-    // Prepare request body for ViralBoost with phone_number_id
+    // Try WITHOUT phone_number_id first
     const requestBody = {
-      phone_number_id: process.env.VIRALBOOST_PHONE_NUMBER_ID,
       to: phoneNumber,
       type: 'text',
       text: { body: message }
@@ -36,16 +32,15 @@ async function sendWhatsAppMessage(to, message) {
     });
     
     const result = await response.json();
-    console.log(`📬 Response for ${phoneNumber}:`, result);
+    console.log(`📬 Response:`, result);
     
-    if (result.type === 'Unauthorized' || result.error) {
-      console.error(`❌ Failed: ${result.message || result.error}`);
-      return { success: false, error: result.message || result.error };
+    if (response.ok) {
+      return { success: true, result };
+    } else {
+      return { success: false, error: result.message || result.error || 'Failed' };
     }
-    
-    return { success: true, result };
   } catch (error) {
-    console.error(`❌ Failed to send to ${to}:`, error);
+    console.error(`❌ Failed:`, error);
     return { success: false, error: error.message };
   }
 }
@@ -61,15 +56,13 @@ export async function sendBroadcast(message) {
 
 📝 *Examples:*
 • ANNOUNCE Tomorrow is holiday
-• BROADCAST College closed on Monday
-• SEND Exam postponed to next week`;
+• BROADCAST College closed on Monday`;
   }
   
   try {
     console.log('📢 Broadcasting using table: students_test');
     console.log('📝 Message:', message);
     
-    // Get all students with phone numbers from test table
     const { data: students, error } = await supabase
       .from('students_test')
       .select('phone, full_name')
@@ -77,17 +70,15 @@ export async function sendBroadcast(message) {
       .not('phone', 'eq', '');
     
     if (error) {
-      console.error('Broadcast fetch error:', error);
       return `❌ *Failed*: ${error.message}`;
     }
     
     if (!students || students.length === 0) {
-      return `📭 *No students with phone numbers found in students_test table*`;
+      return `📭 *No students with phone numbers found*`;
     }
     
-    console.log(`📊 Found ${students.length} students with phone numbers`);
+    console.log(`📊 Found ${students.length} students`);
     
-    // Send actual WhatsApp messages to all students
     let successCount = 0;
     let failCount = 0;
     const failedNumbers = [];
@@ -96,57 +87,41 @@ export async function sendBroadcast(message) {
       const result = await sendWhatsAppMessage(student.phone, message);
       if (result.success) {
         successCount++;
-        console.log(`✅ Sent to ${student.full_name} (${student.phone})`);
+        console.log(`✅ Sent to ${student.full_name}`);
       } else {
         failCount++;
         failedNumbers.push(`${student.full_name} (${student.phone})`);
-        console.log(`❌ Failed to send to ${student.full_name} (${student.phone}) - ${result.error}`);
+        console.log(`❌ Failed to send to ${student.full_name}: ${result.error}`);
       }
-      
-      // Delay to avoid rate limiting (1 second between messages)
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
     
-    // Save to notices table
-    try {
-      await supabase
-        .from('notices')
-        .insert({
-          title: '📢 Announcement',
-          description: message,
-          created_at: new Date().toISOString(),
-          sent_to: students.length,
-          delivered: successCount,
-          failed: failCount
-        });
-    } catch (saveError) {
-      console.error('Save error:', saveError);
-    }
+    // Save to notices
+    await supabase.from('notices').insert({
+      title: '📢 Announcement',
+      description: message,
+      created_at: new Date().toISOString(),
+      sent_to: students.length,
+      delivered: successCount,
+      failed: failCount
+    });
     
-    // Build response
     let response = `📢 *BROADCAST COMPLETED*\n`;
     response += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
     response += `📝 *Message:*\n${message}\n\n`;
-    response += `👥 *Total Recipients:* ${students.length}\n`;
-    response += `✅ *Successfully Sent:* ${successCount}\n`;
+    response += `👥 *Total:* ${students.length}\n`;
+    response += `✅ *Sent:* ${successCount}\n`;
     response += `❌ *Failed:* ${failCount}\n`;
     
     if (failedNumbers.length > 0) {
-      response += `\n⚠️ *Failed Recipients:*\n`;
+      response += `\n⚠️ *Failed:*\n`;
       failedNumbers.slice(0, 5).forEach(num => {
         response += `• ${num}\n`;
       });
-      if (failedNumbers.length > 5) {
-        response += `... and ${failedNumbers.length - 5} more\n`;
-      }
     }
-    
-    response += `\n━━━━━━━━━━━━━━━━━━━━━━\n`;
-    response += `✅ *Broadcast sent successfully!*`;
     
     return response;
   } catch (error) {
-    console.error('Broadcast error:', error);
     return `❌ *Error*: ${error.message}`;
   }
 }
@@ -162,11 +137,10 @@ export async function getAnnouncements() {
     if (error) throw error;
     
     if (!announcements || announcements.length === 0) {
-      return '📢 *No announcements yet*\n\nSend: ANNOUNCE <message>';
+      return '📢 *No announcements yet*';
     }
     
-    let message = `📢 *ANNOUNCEMENT HISTORY*\n`;
-    message += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+    let message = `📢 *ANNOUNCEMENT HISTORY*\n━━━━━━━━━━━━━━━━━━━━━━\n\n`;
     
     announcements.forEach((a, i) => {
       const date = new Date(a.created_at).toLocaleString();
