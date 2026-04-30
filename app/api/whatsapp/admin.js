@@ -574,59 +574,35 @@ async function getBusStops(busNumber) {
       return `❌ *Bus not found:* ${busNumber}\n\nUse BUS LIST to see available buses.`;
     }
     
+    // Remove trip_type from select since it doesn't exist
     const { data: allStops, error: stopsError } = await supabase
       .from('bus_stops')
-      .select('stop_name, sequence, estimated_time, is_major, trip_type')
+      .select('stop_name, sequence, estimated_time, is_major')  // Removed trip_type
       .eq('bus_id', bus.id)
       .order('sequence');
     
     if (stopsError) {
       console.error('Stops fetch error:', stopsError);
-      return '❌ *Error fetching bus stops*';
+      return `❌ *Error fetching bus stops*: ${stopsError.message}`;
     }
     
     if (!allStops || allStops.length === 0) {
       return `🚏 *No stops found for bus* ${busNumber}`;
     }
     
-    const morningStops = allStops.filter(stop => 
-      stop.trip_type === 'morning' || stop.trip_type === 'to_college' || !stop.trip_type
-    );
-    const eveningStops = allStops.filter(stop => 
-      stop.trip_type === 'evening' || stop.trip_type === 'from_college'
-    );
-    
+    // Since no trip_type, just show all stops in sequence
     let message = `🚏 *BUS ${busNumber} - STOPS*\n`;
     message += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
     
-    if (morningStops.length > 0) {
-      message += `🌅 *MORNING ROUTE (To College)*\n`;
-      morningStops.forEach(stop => {
-        message += `${stop.sequence}. ${stop.stop_name}`;
-        if (stop.is_major) message += ` ⭐`;
-        if (stop.estimated_time) message += ` (${stop.estimated_time} min)`;
-        message += `\n`;
-      });
+    // Show all stops (no morning/evening separation)
+    allStops.forEach(stop => {
+      message += `${stop.sequence}. ${stop.stop_name}`;
+      if (stop.is_major) message += ` ⭐`;
+      if (stop.estimated_time) message += ` (${stop.estimated_time} min)`;
       message += `\n`;
-    }
+    });
     
-    if (eveningStops.length > 0) {
-      message += `🌙 *EVENING ROUTE (From College)*\n`;
-      eveningStops.forEach(stop => {
-        message += `${stop.sequence}. ${stop.stop_name}`;
-        if (stop.is_major) message += ` ⭐`;
-        if (stop.estimated_time) message += ` (${stop.estimated_time} min)`;
-        message += `\n`;
-      });
-      message += `\n`;
-    }
-    
-    if (morningStops.length > 0 && eveningStops.length === 0) {
-      message += `\n⚠️ *Note:* Only one route available\n`;
-    }
-    
-    message += `\n📊 *Total Stops:* ${allStops.length}\n`;
-    message += `🌅 Morning: ${morningStops.length} | 🌙 Evening: ${eveningStops.length}`;
+    message += `\n📊 *Total Stops:* ${allStops.length}`;
     
     return message;
   } catch (error) {
