@@ -18,33 +18,6 @@ export async function sendBroadcast(message) {
     console.log('📢 Broadcasting using table: students_test');
     console.log('📝 Message:', message);
     
-    // First, check if table exists and has any data
-    const { count, error: countError } = await supabase
-      .from('students_test')
-      .select('*', { count: 'exact', head: true });
-    
-    if (countError) {
-      console.error('Count error:', countError);
-      return `❌ *Table Error*: ${countError.message}\n\nMake sure 'students_test' table exists.`;
-    }
-    
-    console.log(`📊 Total records in students_test: ${count}`);
-    
-    if (count === 0) {
-      return `📭 *No data in students_test table*
-
-Please add test data first:
-
-1. Go to Supabase SQL Editor
-2. Run this SQL:
-
-INSERT INTO students_test (full_name, usn, branch, phone) VALUES
-('Test Student 1', 'TEST001', 'CSE', '919900842058'),
-('Test Student 2', 'TEST002', 'ECE', '919480072737');
-
-3. Then try ANNOUNCE again`;
-    }
-    
     // Get all students with phone numbers
     const { data: students, error } = await supabase
       .from('students_test')
@@ -57,46 +30,22 @@ INSERT INTO students_test (full_name, usn, branch, phone) VALUES
       return `❌ *Failed*: ${error.message}`;
     }
     
-    console.log(`📞 Students with phone numbers: ${students?.length || 0}`);
-    
     if (!students || students.length === 0) {
-      // Show sample of what's in the table
-      const { data: sample } = await supabase
-        .from('students_test')
-        .select('full_name, phone')
-        .limit(5);
-      
-      let sampleInfo = '';
-      if (sample && sample.length > 0) {
-        sampleInfo = '\n\n📊 *Sample data in table:*\n';
-        sample.forEach(s => {
-          sampleInfo += `• ${s.full_name}: Phone = ${s.phone || 'NULL'}\n`;
-        });
-      }
-      
-      return `📭 *No students with phone numbers found*
-
-Total students in table: ${count}
-Students with phone numbers: 0
-
-${sampleInfo}
-
-💡 To fix:
-UPDATE students_test SET phone = '919900842058' WHERE phone IS NULL;`;
+      return `📭 *No students with phone numbers found in students_test table*`;
     }
     
-    // Save to notices table
+    // Save to notices table - removed 'sent_to' column
     const { error: saveError } = await supabase
       .from('notices')
       .insert({
         title: '📢 Announcement',
         description: message,
-        created_at: new Date().toISOString(),
-        sent_to: students.length
+        created_at: new Date().toISOString()
       });
     
     if (saveError) {
       console.error('Save error:', saveError);
+      // Don't return error, just log it
     }
     
     // Build response
@@ -112,6 +61,7 @@ UPDATE students_test SET phone = '919900842058' WHERE phone IS NULL;`;
     
     response += `\n━━━━━━━━━━━━━━━━━━━━━━\n`;
     response += `✅ *Broadcast ready!*\n`;
+    response += `💡 Message will be sent to ${students.length} students.`;
     
     return response;
   } catch (error) {
