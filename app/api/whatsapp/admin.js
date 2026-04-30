@@ -24,6 +24,17 @@ export async function handleAdminCommands(userMessage, cleanNumber) {
   else if (['COUNT', 'STUDENT COUNT', '10'].includes(upperMsg)) {
     replyMessage = await getStudentCountWithBranch();
   }
+
+  // ============ ANNOUNCEMENT COMMANDS ============
+else if (userMessage?.match(/^announce\s/i)) {
+  const msg = userMessage.replace(/^announce\s/i, '');
+  replyMessage = await createAnnouncement(msg, cleanNumber);
+}
+
+// ============ VIEW PENDING ============
+else if (upperMsg === 'PENDING' || upperMsg === 'VIEW' || upperMsg === 'LIST') {
+  replyMessage = await getPendingAnnouncements();
+}
   
   // ============ FEES MENU ============
   else if (['FEE', 'FEE CHECK', '5'].includes(upperMsg)) {
