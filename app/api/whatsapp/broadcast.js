@@ -5,15 +5,26 @@ const VIRALBOOST_API_URL = 'https://app.viralboostup.in/api/v2/whatsapp-business
 
 async function sendWhatsAppMessage(to, message) {
   try {
-    // Clean phone number (remove any non-digits)
+    // Clean phone number - remove any non-digits
     let phoneNumber = to.toString().replace(/[^0-9]/g, '');
     
-    // Ensure it has country code (91 for India)
-    if (!phoneNumber.startsWith('91')) {
+    // Ensure it has country code 91 for India
+    if (!phoneNumber.startsWith('91') && phoneNumber.length === 10) {
       phoneNumber = `91${phoneNumber}`;
     }
     
     console.log(`📤 Sending to: ${phoneNumber}`);
+    console.log(`📝 Message: ${message}`);
+    
+    // Prepare request body for ViralBoost with phone_number_id
+    const requestBody = {
+      phone_number_id: process.env.VIRALBOOST_PHONE_NUMBER_ID,
+      to: phoneNumber,
+      type: 'text',
+      text: { body: message }
+    };
+    
+    console.log('📦 Request body:', JSON.stringify(requestBody, null, 2));
     
     const response = await fetch(VIRALBOOST_API_URL, {
       method: 'POST',
@@ -21,15 +32,16 @@ async function sendWhatsAppMessage(to, message) {
         'Authorization': `Bearer ${process.env.VIRALBOOSTUP_API_KEY}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        to: phoneNumber,
-        type: 'text',
-        text: { body: message }
-      })
+      body: JSON.stringify(requestBody)
     });
     
     const result = await response.json();
     console.log(`📬 Response for ${phoneNumber}:`, result);
+    
+    if (result.type === 'Unauthorized' || result.error) {
+      console.error(`❌ Failed: ${result.message || result.error}`);
+      return { success: false, error: result.message || result.error };
+    }
     
     return { success: true, result };
   } catch (error) {
@@ -73,6 +85,8 @@ export async function sendBroadcast(message) {
       return `📭 *No students with phone numbers found in students_test table*`;
     }
     
+    console.log(`📊 Found ${students.length} students with phone numbers`);
+    
     // Send actual WhatsApp messages to all students
     let successCount = 0;
     let failCount = 0;
@@ -85,8 +99,8 @@ export async function sendBroadcast(message) {
         console.log(`✅ Sent to ${student.full_name} (${student.phone})`);
       } else {
         failCount++;
-        failedNumbers.push(student.phone);
-        console.log(`❌ Failed to send to ${student.full_name} (${student.phone})`);
+        failedNumbers.push(`${student.full_name} (${student.phone})`);
+        console.log(`❌ Failed to send to ${student.full_name} (${student.phone}) - ${result.error}`);
       }
       
       // Delay to avoid rate limiting (1 second between messages)
@@ -118,7 +132,7 @@ export async function sendBroadcast(message) {
     response += `❌ *Failed:* ${failCount}\n`;
     
     if (failedNumbers.length > 0) {
-      response += `\n⚠️ *Failed Numbers:*\n`;
+      response += `\n⚠️ *Failed Recipients:*\n`;
       failedNumbers.slice(0, 5).forEach(num => {
         response += `• ${num}\n`;
       });
