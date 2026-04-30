@@ -230,7 +230,7 @@ async function getStudentList() {
     
     const { data: students, error } = await supabase
       .from('students')
-      .select('full_name, usn, branch')
+      .select('full_name')
       .order('full_name', { ascending: true });
     
     if (error) {
@@ -244,19 +244,7 @@ async function getStudentList() {
     
     let message = `📋 *STUDENT LIST* (${students.length})\n`;
     message += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-    
-    for (let i = 0; i < students.length; i++) {
-      const s = students[i];
-      message += `${i+1}. 👤 *${s.full_name || 'N/A'}*\n`;
-      message += `   📋 ${s.usn || 'N/A'} | 📚 ${s.branch || 'N/A'}\n`;
-      message += `\n`;
-      
-      // Prevent message from being too long (stop at 50 students for safety)
-      if (i >= 49) {
-        message += `\n_...${students.length - 50} more students_\n`;
-        break;
-      }
-    }
+    message += students.map(s => `👤 ${s.full_name}`).join('\n');
     
     return message;
   } catch (error) {
