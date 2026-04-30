@@ -1,5 +1,49 @@
 import { supabase } from '@/lib/supabase';
 
+// ViralBoost API Configuration
+const VIRALBOOST_API_URL = 'https://app.viralboostup.in/api/v2/whatsapp-business/messages';
+const YOUR_WHATSAPP_NUMBER = '917676522231';
+
+async function sendWhatsAppMessage(to, message) {
+  try {
+    let recipientNumber = to.toString().replace(/[^0-9]/g, '');
+    if (!recipientNumber.startsWith('91') && recipientNumber.length === 10) {
+      recipientNumber = `91${recipientNumber}`;
+    }
+    
+    console.log(`📤 Sending from: ${YOUR_WHATSAPP_NUMBER}`);
+    console.log(`📤 Sending to: ${recipientNumber}`);
+    
+    const requestBody = {
+      from: YOUR_WHATSAPP_NUMBER,
+      to: recipientNumber,
+      type: 'text',
+      text: { body: message }
+    };
+    
+    const response = await fetch(VIRALBOOST_API_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.VIRALBOOSTUP_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody)
+    });
+    
+    const result = await response.json();
+    console.log(`📬 Response:`, result);
+    
+    if (response.ok && result.status !== 'error') {
+      return { success: true, result };
+    } else {
+      return { success: false, error: result.message || result.error || 'Failed' };
+    }
+  } catch (error) {
+    console.error(`❌ Failed:`, error);
+    return { success: false, error: error.message };
+  }
+}
+
 export async function sendBroadcast(message) {
   if (!message || message.trim() === '') {
     return `❌ *Invalid Format*
@@ -18,34 +62,6 @@ export async function sendBroadcast(message) {
     console.log('📢 Broadcasting using table: students_test');
     console.log('📝 Message:', message);
     
-    // First, check if table exists and has any data
-    const { count, error: countError } = await supabase
-      .from('students_test')
-      .select('*', { count: 'exact', head: true });
-    
-    if (countError) {
-      console.error('Count error:', countError);
-      return `❌ *Table Error*: ${countError.message}\n\nMake sure 'students_test' table exists.`;
-    }
-    
-    console.log(`📊 Total records in students_test: ${count}`);
-    
-    if (count === 0) {
-      return `📭 *No data in students_test table*
-
-Please add test data first:
-
-1. Go to Supabase SQL Editor
-2. Run this SQL:
-
-INSERT INTO students_test (full_name, usn, branch, phone) VALUES
-('Test Student 1', 'TEST001', 'CSE', '919900842058'),
-('Test Student 2', 'TEST002', 'ECE', '919480072737');
-
-3. Then try ANNOUNCE again`;
-    }
-    
-    // Get all students with phone numbers
     const { data: students, error } = await supabase
       .from('students_test')
       .select('phone, full_name')
@@ -53,65 +69,69 @@ INSERT INTO students_test (full_name, usn, branch, phone) VALUES
       .not('phone', 'eq', '');
     
     if (error) {
-      console.error('Broadcast fetch error:', error);
       return `❌ *Failed*: ${error.message}`;
     }
     
-    console.log(`📞 Students with phone numbers: ${students?.length || 0}`);
-    
     if (!students || students.length === 0) {
-      // Show sample of what's in the table
-      const { data: sample } = await supabase
-        .from('students_test')
-        .select('full_name, phone')
-        .limit(5);
-      
-      let sampleInfo = '';
-      if (sample && sample.length > 0) {
-        sampleInfo = '\n\n📊 *Sample data in table:*\n';
-        sample.forEach(s => {
-          sampleInfo += `• ${s.full_name}: Phone = ${s.phone || 'NULL'}\n`;
-        });
-      }
-      
-      return `📭 *No students with phone numbers found*
-
-Total students in table: ${count}
-Students with phone numbers: 0
-
-${sampleInfo}
-
-💡 To fix:
-UPDATE students_test SET phone = '919900842058' WHERE phone IS NULL;`;
+      return `📭 *No students with phone numbers found*`;
     }
     
-    // Save to notices table
-    const { error: saveError } = await supabase
-      .from('notices')
-      .insert({
-        title: '📢 Announcement',
-        description: message,
-        created_at: new Date().toISOString(),
-        sent_to: students.length
-      });
+    console.log(`📊 Found ${students.length} students`);
     
-    if (saveError) {
+    let successCount = 0;
+    let failCount = 0;
+    const failedNumbers = [];
+    
+    for (const student of students) {
+      const result = await sendWhatsAppMessage(student.phone, message);
+      if (result.success) {
+        successCount++;
+        console.log(`✅ Sent to ${student.full_name} (${student.phone})`);
+      } else {
+        failCount++;
+        failedNumbers.push(`${student.full_name} (${student.phone}) - ${result.error}`);
+        console.log(`❌ Failed to send to ${student.full_name}: ${result.error}`);
+      }
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    
+    // Save to notices - ONLY with columns that exist
+    try {
+      const { error: saveError } = await supabase
+        .from('notices')
+        .insert({
+          title: '📢 Announcement',
+          description: message,
+          created_at: new Date().toISOString()
+          // Removed: sent_to, delivered, failed (these columns don't exist)
+        });
+      
+      if (saveError) {
+        console.error('Save error:', saveError);
+      } else {
+        console.log('✅ Announcement saved to database');
+      }
+    } catch (saveError) {
       console.error('Save error:', saveError);
     }
     
     // Build response
-    let response = `📢 *ANNOUNCEMENT READY*\n`;
+    let response = `📢 *BROADCAST COMPLETED*\n`;
     response += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
     response += `📝 *Message:*\n${message}\n\n`;
-    response += `👥 *Total Recipients:* ${students.length}\n\n`;
-    response += `📞 *Recipients List:*\n`;
+    response += `👥 *Total Recipients:* ${students.length}\n`;
+    response += `✅ *Successfully Sent:* ${successCount}\n`;
+    response += `❌ *Failed:* ${failCount}\n`;
     
-    students.forEach((s, i) => {
-      response += `${i+1}. ${s.full_name} - ${s.phone}\n`;
-    });
+    if (failedNumbers.length > 0) {
+      response += `\n⚠️ *Failed Recipients:*\n`;
+      failedNumbers.slice(0, 5).forEach(num => {
+        response += `• ${num}\n`;
+      });
+    }
     
     response += `\n━━━━━━━━━━━━━━━━━━━━━━\n`;
-    response += `✅ *Broadcast ready!*\n`;
+    response += `📱 Sent from: +${YOUR_WHATSAPP_NUMBER}`;
     
     return response;
   } catch (error) {
@@ -134,7 +154,7 @@ export async function getAnnouncements() {
       return '📢 *No announcements yet*\n\nSend: ANNOUNCE <message>';
     }
     
-    let message = `📢 *PREVIOUS ANNOUNCEMENTS*\n`;
+    let message = `📢 *ANNOUNCEMENT HISTORY*\n`;
     message += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
     
     announcements.forEach((a, i) => {
