@@ -359,21 +359,101 @@ async function searchStudent(query) {
 // FEES FUNCTIONS
 // ============================================
 
-async function getStudentFeeDetails(usn) {
-  if (!usn || usn.trim() === '') {
+async function getStudentFeeDetails(searchQuery) {
+  if (!searchQuery || searchQuery.trim() === '') {
     return getFeeFormat();
   }
   
   try {
-    const { data: student, error } = await supabase
+    let students = [];
+    let searchMethod = '';
+    
+    // Search by USN (exact match)
+    const { data: byUsn, error: usnError } = await supabase
       .from('students')
       .select('*')
-      .eq('usn', usn)
-      .single();
+      .eq('usn', searchQuery);
     
-    if (error) {
-      return `❌ *Student not found:* ${usn}`;
+    if (!usnError && byUsn && byUsn.length > 0) {
+      students = byUsn;
+      searchMethod = 'USN (exact)';
     }
+    
+    // If not found by USN, search by Phone (exact match)
+    if (students.length === 0) {
+      const { data: byPhone, error: phoneError } = await supabase
+        .from('students')
+        .select('*')
+        .eq('phone', searchQuery);
+      
+      if (!phoneError && byPhone && byPhone.length > 0) {
+        students = byPhone;
+        searchMethod = 'Phone (exact)';
+      }
+    }
+    
+    // If not found by USN or Phone, search by Name (partial match)
+    if (students.length === 0) {
+      const { data: byName, error: nameError } = await supabase
+        .from('students')
+        .select('*')
+        .ilike('full_name', `%${searchQuery}%`);
+      
+      if (!nameError && byName && byName.length > 0) {
+        students = byName;
+        searchMethod = `Name (partial - ${students.length} found)`;
+      }
+    }
+    
+    // If still not found, search by USN (partial match)
+    if (students.length === 0) {
+      const { data: byPartialUsn, error: partialError } = await supabase
+        .from('students')
+        .select('*')
+        .ilike('usn', `%${searchQuery}%`);
+      
+      if (!partialError && byPartialUsn && byPartialUsn.length > 0) {
+        students = byPartialUsn;
+        searchMethod = `USN (partial - ${students.length} found)`;
+      }
+    }
+    
+    // If no students found
+    if (students.length === 0) {
+      return `❌ *Student not found*
+
+No student found with:
+• USN: ${searchQuery}
+• Phone: ${searchQuery}
+• Name: ${searchQuery}
+
+💡 Tips:
+• Check spelling
+• Use SEARCH to find student first
+• Try with partial name or USN`;
+    }
+    
+    // If multiple students found, show list
+    if (students.length > 1) {
+      let message = `🔍 *MULTIPLE STUDENTS FOUND* (${students.length})\n`;
+      message += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+      message += `Searching for: "${searchQuery}"\n`;
+      message += `Matched by: ${searchMethod}\n\n`;
+      message += `Please use exact USN or Phone:\n\n`;
+      
+      students.forEach((s, i) => {
+        message += `${i+1}. 👤 *${s.full_name}*\n`;
+        message += `   📋 USN: ${s.usn}\n`;
+        message += `   📞 Phone: ${s.phone || 'N/A'}\n`;
+        message += `   📚 Branch: ${s.branch || 'N/A'}\n\n`;
+      });
+      
+      message += `💡 Use: FEE <exact USN or Phone>`;
+      return message;
+    }
+    
+    // Single student found - show fee details
+    const student = students[0];
     
     let message = `💰 *FEE DETAILS*
 ━━━━━━━━━━━━━━━━━━━━━━
@@ -382,13 +462,15 @@ async function getStudentFeeDetails(usn) {
 📋 *USN:* ${student.usn}
 📚 *Branch:* ${student.branch || 'N/A'}`;
     
-    if (student.class) message += `\n📖 *Class:* ${student.class}-${student.division || ''}`;
+    if (student.class) message += `\n📖 *Class:* ${student.class}${student.division ? `-${student.division}` : ''}`;
     if (student.semester) message += `\n📅 *Semester:* ${student.semester}`;
+    if (student.phone) message += `\n📞 *Phone:* ${student.phone}`;
+    if (student.email) message += `\n📧 *Email:* ${student.email}`;
     
     message += `\n
-💵 *Total Fees:* ₹${student.total_fees || 0}
-✅ *Paid Amount:* ₹${student.paid_amount || 0}
-⚠️ *Due Amount:* ₹${student.due_amount || 0}
+💵 *Total Fees:* ₹${Number(student.total_fees || 0).toLocaleString()}
+✅ *Paid Amount:* ₹${Number(student.paid_amount || 0).toLocaleString()}
+⚠️ *Due Amount:* ₹${Number(student.due_amount || 0).toLocaleString()}
 
 📊 *Status:* ${student.fees_due ? '🔴 PENDING' : '🟢 PAID'}
 📅 *Last Payment:* ${student.last_payment_date || 'N/A'}
@@ -398,7 +480,7 @@ async function getStudentFeeDetails(usn) {
       message += `\n📅 *Next Payment Due:* ${student.next_payment_date}`;
     }
     
-    message += `\n\n💡 To update fees: UPDATE ${usn}|<amount>`;
+    message += `\n\n💡 To update fees: UPDATE ${student.usn}|<amount>`;
     
     return message;
   } catch (error) {
