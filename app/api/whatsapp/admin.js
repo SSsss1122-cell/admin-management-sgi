@@ -557,7 +557,6 @@ async function getBusList() {
     return `❌ *Error*: ${error.message}`;
   }
 }
-
 async function getBusStops(busNumber) {
   if (!busNumber || busNumber.trim() === '') {
     return getBusStopsFormat();
@@ -574,10 +573,10 @@ async function getBusStops(busNumber) {
       return `❌ *Bus not found:* ${busNumber}\n\nUse BUS LIST to see available buses.`;
     }
     
-    // Remove trip_type from select since it doesn't exist
+    // Changed: Using 'direction' column instead of 'trip_type'
     const { data: allStops, error: stopsError } = await supabase
       .from('bus_stops')
-      .select('stop_name, sequence, estimated_time, is_major')  // Removed trip_type
+      .select('stop_name, sequence, estimated_time, is_major, direction')  // Changed: trip_type → direction
       .eq('bus_id', bus.id)
       .order('sequence');
     
@@ -590,19 +589,55 @@ async function getBusStops(busNumber) {
       return `🚏 *No stops found for bus* ${busNumber}`;
     }
     
-    // Since no trip_type, just show all stops in sequence
+    // Changed: Using 'direction' column instead of 'trip_type'
+    const morningStops = allStops.filter(stop => 
+      stop.direction === 'morning' || stop.direction === 'to_college'
+    );
+    const eveningStops = allStops.filter(stop => 
+      stop.direction === 'evening' || stop.direction === 'from_college'
+    );
+    
     let message = `🚏 *BUS ${busNumber} - STOPS*\n`;
     message += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
     
-    // Show all stops (no morning/evening separation)
-    allStops.forEach(stop => {
-      message += `${stop.sequence}. ${stop.stop_name}`;
-      if (stop.is_major) message += ` ⭐`;
-      if (stop.estimated_time) message += ` (${stop.estimated_time} min)`;
+    // Morning Stops Section
+    if (morningStops.length > 0) {
+      message += `🌅 *MORNING ROUTE (To College)*\n`;
+      morningStops.forEach(stop => {
+        message += `${stop.sequence}. ${stop.stop_name}`;
+        if (stop.is_major) message += ` ⭐`;
+        if (stop.estimated_time) message += ` (${stop.estimated_time} min)`;
+        message += `\n`;
+      });
       message += `\n`;
-    });
+    }
     
-    message += `\n📊 *Total Stops:* ${allStops.length}`;
+    // Evening Stops Section
+    if (eveningStops.length > 0) {
+      message += `🌙 *EVENING ROUTE (From College)*\n`;
+      eveningStops.forEach(stop => {
+        message += `${stop.sequence}. ${stop.stop_name}`;
+        if (stop.is_major) message += ` ⭐`;
+        if (stop.estimated_time) message += ` (${stop.estimated_time} min)`;
+        message += `\n`;
+      });
+      message += `\n`;
+    }
+    
+    // If no direction column data, show all stops
+    if (morningStops.length === 0 && eveningStops.length === 0) {
+      message += `📍 *ALL STOPS*\n`;
+      allStops.forEach(stop => {
+        message += `${stop.sequence}. ${stop.stop_name}`;
+        if (stop.is_major) message += ` ⭐`;
+        if (stop.estimated_time) message += ` (${stop.estimated_time} min)`;
+        message += `\n`;
+      });
+      message += `\n`;
+    }
+    
+    message += `\n📊 *Total Stops:* ${allStops.length}\n`;
+    message += `🌅 Morning: ${morningStops.length} | 🌙 Evening: ${eveningStops.length}`;
     
     return message;
   } catch (error) {
