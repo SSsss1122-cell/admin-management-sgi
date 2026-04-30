@@ -2,16 +2,23 @@ import { supabase } from '@/lib/supabase';
 
 // ViralBoost API Configuration
 const VIRALBOOST_API_URL = 'https://app.viralboostup.in/api/v2/whatsapp-business/messages';
+const YOUR_WHATSAPP_NUMBER = '917676522231'; // Your ViralBoost number (without +)
 
 async function sendWhatsAppMessage(to, message) {
   try {
-    // Don't format phone number - use as is from database
-    const phoneNumber = to.toString();
+    // Clean recipient number
+    let recipientNumber = to.toString().replace(/[^0-9]/g, '');
+    if (!recipientNumber.startsWith('91') && recipientNumber.length === 10) {
+      recipientNumber = `91${recipientNumber}`;
+    }
     
-    console.log(`📤 Sending to: ${phoneNumber}`);
+    console.log(`📤 Sending from: ${YOUR_WHATSAPP_NUMBER}`);
+    console.log(`📤 Sending to: ${recipientNumber}`);
     
+    // Correct ViralBoost format with from number
     const requestBody = {
-      to: phoneNumber,
+      from: YOUR_WHATSAPP_NUMBER,
+      to: recipientNumber,
       type: 'text',
       text: { body: message }
     };
@@ -30,7 +37,7 @@ async function sendWhatsAppMessage(to, message) {
     const result = await response.json();
     console.log(`📬 Response:`, result);
     
-    if (response.ok && !result.type === 'Unauthorized') {
+    if (response.ok && result.status !== 'error') {
       return { success: true, result };
     } else {
       return { success: false, error: result.message || result.error || 'Failed' };
@@ -74,7 +81,6 @@ export async function sendBroadcast(message) {
     }
     
     console.log(`📊 Found ${students.length} students`);
-    console.log('📞 Phone numbers:', students.map(s => `${s.full_name}: ${s.phone}`).join(', '));
     
     let successCount = 0;
     let failCount = 0;
@@ -122,7 +128,7 @@ export async function sendBroadcast(message) {
     }
     
     response += `\n━━━━━━━━━━━━━━━━━━━━━━\n`;
-    response += `💡 Numbers should be stored with 91 country code`;
+    response += `📱 Sent from: +${YOUR_WHATSAPP_NUMBER}`;
     
     return response;
   } catch (error) {
