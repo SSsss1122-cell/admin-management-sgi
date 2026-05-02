@@ -6,6 +6,13 @@ export async function handleStudentCommands(userMessage, cleanNumber) {
   // ALWAYS search by phone number only
   return await getStudentByPhone(cleanNumber);
 }
+// Add at the TOP of your student.js file
+
+export {
+    getStudentMenu,
+    getStudentFeeStatus,
+    getStudentComplaintStatus
+};
 
 // ============================================
 // GET STUDENT BY PHONE NUMBER

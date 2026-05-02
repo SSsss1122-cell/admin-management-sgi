@@ -1,6 +1,30 @@
 import { supabase } from '@/lib/supabase';
 
+// Add at the TOP of your admin.js file
 
+// Export all functions for voice AI
+export {
+    getMainMenu,
+    getStudentList,
+    getStudentCountWithBranch,
+    searchStudent,
+    getStudentFeeDetails,
+    getFeesSummary,
+    getCompleteDueFeesList,
+    getBusList,
+    getBusStops,
+    getBusDetails,
+    getNotices,
+    getDriversList,
+    registerComplaint,
+    createAnnouncement,
+    getPendingAnnouncements,
+    addStudent,
+    updateStudentFees,
+    deleteStudent,
+    broadcastMessage,
+    debugDatabase
+};
 // ============================================
 // MAIN ADMIN HANDLER
 // ============================================

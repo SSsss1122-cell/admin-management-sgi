@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { handleAdminCommands } from './admin';
 import { handleStudentCommands } from './student';
+import { handleVoiceCommand } from './voiceAi';  // ✅ NEW - Voice AI handler
 
 const ADMIN_NUMBERS = ['9480072737', '919480072737'];
 
@@ -11,23 +12,33 @@ export async function POST(request) {
     
     let senderNumber = null;
     let userMessage = null;
+    let mediaUrl = null;           // ✅ NEW - For voice messages
+    let isVoiceMessage = false;    // ✅ NEW - Voice flag
     
     if (payload.data) {
       senderNumber = payload.data.senderPhoneNumber || payload.data.sender || payload.data.from;
       userMessage = payload.data.content?.text?.trim() || payload.data.message || payload.data.text;
+      
+      // ✅ NEW - Check for voice message
+      if (payload.data.content?.audio || payload.data.content?.voice || payload.data.media?.type === 'audio') {
+        isVoiceMessage = true;
+        mediaUrl = payload.data.content?.audio?.id || payload.data.content?.voice?.id || payload.data.media?.url;
+        console.log('🎤 Voice message detected!');
+      }
     }
     
     if (!senderNumber) {
       senderNumber = payload.senderPhoneNumber || payload.sender || payload.from || payload.phone;
     }
-    if (!userMessage) {
+    if (!userMessage && !isVoiceMessage) {
       userMessage = payload.content?.text?.trim() || payload.message || payload.text || payload.body;
     }
     
     console.log(`📱 Sender: ${senderNumber}`);
-    console.log(`💬 Message: ${userMessage}`);
+    if (!isVoiceMessage) console.log(`💬 Message: ${userMessage}`);
+    else console.log(`🎤 Voice message - Processing...`);
     
-    if (!senderNumber || !userMessage) {
+    if (!senderNumber || (!userMessage && !isVoiceMessage)) {
       return NextResponse.json({ success: true });
     }
     
@@ -45,15 +56,37 @@ export async function POST(request) {
     console.log(`👑 Is Admin: ${isAdmin}`);
     console.log(`🔄 Routing to: ${isAdmin ? 'ADMIN' : 'STUDENT'}`);
     
-    // Route to appropriate handler
     let replyMessage;
-    if (isAdmin) {
-      replyMessage = await handleAdminCommands(userMessage, cleanNumber);
-    } else {
-      replyMessage = await handleStudentCommands(userMessage, cleanNumber);
+    
+    // ============ ✅ NEW - VOICE MESSAGE HANDLING ============
+    if (isVoiceMessage && mediaUrl) {
+      console.log('🎤 Processing voice command with AI...');
+      const voiceResponse = await handleVoiceCommand('', cleanNumber, true, mediaUrl, isAdmin);
+      if (voiceResponse) {
+        replyMessage = voiceResponse;
+      } else {
+        replyMessage = "❌ Voice samajh nahi aaya. Please type karein ya clearly bolein.\n\nType *MENU* for commands.";
+      }
     }
     
-    // Send reply
+    // ============ ✅ NEW - TEXT MESSAGE WITH AI FIRST ============
+    else if (userMessage && userMessage !== '') {
+      // Pehle AI try karo (natural language understanding)
+      const aiResponse = await handleVoiceCommand(userMessage, cleanNumber, false, null, isAdmin);
+      
+      // Agar AI ne useful response diya
+      if (aiResponse && aiResponse !== '' && !aiResponse.includes('unavailable') && aiResponse.length < 800) {
+        replyMessage = aiResponse;
+      }
+      // Warna existing code ke according route karo
+      else if (isAdmin) {
+        replyMessage = await handleAdminCommands(userMessage, cleanNumber);
+      } else {
+        replyMessage = await handleStudentCommands(userMessage, cleanNumber);
+      }
+    }
+    
+    // ============ Send reply (YOUR EXISTING CODE - NO CHANGE) ============
     if (replyMessage) {
       await sendWhatsAppMessage(senderNumber, replyMessage);
     }
@@ -66,7 +99,7 @@ export async function POST(request) {
   }
 }
 
-// Shared send function
+// ============ YOUR EXISTING SEND FUNCTION (NO CHANGE) ============
 async function sendWhatsAppMessage(to, message) {
   const apiKey = process.env.VIRALBOOSTUP_API_KEY;
   if (!apiKey) {
