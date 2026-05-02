@@ -1,167 +1,237 @@
-    // app/api/whatsapp/voiceAi.js
+// app/api/whatsapp/voiceAi.js
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { supabase } from '@/lib/supabase';
 
-// Import all functions from your existing admin.js
+// Import all functions from admin.js
 import {
+    getMainMenu,
     getStudentList,
     getStudentCountWithBranch,
     searchStudent,
     getStudentFeeDetails,
-    getCompleteDueFeesList,
     getFeesSummary,
+    getCompleteDueFeesList,
     getBusList,
     getBusStops,
     getBusDetails,
     getNotices,
     getDriversList,
     registerComplaint,
-    getMainMenu
+    createAnnouncement,
+    getPendingAnnouncements,
+    addStudent,
+    updateStudentFees,
+    deleteStudent,
+    broadcastMessage,
+    debugDatabase
 } from './admin.js';
 
+// Import student functions
+import {
+    getStudentMenu,
+    getStudentFeeStatus,
+    getStudentComplaintStatus,
+    registerStudentComplaint
+} from './student.js';
+
+// ✅ FIXED: Use correct model name
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const model = genAI.getGenerativeModel({ model: "gemini-pro" });  // ← Changed from gemini-1.5-flash
 
 // ============================================
-// MAIN VOICE HANDLER - CALL THIS FUNCTION
+// MAIN VOICE HANDLER
 // ============================================
 
-export async function handleVoiceCommand(userMessage, fromNumber, isVoice = false, mediaUrl = null) {
+export async function handleVoiceCommand(userMessage, fromNumber, isVoice = false, mediaUrl = null, isAdmin = true) {
     
     let userCommand = userMessage;
     
-    // Agar voice message hai toh pehle transcribe karo
     if (isVoice && mediaUrl) {
         const transcribed = await voiceToText(mediaUrl);
         if (!transcribed) {
-            return "❌ Voice samajh nahi aaya. Please clearly bole ya text type karein.";
+            return "❌ Voice samajh nahi aaya. Please clearly bole ya text type karein.\n\nType *MENU* for commands.";
         }
         userCommand = transcribed;
+        console.log("🎤 Transcribed voice:", userCommand);
+    }
+    
+    if (!userCommand || userCommand.trim() === '') {
+        return isAdmin ? getMainMenu() : getStudentMenu();
     }
     
     console.log("User said:", userCommand);
     
-    // AI se samjho user kya chahta hai aur call karo correct function
-    const response = await understandAndExecute(userCommand, fromNumber);
+    // Try to understand and execute
+    const response = await understandAndExecute(userCommand, fromNumber, isAdmin);
     
     return response;
 }
 
 // ============================================
-// AI: SAMJHO AUR EXECUTE KARO
+// UNDERSTAND AND EXECUTE
 // ============================================
 
-async function understandAndExecute(command, fromNumber) {
+async function understandAndExecute(command, fromNumber, isAdmin) {
     
     const prompt = `
 You are SGI College WhatsApp Bot. User said: "${command}"
 
-Based on what user wants, you need to decide which function to call.
-Available functions with their purposes:
+User is ${isAdmin ? 'ADMIN' : 'STUDENT'}.
 
-1. getMainMenu() - when user asks for HELP, MENU, START, or doesn't know commands
-2. getStudentList() - when user wants list of ALL students
-3. getStudentCountWithBranch() - when user wants count of students by branch
-4. searchStudent(X) - when user wants to find a specific student. Extract name/usn as X
-5. getStudentFeeDetails(X) - when user wants fee of SPECIFIC student. Extract USN/name/phone as X
-6. getFeesSummary() - when user wants TOTAL fees summary (all students)
-7. getCompleteDueFeesList() - when user wants LIST of students with pending fees
-8. getBusList() - when user wants list of all buses
-9. getBusStops(X) - when user wants stops of specific bus. Extract bus number as X
-10. getBusDetails(X) - when user wants details of specific bus. Extract bus number as X
-11. getNotices() - when user wants latest notices/announcements
-12. getDriversList() - when user wants list of drivers
-13. registerComplaint(fromNumber, X) - when user wants to register complaint. Extract complaint text as X. Format: title|description
+Based on what user wants, decide which function to call.
 
-Return ONLY a JSON object with:
-{
-    "functionName": "name of function to call",
-    "params": ["parameter1", "parameter2"]
-}
+Return ONLY a JSON object:
+{"function": "FUNCTION_NAME", "params": ["param1", "param2"]}
 
-If unclear what user wants, use getMainMenu().
+Available functions for ${isAdmin ? 'ADMIN' : 'STUDENT'}:
+
+${isAdmin ? `
+- getFeesSummary() - for total fees report
+- getCompleteDueFeesList() - for pending fees list
+- getStudentList() - for all students
+- getStudentCountWithBranch() - for branch wise count
+- getBusList() - for all buses
+- getBusDetails(number) - for specific bus
+- getBusStops(number) - for bus stops
+- getNotices() - for announcements
+- getDriversList() - for drivers
+- getStudentFeeDetails(query) - for specific student fees
+- searchStudent(query) - to find student
+- getMainMenu() - for help/menu
+` : `
+- getStudentFeeStatus(phone) - for my fees. Use phone: ${fromNumber}
+- getStudentComplaintStatus(phone) - for complaint status. Use phone: ${fromNumber}
+- registerStudentComplaint(phone, complaint) - for new complaint
+- getBusList() - for buses
+- getNotices() - for notices
+- getStudentMenu() - for help
+`}
+
+If user asks for "fee summary", "total fees", "collection" → getFeesSummary
+If user asks for "due list", "pending fees" → getCompleteDueFeesList
+If user asks for "my fees", "meri fees" → getStudentFeeStatus with phone
+If user asks for "bus list" → getBusList
+If unclear → getMainMenu or getStudentMenu
 `;
 
     try {
         const result = await model.generateContent(prompt);
         const aiResponse = result.response.text();
         
-        // Parse JSON from AI response
+        console.log("🤖 AI Response:", aiResponse);
+        
+        // Extract JSON
         const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
         if (!jsonMatch) {
-            return getMainMenu();
+            return isAdmin ? getMainMenu() : getStudentMenu();
         }
         
         const decision = JSON.parse(jsonMatch[0]);
-        const functionName = decision.functionName;
+        const functionName = decision.function;
         const params = decision.params || [];
         
-        console.log("AI Decision:", functionName, params);
+        console.log("📞 Calling:", functionName, params);
         
-        // Call the actual function based on AI decision
+        // Execute based on function name
         switch (functionName) {
-            case 'getMainMenu':
-                return getMainMenu();
-                
-            case 'getStudentList':
-                return await getStudentList();
-                
-            case 'getStudentCountWithBranch':
-                return await getStudentCountWithBranch();
-                
-            case 'searchStudent':
-                return await searchStudent(params[0]);
-                
-            case 'getStudentFeeDetails':
-                return await getStudentFeeDetails(params[0]);
-                
             case 'getFeesSummary':
                 return await getFeesSummary();
-                
             case 'getCompleteDueFeesList':
                 return await getCompleteDueFeesList();
-                
+            case 'getStudentList':
+                return await getStudentList();
+            case 'getStudentCountWithBranch':
+                return await getStudentCountWithBranch();
             case 'getBusList':
                 return await getBusList();
-                
-            case 'getBusStops':
-                return await getBusStops(params[0]);
-                
             case 'getBusDetails':
                 return await getBusDetails(params[0]);
-                
+            case 'getBusStops':
+                return await getBusStops(params[0]);
             case 'getNotices':
                 return await getNotices();
-                
             case 'getDriversList':
                 return await getDriversList();
-                
-            case 'registerComplaint':
-                return await registerComplaint(fromNumber, params[0]);
-                
-            default:
+            case 'getStudentFeeDetails':
+                return await getStudentFeeDetails(params[0]);
+            case 'searchStudent':
+                return await searchStudent(params[0]);
+            case 'getStudentFeeStatus':
+                return await getStudentFeeStatus(fromNumber);
+            case 'getStudentComplaintStatus':
+                return await getStudentComplaintStatus(fromNumber);
+            case 'registerStudentComplaint':
+                return await registerStudentComplaint(fromNumber, params[0]);
+            case 'getMainMenu':
                 return getMainMenu();
+            case 'getStudentMenu':
+                return getStudentMenu();
+            default:
+                return isAdmin ? getMainMenu() : getStudentMenu();
         }
         
     } catch (error) {
         console.error("AI Error:", error);
-        return getMainMenu();
+        // Fallback: Try direct keyword matching
+        return await fallbackCommandHandler(command, fromNumber, isAdmin);
     }
 }
 
 // ============================================
-// VOICE TO TEXT (AssemblyAI - Optional)
+// FALLBACK HANDLER (When AI fails)
+// ============================================
+
+async function fallbackCommandHandler(command, fromNumber, isAdmin) {
+    const lower = command.toLowerCase();
+    
+    // Fee Summary
+    if (lower.includes('fee summary') || lower.includes('total fees') || lower.includes('collection')) {
+        return await getFeesSummary();
+    }
+    
+    // Due List
+    if (lower.includes('due list') || lower.includes('pending fees') || lower.includes('due fees')) {
+        return await getCompleteDueFeesList();
+    }
+    
+    // My Fees
+    if (lower.includes('my fees') || lower.includes('meri fees') || lower.includes('my due')) {
+        if (!isAdmin) {
+            return await getStudentFeeStatus(fromNumber);
+        }
+        return await getFeesSummary();
+    }
+    
+    // Student List
+    if (lower.includes('student list') || lower.includes('all students')) {
+        return await getStudentList();
+    }
+    
+    // Bus List
+    if (lower.includes('bus list') || lower.includes('all buses')) {
+        return await getBusList();
+    }
+    
+    // Notices
+    if (lower.includes('notices') || lower.includes('announcements')) {
+        return await getNotices();
+    }
+    
+    // Help
+    if (lower.includes('help') || lower.includes('menu')) {
+        return isAdmin ? getMainMenu() : getStudentMenu();
+    }
+    
+    // Default
+    return isAdmin ? getMainMenu() : getStudentMenu();
+}
+
+// ============================================
+// VOICE TO TEXT (Placeholder)
 // ============================================
 
 async function voiceToText(mediaUrl) {
-    // Agar AssemblyAI API key hai toh use karo
-    // Nahi toh simulate karo
-    
-    console.log("Voice note received:", mediaUrl);
-    
-    // TODO: Add AssemblyAI or Google Speech-to-Text here
-    // For now, return null (will fallback to text)
-    
+    console.log("🎤 Voice to text for:", mediaUrl);
+    // Add AssemblyAI or Google Speech-to-Text here
     return null;
 }
