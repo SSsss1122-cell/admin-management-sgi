@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { handleAdminCommands } from './admin';
 import { handleStudentCommands } from './student';
 
-const ADMIN_NUMBERS = ['9480072737', '919480072737'];
+const ADMIN_NUMBERS = ['9480072737', '919480072737', '9900842058'];
 
 export async function POST(request) {
   try {
