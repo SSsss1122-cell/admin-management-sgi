@@ -1,10 +1,16 @@
 import { supabase } from '@/lib/supabase';
 
+<<<<<<< HEAD
 // ============================================
 // ADMIN NUMBERS LIST
 // ============================================
 
 const ADMIN_NUMBERS = ['9480072737', '9900842058'];
+=======
+// Add at the TOP of your admin.js file
+
+// Export all functions for voice AI
+>>>>>>> e38e8b899c488856257f4a7750e7de65885211f1
 
 // ============================================
 // HANDLE ADMIN COMMANDS
@@ -489,8 +495,74 @@ Error: ${error.message}`;
 // ============================================
 // VIEW PENDING MESSAGES
 // ============================================
+// ============================================
+// MISSING FUNCTIONS FOR VOICE AI
+// ============================================
 
+<<<<<<< HEAD
 async function viewPendingMessages() {
+=======
+// Create Announcement
+async function createAnnouncement(message, adminNumber) {
+  try {
+    const { error } = await supabase
+      .from('announcements')
+      .insert({
+        message: message,
+        created_by: adminNumber,
+        created_at: new Date().toISOString(),
+        status: 'active'
+      });
+    
+    if (error) throw error;
+    
+    return `✅ *ANNOUNCEMENT CREATED*
+
+📢 ${message}
+
+Status: Active
+Time: ${new Date().toLocaleString()}
+
+💡 Use HISTORY to view all announcements`;
+    
+  } catch (error) {
+    console.error('Create announcement error:', error);
+    return `❌ *Failed to create announcement*: ${error.message}`;
+  }
+}
+
+// Get Pending Announcements
+async function getPendingAnnouncements() {
+  try {
+    const { data: announcements, error } = await supabase
+      .from('announcements')
+      .select('*')
+      .eq('status', 'active')
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    
+    if (!announcements || announcements.length === 0) {
+      return '📢 *No active announcements*';
+    }
+    
+    let message = `📢 *ACTIVE ANNOUNCEMENTS* (${announcements.length})\n`;
+    message += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+    
+    announcements.forEach((a, i) => {
+      const date = new Date(a.created_at).toLocaleString();
+      message += `${i+1}. 📌 ${a.message}\n`;
+      message += `   📅 ${date}\n\n`;
+    });
+    
+    return message;
+  } catch (error) {
+    console.error('Get pending error:', error);
+    return `❌ *Error fetching announcements*`;
+  }
+}
+async function debugDatabase() {
+>>>>>>> e38e8b899c488856257f4a7750e7de65885211f1
   try {
     const { data: messages, error } = await supabase
       .from('admin_messages')
@@ -884,3 +956,28 @@ ${log.message}
     return { processed: 0, error: error.message };
   }
 }
+
+// admin.js ke END mein (last line) yeh daalo
+
+export {
+    getMainMenu,
+    getStudentList,
+    getStudentCountWithBranch,
+    searchStudent,
+    getStudentFeeDetails,
+    getFeesSummary,
+    getCompleteDueFeesList,
+    getBusList,
+    getBusStops,
+    getBusDetails,
+    getNotices,
+    getDriversList,
+    registerComplaint,
+    createAnnouncement,
+    getPendingAnnouncements,
+    addStudent,
+    updateStudentFees,
+    deleteStudent,
+    broadcastMessage,
+    debugDatabase
+};
