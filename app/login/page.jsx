@@ -13,6 +13,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [currentTime, setCurrentTime] = useState('');
+  const [institutionId, setInstitutionId] = useState('');
   const router = useRouter();
 
   useEffect(() => {
@@ -55,21 +56,23 @@ export default function LoginPage() {
 
       // Check if admin exists
       // ✅ GET institutionId FIRST
-const institutionId = getInstitutionId();
+      const { data: admin, error: adminError } = await supabase
+  .from('admins')
+  .select('*')
+  .eq('mobile_number', cleanMobile)
+  .single();
 
-if (!institutionId) {
-  setError('Institution not found');
-  setLoading(false);
-  return;
+  localStorage.setItem('institution_id', admin.institution_id);
+
+const instId = localStorage.getItem('institution_id');
+if (instId) {
+  setInstitutionId(instId);
 }
 
 // ✅ THEN query
-const { data: admin, error: adminError } = await supabase
-  .from('admins')
-  .select('*')
+ 
+
   
-  .eq('mobile_number', cleanMobile)
-  .single();
 
       if (adminError || !admin) {
         setError('Invalid mobile number or password');
@@ -550,9 +553,11 @@ if (password === admin.password_hash) {
         </div>
       </div>
 
-      <p style={{color:'white'}}>
-  Inst: {typeof window !== 'undefined' && localStorage.getItem('institution_id')}
-</p>
+      <p style={{ color: 'white' }}>
+        Inst: {institutionId}
+      </p>
+
+      
     </>
   );
 }
