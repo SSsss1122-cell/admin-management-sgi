@@ -1,9 +1,7 @@
 import { NextResponse } from 'next/server';
 import { handleAdminCommands } from './admin';
 import { handleStudentCommands } from './student';
-import { handleVoiceCommand } from './voiceAi';  // ✅ NEW - Voice AI handler
-
-const ADMIN_NUMBERS = ['9480072737', '919480072737', '9900842058'];
+import { supabase } from '@/lib/supabase';
 
 export async function POST(request) {
   try {
@@ -12,33 +10,23 @@ export async function POST(request) {
     
     let senderNumber = null;
     let userMessage = null;
-    let mediaUrl = null;           // ✅ NEW - For voice messages
-    let isVoiceMessage = false;    // ✅ NEW - Voice flag
     
     if (payload.data) {
       senderNumber = payload.data.senderPhoneNumber || payload.data.sender || payload.data.from;
       userMessage = payload.data.content?.text?.trim() || payload.data.message || payload.data.text;
-      
-      // ✅ NEW - Check for voice message
-      if (payload.data.content?.audio || payload.data.content?.voice || payload.data.media?.type === 'audio') {
-        isVoiceMessage = true;
-        mediaUrl = payload.data.content?.audio?.id || payload.data.content?.voice?.id || payload.data.media?.url;
-        console.log('🎤 Voice message detected!');
-      }
     }
     
     if (!senderNumber) {
       senderNumber = payload.senderPhoneNumber || payload.sender || payload.from || payload.phone;
     }
-    if (!userMessage && !isVoiceMessage) {
+    if (!userMessage) {
       userMessage = payload.content?.text?.trim() || payload.message || payload.text || payload.body;
     }
     
     console.log(`📱 Sender: ${senderNumber}`);
-    if (!isVoiceMessage) console.log(`💬 Message: ${userMessage}`);
-    else console.log(`🎤 Voice message - Processing...`);
+    console.log(`💬 Message: ${userMessage}`);
     
-    if (!senderNumber || (!userMessage && !isVoiceMessage)) {
+    if (!senderNumber || !userMessage) {
       return NextResponse.json({ success: true });
     }
     
@@ -47,46 +35,28 @@ export async function POST(request) {
     if (cleanNumber.startsWith('91')) cleanNumber = cleanNumber.substring(2);
     cleanNumber = cleanNumber.replace(/^0+/, '');
     
-    // Check if admin
-    const isAdmin = ADMIN_NUMBERS.some(adminNum => {
-      const cleanAdmin = adminNum.replace(/[^\d]/g, '').replace(/^91/, '').replace(/^0+/, '');
-      return cleanNumber === cleanAdmin;
-    });
+    // Check if admin from DATABASE (using regular supabase client with RLS)
+    const { data: adminData, error: adminError } = await supabase
+      .from('admins')
+      .select('mobile_number')
+      .eq('mobile_number', cleanNumber)
+      .maybeSingle(); // Changed from .single() to .maybeSingle() to avoid errors
+    
+    const isAdmin = adminData !== null;
     
     console.log(`👑 Is Admin: ${isAdmin}`);
     console.log(`🔄 Routing to: ${isAdmin ? 'ADMIN' : 'STUDENT'}`);
     
     let replyMessage;
     
-    // ============ ✅ NEW - VOICE MESSAGE HANDLING ============
-    if (isVoiceMessage && mediaUrl) {
-      console.log('🎤 Processing voice command with AI...');
-      const voiceResponse = await handleVoiceCommand('', cleanNumber, true, mediaUrl, isAdmin);
-      if (voiceResponse) {
-        replyMessage = voiceResponse;
-      } else {
-        replyMessage = "❌ Voice samajh nahi aaya. Please type karein ya clearly bolein.\n\nType *MENU* for commands.";
-      }
+    // Route to appropriate handler
+    if (isAdmin) {
+      replyMessage = await handleAdminCommands(userMessage, cleanNumber);
+    } else {
+      replyMessage = await handleStudentCommands(userMessage, cleanNumber);
     }
     
-    // ============ ✅ NEW - TEXT MESSAGE WITH AI FIRST ============
-    else if (userMessage && userMessage !== '') {
-      // Pehle AI try karo (natural language understanding)
-      const aiResponse = await handleVoiceCommand(userMessage, cleanNumber, false, null, isAdmin);
-      
-      // Agar AI ne useful response diya
-      if (aiResponse && aiResponse !== '' && !aiResponse.includes('unavailable') && aiResponse.length < 800) {
-        replyMessage = aiResponse;
-      }
-      // Warna existing code ke according route karo
-      else if (isAdmin) {
-        replyMessage = await handleAdminCommands(userMessage, cleanNumber);
-      } else {
-        replyMessage = await handleStudentCommands(userMessage, cleanNumber);
-      }
-    }
-    
-    // ============ Send reply (YOUR EXISTING CODE - NO CHANGE) ============
+    // Send reply
     if (replyMessage) {
       await sendWhatsAppMessage(senderNumber, replyMessage);
     }
@@ -99,11 +69,18 @@ export async function POST(request) {
   }
 }
 
-// ============ YOUR EXISTING SEND FUNCTION (NO CHANGE) ============
+// Send WhatsApp message function with PHONE_NUMBER_ID from env
 async function sendWhatsAppMessage(to, message) {
   const apiKey = process.env.VIRALBOOSTUP_API_KEY;
+  const phoneNoId = process.env.PHONE_NUMBER_ID;
+  
   if (!apiKey) {
-    console.log("❌ API Key missing");
+    console.log("❌ VIRALBOOSTUP_API_KEY missing");
+    return;
+  }
+  
+  if (!phoneNoId) {
+    console.log("❌ PHONE_NUMBER_ID missing in environment variables");
     return;
   }
   
@@ -116,7 +93,7 @@ async function sendWhatsAppMessage(to, message) {
       },
       body: JSON.stringify({
         to: to,
-        phoneNoId: "595231930349201",
+        phoneNoId: phoneNoId, // Using from environment variable
         type: "text",
         text: message
       })

@@ -1,29 +1,16 @@
 import { supabase } from '@/lib/supabase';
 
-<<<<<<< HEAD
-// ============================================
-// ADMIN NUMBERS LIST
-// ============================================
-
-const ADMIN_NUMBERS = ['9480072737', '9900842058'];
-=======
-// Add at the TOP of your admin.js file
-
-// Export all functions for voice AI
->>>>>>> e38e8b899c488856257f4a7750e7de65885211f1
-
-// ============================================
-// HANDLE ADMIN COMMANDS
-// ============================================
-
 export async function handleAdminCommands(userMessage, cleanNumber) {
-  // Check if sender is admin
-  if (!ADMIN_NUMBERS.includes(cleanNumber)) {
-    return `❌ *Access Denied*
-
-Only admin can use this feature.
-
-📞 Contact admin: ${ADMIN_NUMBERS.join(' or ')}`;
+  // Check if sender is admin from the database
+  const { data: adminData, error: adminError } = await supabase
+    .from('admins')
+    .select('mobile_number, admin_name, institution_id')
+    .eq('mobile_number', cleanNumber)
+    .single();
+  
+  // If not admin, return null - nothing to send on WhatsApp
+  if (adminError || !adminData) {
+    return null;
   }
 
   const upperMsg = userMessage?.toUpperCase().trim() || '';
@@ -31,19 +18,19 @@ Only admin can use this feature.
   
   // Help/Menu
   if (['HELP', 'MENU', 'ADMIN', 'ADMIN HELP'].includes(upperMsg)) {
-    replyMessage = getAdminMenu();
+    replyMessage = getAdminMenu(adminData);
   }
   
   // Broadcast message to all students
   else if (upperMsg.startsWith('BROADCAST') || upperMsg.startsWith('BC ')) {
     const message = userMessage.replace(/^(BROADCAST|BC)\s+/i, '').trim();
-    replyMessage = await handleBroadcast(message, cleanNumber);
+    replyMessage = await handleBroadcast(message, cleanNumber, adminData);
   }
   
   // Send message to specific student by USN
   else if (upperMsg.startsWith('SEND ') || upperMsg.startsWith('MSG ')) {
     const content = userMessage.replace(/^(SEND|MSG)\s+/i, '').trim();
-    replyMessage = await handleSendToStudent(content, cleanNumber);
+    replyMessage = await handleSendToStudent(content, cleanNumber, adminData);
   }
   
   // Send message to specific route/class/branch
@@ -52,33 +39,33 @@ Only admin can use this feature.
     const command = parts[0].toUpperCase();
     const target = parts[1];
     const message = parts.slice(2).join(' ');
-    replyMessage = await handleGroupMessage(command, target, message, cleanNumber);
+    replyMessage = await handleGroupMessage(command, target, message, cleanNumber, adminData);
   }
   
   // View pending messages
   else if (upperMsg === 'PENDING' || upperMsg === 'PENDING MSG') {
-    replyMessage = await viewPendingMessages();
+    replyMessage = await viewPendingMessages(adminData);
   }
   
   // Delete a pending message
   else if (upperMsg.startsWith('DELETE ')) {
     const msgId = upperMsg.replace('DELETE ', '').trim();
-    replyMessage = await deleteMessage(msgId);
+    replyMessage = await deleteMessage(msgId, adminData);
   }
   
   // View all sent messages history
   else if (upperMsg === 'HISTORY' || upperMsg === 'MSG HISTORY') {
-    replyMessage = await viewMessageHistory();
+    replyMessage = await viewMessageHistory(adminData);
   }
   
   // View admin list
   else if (upperMsg === 'ADMINS' || upperMsg === 'ADMIN LIST') {
-    replyMessage = getAdminList();
+    replyMessage = await getAdminList(adminData);
   }
   
-  // Default
+  // Default - no valid command, return null
   else {
-    replyMessage = getAdminMenu();
+    return null;
   }
   
   return replyMessage;
@@ -88,11 +75,15 @@ Only admin can use this feature.
 // ADMIN MENU
 // ============================================
 
-function getAdminMenu() {
+function getAdminMenu(adminData) {
+  const adminName = adminData?.admin_name || 'Admin';
+  
   return `╔════════════════════════════╗
 ║   👑 *ADMIN PANEL*        ║
 ║   SGI Bus Management      ║
 ╚════════════════════════════╝
+
+👋 *Welcome, ${adminName}!*
 
 ┌─────────────────────────────┐
 │ 📢 *BROADCAST COMMANDS*     │
@@ -128,32 +119,52 @@ function getAdminMenu() {
 • SEND 3TS25CS004 Check route 5
 • ROUTE Route-5 Bus at stop A
 
-👥 *Admins:* ${ADMIN_NUMBERS.join(', ')}`;
+💡 *Reply with any command to execute*`;
 }
 
 // ============================================
 // GET ADMIN LIST
 // ============================================
 
-function getAdminList() {
+async function getAdminList(adminData) {
+  // Get all admins from the same institution
+  const { data: admins, error } = await supabase
+    .from('admins')
+    .select('mobile_number, admin_name, created_at')
+    .eq('institution_id', adminData.institution_id);
+  
+  if (error) {
+    return `❌ Error fetching admin list: ${error.message}`;
+  }
+  
+  if (!admins || admins.length === 0) {
+    return `👥 No admins found.`;
+  }
+  
+  const adminList = admins.map((admin, index) => {
+    const name = admin.admin_name || 'Unnamed Admin';
+    return `${index + 1}. 📱 ${name}\n   └─ ${admin.mobile_number}`;
+  }).join('\n\n');
+  
   return `╔════════════════════════════╗
-║   👑 *ADMIN LIST*         ║
+║   👑 *ADMIN LIST*          ║
 ╚════════════════════════════╝
 
-📞 *Admin Contacts:*
-${ADMIN_NUMBERS.map((num, i) => `   ${i + 1}. ${num}`).join('\n')}
+*Your Institution Admins:*
 
-💡 *Total Admins:* ${ADMIN_NUMBERS.length}
+${adminList}
 
 ━━━━━━━━━━━━━━━━━━━━━━
-Send HELP for admin commands`;
+📊 *Total Admins:* ${admins.length}
+
+💡 Send *HELP* for admin commands`;
 }
 
 // ============================================
 // BROADCAST TO ALL STUDENTS
 // ============================================
 
-async function handleBroadcast(message, adminPhone) {
+async function handleBroadcast(message, adminPhone, adminData) {
   if (!message || message.trim().length === 0) {
     return `❌ *Please provide a message to broadcast*
 
@@ -161,21 +172,20 @@ async function handleBroadcast(message, adminPhone) {
   }
 
   try {
-    // Fetch all students with phone numbers
+    // Fetch all students from the same institution with phone numbers
     const { data: students, error: fetchError } = await supabase
       .from('students')
       .select('usn, full_name, phone_number, phone, routes, class, branch')
+      .eq('institution_id', adminData.institution_id)
       .not('phone_number', 'is', null);
 
     if (fetchError) {
       console.error('Error fetching students:', fetchError);
-      return `❌ *Error fetching students*
-
-${fetchError.message}`;
+      return `❌ *Error fetching students*\n\n${fetchError.message}`;
     }
 
     if (!students || students.length === 0) {
-      return `❌ *No students found in database*`;
+      return `❌ *No students found in your institution*`;
     }
 
     // Store message in admin_messages table
@@ -185,6 +195,8 @@ ${fetchError.message}`;
         {
           message: message.trim(),
           sent_by: adminPhone,
+          sent_by_name: adminData.admin_name,
+          institution_id: adminData.institution_id,
           type: 'broadcast',
           target: 'all',
           recipient_count: students.length,
@@ -197,9 +209,7 @@ ${fetchError.message}`;
 
     if (insertError) {
       console.error('Error inserting message:', insertError);
-      return `❌ *Error storing message*
-
-${insertError.message}`;
+      return `❌ *Error storing message*\n\n${insertError.message}`;
     }
 
     // Store individual message records for each student
@@ -215,6 +225,7 @@ ${insertError.message}`;
         route: student.routes || null,
         class: student.class || null,
         branch: student.branch || null,
+        institution_id: adminData.institution_id,
         created_at: new Date().toISOString()
       }));
 
@@ -232,15 +243,14 @@ ${insertError.message}`;
     let response = `✅ *Broadcast Message Stored!*
 
 📋 *Message ID:* ${insertedMsg.id}
-👤 *Sent by Admin:* ${adminPhone}
+👤 *Sent by:* ${adminData.admin_name || adminPhone}
 📝 *Message:* ${message.trim()}
 👥 *Recipients:* ${students.length} students
 📅 *Time:* ${new Date().toLocaleString()}
 
 ━━━━━━━━━━━━━━━━━━━━━━
 
-*📋 First 20 Students:*
-`;
+*📋 First 20 Students:*\n`;
 
     // Show first 20 students
     const displayStudents = students.slice(0, 20);
@@ -262,11 +272,7 @@ ${insertError.message}`;
 
   } catch (error) {
     console.error('Broadcast error:', error);
-    return `❌ *Broadcast failed*
-
-Error: ${error.message}
-
-Please try again.`;
+    return `❌ *Broadcast failed*\n\nError: ${error.message}\n\nPlease try again.`;
   }
 }
 
@@ -274,7 +280,7 @@ Please try again.`;
 // SEND TO SPECIFIC STUDENT
 // ============================================
 
-async function handleSendToStudent(content, adminPhone) {
+async function handleSendToStudent(content, adminPhone, adminData) {
   const parts = content.split(/\s+/);
   
   if (parts.length < 2) {
@@ -289,23 +295,20 @@ Example: *SEND 3TS25CS004 Bus route changed*`;
   const message = parts.slice(1).join(' ');
 
   try {
-    // Find student by USN
+    // Find student by USN in the same institution
     const { data: student, error: fetchError } = await supabase
       .from('students')
       .select('*')
+      .eq('institution_id', adminData.institution_id)
       .ilike('usn', usn)
       .single();
 
     if (fetchError || !student) {
-      return `❌ *Student not found with USN:* ${usn}
-
-Please check the USN and try again.`;
+      return `❌ *Student not found with USN:* ${usn}\n\nPlease check the USN and try again.`;
     }
 
     if (!student.phone_number && !student.phone) {
-      return `❌ *No phone number for:* ${student.full_name} (${student.usn})
-
-Cannot send message to this student.`;
+      return `❌ *No phone number for:* ${student.full_name} (${student.usn})\n\nCannot send message to this student.`;
     }
 
     // Store message in admin_messages table
@@ -315,6 +318,8 @@ Cannot send message to this student.`;
         {
           message: message.trim(),
           sent_by: adminPhone,
+          sent_by_name: adminData.admin_name,
+          institution_id: adminData.institution_id,
           type: 'direct',
           target: usn,
           recipient_count: 1,
@@ -344,6 +349,7 @@ Cannot send message to this student.`;
           route: student.routes || null,
           class: student.class || null,
           branch: student.branch || null,
+          institution_id: adminData.institution_id,
           created_at: new Date().toISOString()
         }
       ]);
@@ -355,7 +361,7 @@ Cannot send message to this student.`;
     return `✅ *Message Stored for Student*
 
 📋 *Message ID:* ${insertedMsg.id}
-👤 *Sent by Admin:* ${adminPhone}
+👤 *Sent by:* ${adminData.admin_name || adminPhone}
 👤 *Student:* ${student.full_name}
 📋 *USN:* ${student.usn}
 📞 *Phone:* ${student.phone_number || student.phone}
@@ -370,9 +376,7 @@ Cannot send message to this student.`;
 
   } catch (error) {
     console.error('Send to student error:', error);
-    return `❌ *Failed to send message*
-
-Error: ${error.message}`;
+    return `❌ *Failed to send message*\n\nError: ${error.message}`;
   }
 }
 
@@ -380,7 +384,7 @@ Error: ${error.message}`;
 // SEND TO GROUP (ROUTE/CLASS/BRANCH)
 // ============================================
 
-async function handleGroupMessage(command, target, message, adminPhone) {
+async function handleGroupMessage(command, target, message, adminPhone, adminData) {
   if (!target || !message || message.trim().length === 0) {
     return `❌ *Invalid format*
 
@@ -390,18 +394,17 @@ Example: *${command} ${command === 'ROUTE' ? 'Route-5' : command === 'CLASS' ? '
   }
 
   try {
-    let query = supabase.from('students').select('*');
-    let filterField = '';
+    let query = supabase
+      .from('students')
+      .select('*')
+      .eq('institution_id', adminData.institution_id);
 
     // Build query based on command type
     if (command === 'ROUTE') {
-      filterField = 'routes';
       query = query.ilike('routes', `%${target}%`);
     } else if (command === 'CLASS') {
-      filterField = 'class';
       query = query.ilike('class', `%${target}%`);
     } else if (command === 'BRANCH') {
-      filterField = 'branch';
       query = query.ilike('branch', `%${target}%`);
     }
 
@@ -423,6 +426,8 @@ Example: *${command} ${command === 'ROUTE' ? 'Route-5' : command === 'CLASS' ? '
         {
           message: message.trim(),
           sent_by: adminPhone,
+          sent_by_name: adminData.admin_name,
+          institution_id: adminData.institution_id,
           type: 'group',
           target: `${command}:${target}`,
           recipient_count: students.length,
@@ -451,6 +456,7 @@ Example: *${command} ${command === 'ROUTE' ? 'Route-5' : command === 'CLASS' ? '
         route: student.routes || null,
         class: student.class || null,
         branch: student.branch || null,
+        institution_id: adminData.institution_id,
         created_at: new Date().toISOString()
       }));
 
@@ -467,7 +473,7 @@ Example: *${command} ${command === 'ROUTE' ? 'Route-5' : command === 'CLASS' ? '
     return `✅ *Group Message Stored!*
 
 📋 *Message ID:* ${insertedMsg.id}
-👤 *Sent by Admin:* ${adminPhone}
+👤 *Sent by:* ${adminData.admin_name || adminPhone}
 🎯 *Target:* ${command} - ${target}
 👥 *Recipients:* ${students.length} students
 📝 *Message:* ${message.trim()}
@@ -486,87 +492,20 @@ ${students.length > 15 ? `\n... and ${students.length - 15} more` : ''}
 
   } catch (error) {
     console.error('Group message error:', error);
-    return `❌ *Failed to send group message*
-
-Error: ${error.message}`;
+    return `❌ *Failed to send group message*\n\nError: ${error.message}`;
   }
 }
 
 // ============================================
 // VIEW PENDING MESSAGES
 // ============================================
-// ============================================
-// MISSING FUNCTIONS FOR VOICE AI
-// ============================================
 
-<<<<<<< HEAD
-async function viewPendingMessages() {
-=======
-// Create Announcement
-async function createAnnouncement(message, adminNumber) {
-  try {
-    const { error } = await supabase
-      .from('announcements')
-      .insert({
-        message: message,
-        created_by: adminNumber,
-        created_at: new Date().toISOString(),
-        status: 'active'
-      });
-    
-    if (error) throw error;
-    
-    return `✅ *ANNOUNCEMENT CREATED*
-
-📢 ${message}
-
-Status: Active
-Time: ${new Date().toLocaleString()}
-
-💡 Use HISTORY to view all announcements`;
-    
-  } catch (error) {
-    console.error('Create announcement error:', error);
-    return `❌ *Failed to create announcement*: ${error.message}`;
-  }
-}
-
-// Get Pending Announcements
-async function getPendingAnnouncements() {
-  try {
-    const { data: announcements, error } = await supabase
-      .from('announcements')
-      .select('*')
-      .eq('status', 'active')
-      .order('created_at', { ascending: false });
-    
-    if (error) throw error;
-    
-    if (!announcements || announcements.length === 0) {
-      return '📢 *No active announcements*';
-    }
-    
-    let message = `📢 *ACTIVE ANNOUNCEMENTS* (${announcements.length})\n`;
-    message += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-    
-    announcements.forEach((a, i) => {
-      const date = new Date(a.created_at).toLocaleString();
-      message += `${i+1}. 📌 ${a.message}\n`;
-      message += `   📅 ${date}\n\n`;
-    });
-    
-    return message;
-  } catch (error) {
-    console.error('Get pending error:', error);
-    return `❌ *Error fetching announcements*`;
-  }
-}
-async function debugDatabase() {
->>>>>>> e38e8b899c488856257f4a7750e7de65885211f1
+async function viewPendingMessages(adminData) {
   try {
     const { data: messages, error } = await supabase
       .from('admin_messages')
       .select('*')
+      .eq('institution_id', adminData.institution_id)
       .eq('status', 'pending')
       .order('created_at', { ascending: false })
       .limit(10);
@@ -584,18 +523,16 @@ All messages have been delivered.
 💡 Send *BROADCAST <message>* to create new message`;
     }
 
-    let response = `📋 *PENDING MESSAGES* (${messages.length})\n
-━━━━━━━━━━━━━━━━━━━━━━\n`;
+    let response = `📋 *PENDING MESSAGES* (${messages.length})\n\n━━━━━━━━━━━━━━━━━━━━━━\n\n`;
 
     messages.forEach((msg, index) => {
-      const adminLabel = ADMIN_NUMBERS.includes(msg.sent_by) ? '👑 Admin' : 'User';
       response += `📌 *ID:* ${msg.id}
-👤 *Sent by:* ${msg.sent_by} (${adminLabel})
-📝 *Message:* ${msg.message}
+👤 *Sent by:* ${msg.sent_by_name || msg.sent_by}
+📝 *Message:* ${msg.message.substring(0, 50)}${msg.message.length > 50 ? '...' : ''}
 🎯 *Type:* ${msg.type} | *Target:* ${msg.target}
 👥 *Recipients:* ${msg.recipient_count}
 📅 *Time:* ${new Date(msg.created_at).toLocaleString()}
-${index < messages.length - 1 ? '\n──────────────────────\n' : ''}`;
+${index < messages.length - 1 ? '\n──────────────────────\n\n' : ''}`;
     });
 
     response += `\n━━━━━━━━━━━━━━━━━━━━━━
@@ -613,25 +550,33 @@ ${index < messages.length - 1 ? '\n───────────────
 // DELETE MESSAGE
 // ============================================
 
-async function deleteMessage(msgId) {
+async function deleteMessage(msgId, adminData) {
   try {
-    // Update message status to cancelled
-    const { data: msg, error: updateError } = await supabase
+    // First check if message exists and belongs to admin's institution
+    const { data: msg, error: checkError } = await supabase
       .from('admin_messages')
-      .update({ status: 'cancelled' })
+      .select('*')
       .eq('id', msgId)
-      .eq('status', 'pending')
-      .select()
+      .eq('institution_id', adminData.institution_id)
       .single();
 
-    if (updateError || !msg) {
-      return `❌ *Message not found or already processed*
-
-ID: ${msgId}`;
+    if (checkError || !msg) {
+      return `❌ *Message not found or access denied*\n\nID: ${msgId}`;
     }
 
-    // Check if the admin who sent this message is deleting it
-    // (Any admin can delete any message)
+    if (msg.status !== 'pending') {
+      return `❌ *Cannot delete message*\n\nThis message has already been ${msg.status}.`;
+    }
+
+    // Update message status to cancelled
+    const { error: updateError } = await supabase
+      .from('admin_messages')
+      .update({ status: 'cancelled' })
+      .eq('id', msgId);
+
+    if (updateError) {
+      return `❌ *Error deleting message*`;
+    }
     
     // Update all associated logs
     await supabase
@@ -643,7 +588,7 @@ ID: ${msgId}`;
     return `✅ *Message Cancelled*
 
 📋 *ID:* ${msgId}
-👤 *Sent by Admin:* ${msg.sent_by}
+👤 *Sent by:* ${msg.sent_by_name || msg.sent_by}
 📝 *Message:* ${msg.message}
 🎯 *Type:* ${msg.type} | *Target:* ${msg.target}
 👥 *Affected Recipients:* ${msg.recipient_count}`;
@@ -658,11 +603,12 @@ ID: ${msgId}`;
 // VIEW MESSAGE HISTORY
 // ============================================
 
-async function viewMessageHistory() {
+async function viewMessageHistory(adminData) {
   try {
     const { data: messages, error } = await supabase
       .from('admin_messages')
       .select('*')
+      .eq('institution_id', adminData.institution_id)
       .order('created_at', { ascending: false })
       .limit(10);
 
@@ -672,28 +618,23 @@ async function viewMessageHistory() {
     }
 
     if (!messages || messages.length === 0) {
-      return `📋 *No Messages Found*
-
-No messages have been sent yet.`;
+      return `📋 *No Messages Found*\n\nNo messages have been sent yet.`;
     }
 
-    let response = `📋 *MESSAGE HISTORY*\n
-━━━━━━━━━━━━━━━━━━━━━━\n`;
+    let response = `📋 *MESSAGE HISTORY*\n\n━━━━━━━━━━━━━━━━━━━━━━\n\n`;
 
     messages.forEach((msg, index) => {
       const statusEmoji = msg.status === 'delivered' ? '🟢' : 
                           msg.status === 'cancelled' ? '🔴' : 
                           msg.status === 'pending' ? '🟡' : '⚪';
       
-      const adminLabel = ADMIN_NUMBERS.includes(msg.sent_by) ? '👑 Admin' : 'User';
-      
       response += `${statusEmoji} *ID:* ${msg.id} | *Status:* ${msg.status.toUpperCase()}
-👤 *Sent by:* ${msg.sent_by} (${adminLabel})
-📝 *Message:* ${msg.message}
+👤 *Sent by:* ${msg.sent_by_name || msg.sent_by}
+📝 *Message:* ${msg.message.substring(0, 60)}${msg.message.length > 60 ? '...' : ''}
 🎯 *Type:* ${msg.type} | *Target:* ${msg.target}
 👥 *Recipients:* ${msg.recipient_count}
 📅 *Time:* ${new Date(msg.created_at).toLocaleString()}
-${index < messages.length - 1 ? '\n──────────────────────\n' : ''}`;
+${index < messages.length - 1 ? '\n──────────────────────\n\n' : ''}`;
     });
 
     response += `\n━━━━━━━━━━━━━━━━━━━━━━
@@ -851,6 +792,7 @@ export async function processPendingMessages() {
         student_phone,
         message,
         status,
+        created_at,
         admin_messages!inner(status)
       `)
       .eq('status', 'pending')
@@ -956,28 +898,3 @@ ${log.message}
     return { processed: 0, error: error.message };
   }
 }
-
-// admin.js ke END mein (last line) yeh daalo
-
-export {
-    getMainMenu,
-    getStudentList,
-    getStudentCountWithBranch,
-    searchStudent,
-    getStudentFeeDetails,
-    getFeesSummary,
-    getCompleteDueFeesList,
-    getBusList,
-    getBusStops,
-    getBusDetails,
-    getNotices,
-    getDriversList,
-    registerComplaint,
-    createAnnouncement,
-    getPendingAnnouncements,
-    addStudent,
-    updateStudentFees,
-    deleteStudent,
-    broadcastMessage,
-    debugDatabase
-};
