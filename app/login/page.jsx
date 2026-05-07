@@ -62,12 +62,28 @@ export default function LoginPage() {
   .eq('mobile_number', cleanMobile)
   .single();
 
-  localStorage.setItem('institution_id', admin.institution_id);
+if (adminError || !admin) {
+  setError('Invalid mobile number or password');
+  setLoading(false);
+  return;
+}
+
+// check institution exists
+if (!admin.institution_id) {
+  setError('Admin not linked to any institution');
+  setLoading(false);
+  return;
+}
+
+// NOW store institution id safely
+localStorage.setItem('institution_id', admin.institution_id);
 
 const instId = localStorage.getItem('institution_id');
+
 if (instId) {
   setInstitutionId(instId);
 }
+     
 
 // ✅ THEN query
  
