@@ -16,885 +16,808 @@ export async function handleAdminCommands(userMessage, cleanNumber) {
   const upperMsg = userMessage?.toUpperCase().trim() || '';
   let replyMessage = '';
   
-  // Help/Menu
-  if (['HELP', 'MENU', 'ADMIN', 'ADMIN HELP'].includes(upperMsg)) {
-    replyMessage = getAdminMenu(adminData);
+  // MAIN MENU
+  if (upperMsg === 'BUS' || upperMsg === 'MENU' || upperMsg === 'START' || upperMsg === 'HELP') {
+    replyMessage = getMainMenu();
   }
   
-  // Broadcast message to all students
-  else if (upperMsg.startsWith('BROADCAST') || upperMsg.startsWith('BC ')) {
-    const message = userMessage.replace(/^(BROADCAST|BC)\s+/i, '').trim();
-    replyMessage = await handleBroadcast(message, cleanNumber, adminData);
+  // STUDENT MENU
+  else if (upperMsg === 'STUDENT' || upperMsg === 'STUDENT LIST' || upperMsg === '8') {
+    replyMessage = await getStudentList();
+  }
+  else if (upperMsg === 'SEARCH' || upperMsg === 'SEARCH STUDENT' || upperMsg === '9') {
+    replyMessage = getSearchFormat();
+  }
+  else if (upperMsg === 'COUNT' || upperMsg === 'STUDENT COUNT' || upperMsg === '10') {
+    replyMessage = await getStudentCountWithBranch();
   }
   
-  // Send message to specific student by USN
-  else if (upperMsg.startsWith('SEND ') || upperMsg.startsWith('MSG ')) {
-    const content = userMessage.replace(/^(SEND|MSG)\s+/i, '').trim();
-    replyMessage = await handleSendToStudent(content, cleanNumber, adminData);
+  // FEES MENU
+  else if (upperMsg === 'FEE' || upperMsg === 'FEE CHECK' || upperMsg === '5') {
+    replyMessage = getFeeFormat();
+  }
+  else if (upperMsg === 'FEE DUE' || upperMsg === '6' || upperMsg === 'DUE LIST') {
+    replyMessage = await getCompleteDueFeesList();
+  }
+  else if (upperMsg === 'FEE SUMMARY' || upperMsg === '7') {
+    replyMessage = await getFeesSummary();
   }
   
-  // Send message to specific route/class/branch
-  else if (upperMsg.startsWith('ROUTE ') || upperMsg.startsWith('CLASS ') || upperMsg.startsWith('BRANCH ')) {
-    const parts = userMessage.split(/\s+/);
-    const command = parts[0].toUpperCase();
-    const target = parts[1];
-    const message = parts.slice(2).join(' ');
-    replyMessage = await handleGroupMessage(command, target, message, cleanNumber, adminData);
+  // BUS MENU
+  else if (upperMsg === 'BUS LIST' || upperMsg === '1') {
+    replyMessage = await getBusList();
+  }
+  else if (upperMsg === 'BUS STOPS' || upperMsg === '3') {
+    replyMessage = getBusStopsFormat();
+  }
+  else if (upperMsg === 'BUS DETAILS' || upperMsg === '4') {
+    replyMessage = getBusDetailsFormat();
   }
   
-  // View pending messages
-  else if (upperMsg === 'PENDING' || upperMsg === 'PENDING MSG') {
-    replyMessage = await viewPendingMessages(adminData);
+  // OTHER COMMANDS
+  else if (upperMsg === 'COMPLAINT' || upperMsg === '11') {
+    replyMessage = getComplaintFormat();
+  }
+  else if (upperMsg === 'NOTICES' || upperMsg === '12') {
+    replyMessage = await getNotices();
+  }
+  else if (upperMsg === 'DRIVERS' || upperMsg === '13') {
+    replyMessage = await getDriversList();
+  }
+  else if (upperMsg === 'SHORTCUT' || upperMsg === 'SHORTCUTS') {
+    replyMessage = getShortcutGuide();
   }
   
-  // Delete a pending message
-  else if (upperMsg.startsWith('DELETE ')) {
-    const msgId = upperMsg.replace('DELETE ', '').trim();
-    replyMessage = await deleteMessage(msgId, adminData);
+  // SEARCH with argument (case insensitive)
+  else if (userMessage?.match(/^search\s/i)) {
+    const query = userMessage.replace(/^search\s/i, '');
+    replyMessage = await searchStudent(query);
   }
   
-  // View all sent messages history
-  else if (upperMsg === 'HISTORY' || upperMsg === 'MSG HISTORY') {
-    replyMessage = await viewMessageHistory(adminData);
+  // FEE with argument
+  else if (userMessage?.match(/^fee\s/i)) {
+    const usn = userMessage.replace(/^fee\s/i, '');
+    replyMessage = await getStudentFeeDetails(usn);
   }
   
-  // View admin list
-  else if (upperMsg === 'ADMINS' || upperMsg === 'ADMIN LIST') {
-    replyMessage = await getAdminList(adminData);
+  // STOPS with argument
+  else if (userMessage?.match(/^stops\s/i)) {
+    const busNumber = userMessage.replace(/^stops\s/i, '');
+    replyMessage = await getBusStops(busNumber);
   }
   
-  // Default - no valid command, return null
-  else {
-    return null;
+  // DETAILS with argument
+  else if (userMessage?.match(/^details\s/i)) {
+    const busNumber = userMessage.replace(/^details\s/i, '');
+    replyMessage = await getBusDetails(busNumber);
+  }
+  
+  // COMPLAINT with argument
+  else if (userMessage?.match(/^complaint\s/i)) {
+    const complaintText = userMessage.replace(/^complaint\s/i, '');
+    replyMessage = await registerComplaint(cleanNumber, complaintText);
+  }
+  
+  // ADD STUDENT
+  else if (userMessage?.match(/^add\s/i)) {
+    const data = userMessage.replace(/^add\s/i, '').split('|');
+    replyMessage = await addStudent(data);
+  }
+  
+  // UPDATE FEES
+  else if (userMessage?.match(/^update\s/i)) {
+    const parts = userMessage.replace(/^update\s/i, '').split('|');
+    replyMessage = await updateStudentFees(parts[0], parts[1]);
+  }
+  
+  // DELETE STUDENT
+  else if (userMessage?.match(/^delete\s/i)) {
+    const usn = userMessage.replace(/^delete\s/i, '');
+    replyMessage = await deleteStudent(usn);
+  }
+  
+  // Default
+  else if (userMessage && userMessage !== '') {
+    replyMessage = `❌ *Unknown Command*\n\n${getMainMenu()}`;
   }
   
   return replyMessage;
 }
 
 // ============================================
-// ADMIN MENU
+// FORMATTING FUNCTIONS
 // ============================================
 
-function getAdminMenu(adminData) {
-  const adminName = adminData?.admin_name || 'Admin';
-  
+function getMainMenu() {
   return `╔════════════════════════════╗
-║   👑 *ADMIN PANEL*        ║
-║   SGI Bus Management      ║
+║   🤖 *SGI BUS BOT*       ║
+║      Admin Panel          ║
 ╚════════════════════════════╝
 
-👋 *Welcome, ${adminName}!*
+┌─────────────────────────┐
+│  🚌 *BUS MENU*          │
+├─────────────────────────┤
+│ 1️⃣  BUS LIST           │
+│ 3️⃣  BUS STOPS          │
+│ 4️⃣  BUS DETAILS        │
+└─────────────────────────┘
+
+┌─────────────────────────┐
+│  💰 *FEES MENU*         │
+├─────────────────────────┤
+│ 5️⃣  FEE CHECK          │
+│ 6️⃣  FEE DUE LIST       │
+│ 7️⃣  FEE SUMMARY        │
+└─────────────────────────┘
+
+┌─────────────────────────┐
+│  📚 *STUDENT MENU*      │
+├─────────────────────────┤
+│ 8️⃣  STUDENT LIST       │
+│ 9️⃣  SEARCH STUDENT     │
+│ 🔟  STUDENT COUNT      │
+└─────────────────────────┘
+
+┌─────────────────────────┐
+│  📢 *OTHER MENU*        │
+├─────────────────────────┤
+│ 11️⃣  COMPLAINT         │
+│ 12️⃣  NOTICES           │
+│ 13️⃣  DRIVERS           │
+└─────────────────────────┘
+
+💡 *Commands:* FEE <USN>, SEARCH <name>, DUE LIST, FEE SUMMARY
+
+👑 *Admin Access Verified*`;
+}
+
+function getShortcutGuide() {
+  return `╔════════════════════════════╗
+║   ⚡ *QUICK COMMANDS*    ║
+╚════════════════════════════╝
 
 ┌─────────────────────────────┐
-│ 📢 *BROADCAST COMMANDS*     │
+│ 📚 *STUDENT SHORTCUTS*      │
 ├─────────────────────────────┤
-│ Broadcast to ALL students:  │
-│ *BROADCAST <message>*       │
-│                             │
-│ Send to specific student:   │
-│ *SEND <USN> <message>*      │
-│                             │
-│ Send to specific route:     │
-│ *ROUTE <route> <message>*   │
-│                             │
-│ Send to specific class:     │
-│ *CLASS <class> <message>*   │
-│                             │
-│ Send to specific branch:    │
-│ *BRANCH <branch> <message>* │
+│ ADD <name>|<usn>|<br>|<ph>  │
+│ DELETE <usn>                │
+│ SEARCH <usn or name>        │
 └─────────────────────────────┘
 
 ┌─────────────────────────────┐
-│ 📋 *MANAGEMENT*             │
+│ 💰 *FEES SHORTCUTS*         │
 ├─────────────────────────────┤
-│ • PENDING - View pending    │
-│ • DELETE <id> - Delete msg  │
-│ • HISTORY - Message history │
-│ • ADMINS - View admin list  │
-│ • MENU - Show this menu     │
+│ FEE <usn>                   │
+│ UPDATE <usn>|<amount>       │
+│ DUE LIST - Pending list     │
+│ FEE SUMMARY - Stats         │
 └─────────────────────────────┘
 
-📌 *Examples:*
-• BROADCAST Bus will be late by 10 min
-• SEND 3TS25CS004 Check route 5
-• ROUTE Route-5 Bus at stop A
+┌─────────────────────────────┐
+│ 🚌 *BUS SHORTCUTS*          │
+├─────────────────────────────┤
+│ BUS LIST - All buses        │
+│ STOPS <bus_no>              │
+│ DETAILS <bus_no>            │
+└─────────────────────────────┘
 
-💡 *Reply with any command to execute*`;
+✨ *Commands are case-insensitive*`;
+}
+
+function getSearchFormat() {
+  return `🔍 *SEARCH STUDENT*
+
+┌─────────────────────────┐
+│ 📝 *Format:*            │
+│ SEARCH <USN or Name>    │
+├─────────────────────────┤
+│ 📌 *Examples:*          │
+│ SEARCH 3TS25CS004       │
+│ SEARCH Rohit            │
+└─────────────────────────┘`;
+}
+
+function getFeeFormat() {
+  return `💰 *FEE CHECK*
+
+┌─────────────────────────┐
+│ 📝 *Format:*            │
+│ FEE <USN>               │
+├─────────────────────────┤
+│ 📌 *Example:*           │
+│ FEE 3TS25CS004          │
+└─────────────────────────┘`;
+}
+
+function getBusStopsFormat() {
+  return `🚏 *BUS STOPS*
+
+┌─────────────────────────┐
+│ 📝 *Format:*            │
+│ STOPS <bus_number>      │
+└─────────────────────────┘`;
+}
+
+function getBusDetailsFormat() {
+  return `🚌 *BUS DETAILS*
+
+┌─────────────────────────┐
+│ 📝 *Format:*            │
+│ DETAILS <bus_number>    │
+└─────────────────────────┘`;
+}
+
+function getComplaintFormat() {
+  return `🛠️ *REGISTER COMPLAINT*
+
+┌─────────────────────────┐
+│ 📝 *Format:*            │
+│ COMPLAINT <title>|<desc>│
+├─────────────────────────┤
+│ 📌 *Example:*           │
+│ COMPLAINT Bus late|Bus  │
+│ is coming 30 mins late  │
+└─────────────────────────┘`;
 }
 
 // ============================================
-// GET ADMIN LIST
+// STUDENT FUNCTIONS
 // ============================================
 
-async function getAdminList(adminData) {
-  // Get all admins from the same institution
-  const { data: admins, error } = await supabase
-    .from('admins')
-    .select('mobile_number, admin_name, created_at')
-    .eq('institution_id', adminData.institution_id);
+async function getStudentList() {
+  const { data: students, error } = await supabase
+    .from('students')
+    .select('full_name, usn, branch, phone_number, email')
+    .order('full_name');
   
-  if (error) {
-    return `❌ Error fetching admin list: ${error.message}`;
+  if (error) return '❌ *Database Error*';
+  if (!students || students.length === 0) return '📭 *No students found*';
+  
+  let message = `╔════════════════════════════╗\n`;
+  message += `║   📋 *STUDENT LIST*     ║\n`;
+  message += `║   Total: ${students.length}         ║\n`;
+  message += `╚════════════════════════════╝\n\n`;
+  
+  students.forEach((s, i) => {
+    message += `┌───────── ${i+1} ─────────┐\n`;
+    message += `│ 👤 *${s.full_name}*\n`;
+    message += `│ 📋 ${s.usn}\n`;
+    message += `│ 📚 ${s.branch || 'N/A'}\n`;
+    if (s.phone_number) message += `│ 📞 ${s.phone_number}\n`;
+    if (s.email) message += `│ 📧 ${s.email}\n`;
+    message += `└─────────────────────────┘\n\n`;
+  });
+  
+  return message;
+}
+
+async function getStudentCountWithBranch() {
+  const { data: students, error } = await supabase
+    .from('students')
+    .select('branch');
+  
+  if (error) return '❌ *Database Error*';
+  
+  const branchCount = {};
+  students.forEach(s => {
+    const branch = s.branch || 'Unknown';
+    branchCount[branch] = (branchCount[branch] || 0) + 1;
+  });
+  
+  let message = `╔════════════════════════════╗\n`;
+  message += `║   📊 *STUDENT COUNT*    ║\n`;
+  message += `╚════════════════════════════╝\n\n`;
+  message += `┌─────────────────────────────┐\n`;
+  message += `│ 📚 *BRANCH WISE*           │\n`;
+  message += `├─────────────────────────────┤\n`;
+  
+  for (const [branch, count] of Object.entries(branchCount).sort()) {
+    message += `│ • ${branch}: ${count} students\n`;
   }
   
-  if (!admins || admins.length === 0) {
-    return `👥 No admins found.`;
+  message += `├─────────────────────────────┤\n`;
+  message += `│ 🎓 *TOTAL: ${students.length}*     │\n`;
+  message += `└─────────────────────────────┘`;
+  
+  return message;
+}
+
+async function searchStudent(query) {
+  if (!query) return getSearchFormat();
+  
+  const { data: students, error } = await supabase
+    .from('students')
+    .select('*')
+    .or(`usn.ilike.%${query}%, full_name.ilike.%${query}%`);
+  
+  if (error) return '❌ *Database Error*';
+  if (!students || students.length === 0) return `❌ *No student found for:* ${query}`;
+  
+  let message = `╔════════════════════════════╗\n`;
+  message += `║   🔍 *SEARCH RESULTS*   ║\n`;
+  message += `║   Found: ${students.length}         ║\n`;
+  message += `╚════════════════════════════╝\n\n`;
+  
+  for (const s of students) {
+    message += `┌───────── *STUDENT* ─────────┐\n`;
+    message += `│ 👤 *${s.full_name}*\n`;
+    message += `│ 📋 USN: ${s.usn}\n`;
+    message += `│ 📚 Branch: ${s.branch || 'N/A'}\n`;
+    message += `│ 📞 Phone: ${s.phone_number || s.phone || 'N/A'}\n`;
+    message += `│ 📧 Email: ${s.email || 'N/A'}\n`;
+    message += `├─────────────────────────────┤\n`;
+    message += `│ 💰 Total Fees: ₹${s.total_fees || 0}\n`;
+    message += `│ ✅ Paid: ₹${s.paid_amount || 0}\n`;
+    message += `│ ⚠️ Due: ₹${s.due_amount || 0}\n`;
+    message += `│ 📊 Status: ${s.fees_due ? '🔴 PENDING' : '🟢 PAID'}\n`;
+    if (s.last_payment_date) message += `│ 📅 Last Payment: ${s.last_payment_date}\n`;
+    message += `└─────────────────────────────┘\n\n`;
   }
   
-  const adminList = admins.map((admin, index) => {
-    const name = admin.admin_name || 'Unnamed Admin';
-    return `${index + 1}. 📱 ${name}\n   └─ ${admin.mobile_number}`;
-  }).join('\n\n');
+  return message;
+}
+
+// ============================================
+// FEES FUNCTIONS
+// ============================================
+
+async function getStudentFeeDetails(usn) {
+  if (!usn) return getFeeFormat();
+  
+  const { data: student, error } = await supabase
+    .from('students')
+    .select('*')
+    .eq('usn', usn)
+    .single();
+  
+  if (error) return `❌ *Student not found:* ${usn}`;
+  
+  let message = `╔════════════════════════════╗\n`;
+  message += `║   💰 *FEE DETAILS*      ║\n`;
+  message += `╚════════════════════════════╝\n\n`;
+  message += `┌───────── *STUDENT* ─────────┐\n`;
+  message += `│ 👤 ${student.full_name}\n`;
+  message += `│ 📋 ${student.usn}\n`;
+  message += `│ 📚 ${student.branch || 'N/A'}\n`;
+  message += `├─────────────────────────────┤\n`;
+  message += `│ 💰 Total Fees:  ₹${student.total_fees || 0}\n`;
+  message += `│ ✅ Paid: ₹${student.paid_amount || 0}\n`;
+  message += `│ ⚠️ Due:  ₹${student.due_amount || 0}\n`;
+  message += `├─────────────────────────────┤\n`;
+  message += `│ 📊 Status: ${student.fees_due ? '🔴 PENDING' : '🟢 PAID'}\n`;
+  
+  if (student.due_amount > 0 && student.due_amount < (student.total_fees || 0)) {
+    message += `│ ⚠️ *PARTIAL PAYMENT*       \n`;
+  }
+  
+  if (student.last_payment_date) {
+    message += `├─────────────────────────────┤\n`;
+    message += `│ 📅 Last Payment: ${student.last_payment_date}\n`;
+    message += `│ 💳 Mode: ${student.payment_mode || 'N/A'}\n`;
+  }
+  
+  message += `└─────────────────────────────┘`;
+  return message;
+}
+
+async function getCompleteDueFeesList() {
+  const { data: students, error } = await supabase
+    .from('students')
+    .select('full_name, usn, branch, due_amount, paid_amount, total_fees, last_payment_date, payment_mode')
+    .eq('fees_due', true)
+    .gt('due_amount', 0)
+    .order('due_amount', { ascending: false });
+  
+  if (error) return '❌ *Database Error*';
+  if (!students || students.length === 0) return '✅ *No pending fees! All students paid.*';
+  
+  let totalDue = 0;
+  let fullDue = 0;
+  let partialDue = 0;
+  
+  students.forEach(s => {
+    totalDue += s.due_amount;
+    if (s.paid_amount === 0) fullDue++;
+    else if (s.due_amount > 0 && s.paid_amount > 0) partialDue++;
+  });
+  
+  let message = `╔════════════════════════════╗\n`;
+  message += `║   ⚠️ *PENDING FEES*      ║\n`;
+  message += `╚════════════════════════════╝\n\n`;
+  message += `┌───────── *SUMMARY* ─────────┐\n`;
+  message += `│ 📊 Total Due Students: ${students.length}\n`;
+  message += `│ 🔴 Full Due: ${fullDue}\n`;
+  message += `│ 🟡 Partial Due: ${partialDue}\n`;
+  message += `│ 💰 Total Due Amount: ₹${totalDue}\n`;
+  message += `└─────────────────────────────┘\n\n`;
+  
+  message += `┌──────── *DUE LIST* ─────────┐\n`;
+  
+  students.forEach((s, i) => {
+    const status = s.paid_amount === 0 ? '🔴 FULL' : '🟡 PARTIAL';
+    message += `│ ${i+1}. *${s.full_name}*\n`;
+    message += `│    USN: ${s.usn}\n`;
+    message += `│    Due: ₹${s.due_amount}\n`;
+    message += `│    Status: ${status}\n`;
+    message += `├─────────────────────────────┤\n`;
+  });
+  
+  message += `└─────────────────────────────┘\n\n`;
+  message += `💡 *Send FEE <USN> for details*`;
+  
+  return message;
+}
+
+async function getFeesSummary() {
+  const { data: students, error } = await supabase
+    .from('students')
+    .select('total_fees, paid_amount, due_amount, fees_due, branch');
+  
+  if (error) return '❌ *Database Error*';
+  
+  let totalFees = 0, totalPaid = 0, totalDue = 0;
+  let paidCount = 0, dueCount = 0;
+  const branchStats = {};
+  
+  students.forEach(s => {
+    totalFees += Number(s.total_fees) || 0;
+    totalPaid += Number(s.paid_amount) || 0;
+    totalDue += Number(s.due_amount) || 0;
+    
+    if (s.fees_due && s.due_amount > 0) dueCount++;
+    else if (!s.fees_due) paidCount++;
+    
+    const branch = s.branch || 'Unknown';
+    if (!branchStats[branch]) {
+      branchStats[branch] = { total: 0, paid: 0, due: 0 };
+    }
+    branchStats[branch].total += Number(s.total_fees) || 0;
+    branchStats[branch].paid += Number(s.paid_amount) || 0;
+    branchStats[branch].due += Number(s.due_amount) || 0;
+  });
+  
+  let message = `╔════════════════════════════╗\n`;
+  message += `║   📊 *FEE SUMMARY*       ║\n`;
+  message += `╚════════════════════════════╝\n\n`;
+  
+  message += `┌──────── *OVERALL* ──────────┐\n`;
+  message += `│ 💰 Total Fees:  ₹${totalFees}\n`;
+  message += `│ ✅ Collected:   ₹${totalPaid}\n`;
+  message += `│ ⚠️ Due:         ₹${totalDue}\n`;
+  message += `├─────────────────────────────┤\n`;
+  message += `│ 📈 Collection Rate: ${((totalPaid/totalFees)*100).toFixed(1)}%\n`;
+  message += `│ 🟢 Fully Paid: ${paidCount}\n`;
+  message += `│ 🔴 Pending: ${dueCount}\n`;
+  message += `│ 👥 Total Students: ${students.length}\n`;
+  message += `└─────────────────────────────┘\n\n`;
+  
+  message += `┌──────── *BRANCH WISE* ──────┐\n`;
+  for (const [branch, stats] of Object.entries(branchStats).sort()) {
+    const rate = stats.total > 0 ? ((stats.paid / stats.total) * 100).toFixed(1) : 0;
+    message += `│ 📚 *${branch}*\n`;
+    message += `│    Total: ₹${stats.total}\n`;
+    message += `│    Paid: ₹${stats.paid}\n`;
+    message += `│    Due: ₹${stats.due}\n`;
+    message += `│    Rate: ${rate}%\n`;
+    message += `├─────────────────────────────┤\n`;
+  }
+  
+  message += `└─────────────────────────────┘\n\n`;
+  message += `💡 *Send FEE DUE for pending list*`;
+  
+  return message;
+}
+
+// ============================================
+// BUS FUNCTIONS
+// ============================================
+
+async function getBusList() {
+  const { data: buses, error } = await supabase
+    .from('buses')
+    .select('bus_number, route_name, is_active')
+    .limit(20);
+  
+  if (error) return '❌ *Database Error*';
+  if (!buses || buses.length === 0) return '🚌 *No buses found*';
+  
+  let message = `╔════════════════════════════╗\n`;
+  message += `║   🚌 *BUS LIST*         ║\n`;
+  message += `║   Total: ${buses.length}          ║\n`;
+  message += `╚════════════════════════════╝\n\n`;
+  
+  buses.forEach((b, i) => {
+    message += `┌───────── BUS ${i+1} ─────────┐\n`;
+    message += `│ 🔢 *${b.bus_number}*\n`;
+    message += `│ 🗺️ Route: ${b.route_name || 'N/A'}\n`;
+    message += `│ ${b.is_active ? '🟢 Active' : '🔴 Inactive'}\n`;
+    message += `└─────────────────────────────┘\n\n`;
+  });
+  
+  return message;
+}
+
+async function getBusDetails(busNumber) {
+  if (!busNumber) return getBusDetailsFormat();
+  
+  const { data: bus, error } = await supabase
+    .from('buses')
+    .select('*')
+    .eq('bus_number', busNumber)
+    .single();
+  
+  if (error) return `❌ *Bus not found:* ${busNumber}`;
+  
+  let message = `╔════════════════════════════╗\n`;
+  message += `║   🚌 *BUS DETAILS*      ║\n`;
+  message += `╚════════════════════════════╝\n\n`;
+  message += `┌─────────────────────────────┐\n`;
+  message += `│ 🔢 *${bus.bus_number}*\n`;
+  message += `│ 🗺️ Route: ${bus.route_name || 'N/A'}\n`;
+  message += `│ 📊 Status: ${bus.is_active ? '🟢 Active' : '🔴 Inactive'}\n`;
+  message += `├─────────────────────────────┤\n`;
+  message += `│ 📅 *EXPIRY DATES*           │\n`;
+  message += `│ PUC: ${bus.puc_expiry || 'N/A'}\n`;
+  message += `│ Insurance: ${bus.insurance_expiry || 'N/A'}\n`;
+  message += `│ Fitness: ${bus.fitness_expiry || 'N/A'}\n`;
+  message += `│ Permit: ${bus.permit_expiry || 'N/A'}\n`;
+  message += `├─────────────────────────────┤\n`;
+  message += `│ 🔧 *MAINTENANCE*            │\n`;
+  message += `│ Last Service: ${bus.last_service_date || 'N/A'}\n`;
+  message += `│ Next Service: ${bus.next_service_due || 'N/A'}\n`;
+  message += `│ Current KM: ${bus.current_km || 'N/A'}\n`;
+  if (bus.remarks) message += `│ 📝 Remarks: ${bus.remarks}\n`;
+  message += `└─────────────────────────────┘`;
+  
+  return message;
+}
+
+async function getBusStops(busNumber) {
+  if (!busNumber) return getBusStopsFormat();
+  
+  const { data: bus } = await supabase
+    .from('buses')
+    .select('id')
+    .eq('bus_number', busNumber)
+    .single();
+  
+  if (!bus) return `❌ *Bus not found:* ${busNumber}`;
+  
+  const { data: stops } = await supabase
+    .from('bus_stops')
+    .select('stop_name, sequence, estimated_time, is_major')
+    .eq('bus_id', bus.id)
+    .order('sequence')
+    .limit(20);
+  
+  if (!stops || stops.length === 0) return `🚏 *No stops found for* ${busNumber}`;
+  
+  let message = `╔════════════════════════════╗\n`;
+  message += `║   🚏 *BUS STOPS*        ║\n`;
+  message += `║   ${busNumber}    ║\n`;
+  message += `╚════════════════════════════╝\n\n`;
+  message += `┌─────────────────────────────┐\n`;
+  
+  stops.forEach(s => {
+    message += `│ ${s.sequence}. ${s.stop_name}`;
+    if (s.is_major) message += ` ⭐`;
+    if (s.estimated_time) message += ` (${s.estimated_time} min)`;
+    message += `\n`;
+  });
+  
+  message += `└─────────────────────────────┘`;
+  return message;
+}
+
+// ============================================
+// OTHER FUNCTIONS
+// ============================================
+
+async function registerComplaint(phoneNumber, complaintText) {
+  const parts = complaintText.split('|');
+  const title = parts[0]?.trim();
+  const description = parts[1]?.trim();
+  
+  if (!title || !description) return getComplaintFormat();
+  
+  const { data: student } = await supabase
+    .from('students')
+    .select('id')
+    .eq('phone_number', phoneNumber)
+    .single();
+  
+  if (!student) return '❌ *Student not found. Contact admin.*';
+  
+  const { error } = await supabase
+    .from('complaints')
+    .insert({
+      student_id: student.id,
+      title: title,
+      description: description,
+      status: 'pending'
+    });
+  
+  if (error) return '❌ *Failed to register complaint*';
   
   return `╔════════════════════════════╗
-║   👑 *ADMIN LIST*          ║
+║   ✅ *COMPLAINT LOGGED*   ║
 ╚════════════════════════════╝
 
-*Your Institution Admins:*
+┌─────────────────────────────┐
+│ 📌 *${title}*
+│ 📝 ${description}
+├─────────────────────────────┤
+│ 📊 Status: Pending
+└─────────────────────────────┘
 
-${adminList}
-
-━━━━━━━━━━━━━━━━━━━━━━
-📊 *Total Admins:* ${admins.length}
-
-💡 Send *HELP* for admin commands`;
+✨ *Thank you for reporting*`;
 }
 
-// ============================================
-// BROADCAST TO ALL STUDENTS
-// ============================================
-
-async function handleBroadcast(message, adminPhone, adminData) {
-  if (!message || message.trim().length === 0) {
-    return `❌ *Please provide a message to broadcast*
-
-📌 Example: *BROADCAST Bus will be late today*`;
-  }
-
-  try {
-    // Fetch all students from the same institution with phone numbers
-    const { data: students, error: fetchError } = await supabase
-      .from('students')
-      .select('usn, full_name, phone_number, phone, routes, class, branch')
-      .eq('institution_id', adminData.institution_id)
-      .not('phone_number', 'is', null);
-
-    if (fetchError) {
-      console.error('Error fetching students:', fetchError);
-      return `❌ *Error fetching students*\n\n${fetchError.message}`;
-    }
-
-    if (!students || students.length === 0) {
-      return `❌ *No students found in your institution*`;
-    }
-
-    // Store message in admin_messages table
-    const { data: insertedMsg, error: insertError } = await supabase
-      .from('admin_messages')
-      .insert([
-        {
-          message: message.trim(),
-          sent_by: adminPhone,
-          sent_by_name: adminData.admin_name,
-          institution_id: adminData.institution_id,
-          type: 'broadcast',
-          target: 'all',
-          recipient_count: students.length,
-          status: 'pending',
-          created_at: new Date().toISOString()
-        }
-      ])
-      .select()
-      .single();
-
-    if (insertError) {
-      console.error('Error inserting message:', insertError);
-      return `❌ *Error storing message*\n\n${insertError.message}`;
-    }
-
-    // Store individual message records for each student
-    const messageRecords = students
-      .filter(s => s.phone_number || s.phone)
-      .map(student => ({
-        message_id: insertedMsg.id,
-        student_usn: student.usn,
-        student_name: student.full_name,
-        student_phone: student.phone_number || student.phone,
-        message: message.trim(),
-        status: 'pending',
-        route: student.routes || null,
-        class: student.class || null,
-        branch: student.branch || null,
-        institution_id: adminData.institution_id,
-        created_at: new Date().toISOString()
-      }));
-
-    if (messageRecords.length > 0) {
-      const { error: recordError } = await supabase
-        .from('admin_message_logs')
-        .insert(messageRecords);
-
-      if (recordError) {
-        console.error('Error inserting message records:', recordError);
-      }
-    }
-
-    // Format response
-    let response = `✅ *Broadcast Message Stored!*
-
-📋 *Message ID:* ${insertedMsg.id}
-👤 *Sent by:* ${adminData.admin_name || adminPhone}
-📝 *Message:* ${message.trim()}
-👥 *Recipients:* ${students.length} students
-📅 *Time:* ${new Date().toLocaleString()}
-
-━━━━━━━━━━━━━━━━━━━━━━
-
-*📋 First 20 Students:*\n`;
-
-    // Show first 20 students
-    const displayStudents = students.slice(0, 20);
-    displayStudents.forEach((s, index) => {
-      response += `${index + 1}. ${s.full_name} (${s.usn})\n`;
-    });
-
-    if (students.length > 20) {
-      response += `\n... and ${students.length - 20} more students\n`;
-    }
-
-    response += `\n━━━━━━━━━━━━━━━━━━━━━━
-💡 *Commands:*
-• PENDING - View pending msgs
-• DELETE ${insertedMsg.id} - Cancel this msg
-• HISTORY - View all messages`;
-
-    return response;
-
-  } catch (error) {
-    console.error('Broadcast error:', error);
-    return `❌ *Broadcast failed*\n\nError: ${error.message}\n\nPlease try again.`;
-  }
-}
-
-// ============================================
-// SEND TO SPECIFIC STUDENT
-// ============================================
-
-async function handleSendToStudent(content, adminPhone, adminData) {
-  const parts = content.split(/\s+/);
+async function getNotices() {
+  const { data: notices, error } = await supabase
+    .from('notices')
+    .select('title, description, created_at')
+    .order('created_at', { ascending: false })
+    .limit(5);
   
-  if (parts.length < 2) {
-    return `❌ *Invalid format*
-
-📌 Usage: *SEND <USN> <message>*
-
-Example: *SEND 3TS25CS004 Bus route changed*`;
-  }
-
-  const usn = parts[0];
-  const message = parts.slice(1).join(' ');
-
-  try {
-    // Find student by USN in the same institution
-    const { data: student, error: fetchError } = await supabase
-      .from('students')
-      .select('*')
-      .eq('institution_id', adminData.institution_id)
-      .ilike('usn', usn)
-      .single();
-
-    if (fetchError || !student) {
-      return `❌ *Student not found with USN:* ${usn}\n\nPlease check the USN and try again.`;
+  if (error) return '❌ *Database Error*';
+  if (!notices || notices.length === 0) return '📢 *No notices available*';
+  
+  let message = `╔════════════════════════════╗\n`;
+  message += `║   📢 *LATEST NOTICES*   ║\n`;
+  message += `╚════════════════════════════╝\n\n`;
+  
+  notices.forEach((n, i) => {
+    message += `┌───────── NOTICE ${i+1} ────────┐\n`;
+    message += `│ 📌 *${n.title}*\n`;
+    if (n.description) {
+      const desc = n.description.length > 50 ? n.description.substring(0, 50) + '...' : n.description;
+      message += `│ 📝 ${desc}\n`;
     }
+    message += `│ 📅 ${new Date(n.created_at).toLocaleDateString()}\n`;
+    message += `└─────────────────────────────┘\n\n`;
+  });
+  
+  return message;
+}
 
-    if (!student.phone_number && !student.phone) {
-      return `❌ *No phone number for:* ${student.full_name} (${student.usn})\n\nCannot send message to this student.`;
-    }
-
-    // Store message in admin_messages table
-    const { data: insertedMsg, error: insertError } = await supabase
-      .from('admin_messages')
-      .insert([
-        {
-          message: message.trim(),
-          sent_by: adminPhone,
-          sent_by_name: adminData.admin_name,
-          institution_id: adminData.institution_id,
-          type: 'direct',
-          target: usn,
-          recipient_count: 1,
-          status: 'pending',
-          created_at: new Date().toISOString()
-        }
-      ])
-      .select()
-      .single();
-
-    if (insertError) {
-      console.error('Error inserting message:', insertError);
-      return `❌ *Error storing message*`;
-    }
-
-    // Store individual message record
-    const { error: recordError } = await supabase
-      .from('admin_message_logs')
-      .insert([
-        {
-          message_id: insertedMsg.id,
-          student_usn: student.usn,
-          student_name: student.full_name,
-          student_phone: student.phone_number || student.phone,
-          message: message.trim(),
-          status: 'pending',
-          route: student.routes || null,
-          class: student.class || null,
-          branch: student.branch || null,
-          institution_id: adminData.institution_id,
-          created_at: new Date().toISOString()
-        }
-      ]);
-
-    if (recordError) {
-      console.error('Error inserting message record:', recordError);
-    }
-
-    return `✅ *Message Stored for Student*
-
-📋 *Message ID:* ${insertedMsg.id}
-👤 *Sent by:* ${adminData.admin_name || adminPhone}
-👤 *Student:* ${student.full_name}
-📋 *USN:* ${student.usn}
-📞 *Phone:* ${student.phone_number || student.phone}
-📝 *Message:* ${message.trim()}
-
-━━━━━━━━━━━━━━━━━━━━━━
-🟡 Message will be delivered when student messages the bot
-
-💡 *Commands:*
-• PENDING - View pending msgs
-• DELETE ${insertedMsg.id} - Cancel this msg`;
-
-  } catch (error) {
-    console.error('Send to student error:', error);
-    return `❌ *Failed to send message*\n\nError: ${error.message}`;
-  }
+async function getDriversList() {
+  const { data: drivers, error } = await supabase
+    .from('drivers_new')
+    .select('name, contact, driver_code')
+    .limit(15);
+  
+  if (error) return '❌ *Database Error*';
+  if (!drivers || drivers.length === 0) return '👨‍✈️ *No drivers found*';
+  
+  let message = `╔════════════════════════════╗\n`;
+  message += `║   👨‍✈️ *DRIVERS LIST*    ║\n`;
+  message += `║   Total: ${drivers.length}          ║\n`;
+  message += `╚════════════════════════════╝\n\n`;
+  
+  drivers.forEach((d, i) => {
+    message += `┌───────── DRIVER ${i+1} ───────┐\n`;
+    message += `│ 👤 *${d.name}*\n`;
+    if (d.driver_code) message += `│ 🆔 Code: ${d.driver_code}\n`;
+    if (d.contact) message += `│ 📞 ${d.contact}\n`;
+    message += `└─────────────────────────────┘\n\n`;
+  });
+  
+  return message;
 }
 
 // ============================================
-// SEND TO GROUP (ROUTE/CLASS/BRANCH)
+// ADMIN FUNCTIONS
 // ============================================
 
-async function handleGroupMessage(command, target, message, adminPhone, adminData) {
-  if (!target || !message || message.trim().length === 0) {
-    return `❌ *Invalid format*
+async function addStudent(data) {
+  if (!data || data.length < 3) {
+    return `❌ *ADD STUDENT FORMAT*
 
-📌 Usage: *${command} <${command === 'ROUTE' ? 'route-name' : command === 'CLASS' ? 'class-name' : 'branch-name'}> <message>*
-
-Example: *${command} ${command === 'ROUTE' ? 'Route-5' : command === 'CLASS' ? '10A' : 'CSE'} Bus timing changed*`;
+┌─────────────────────────────┐
+│ 📝 Format:                  │
+│ ADD <name>|<usn>|<branch>   │
+│      |<phone>               │
+├─────────────────────────────┤
+│ 📌 Example:                 │
+│ ADD Raj Kumar|3TS25CS100|   │
+│ Computer Science|9876543210 │
+└─────────────────────────────┘`;
   }
-
-  try {
-    let query = supabase
-      .from('students')
-      .select('*')
-      .eq('institution_id', adminData.institution_id);
-
-    // Build query based on command type
-    if (command === 'ROUTE') {
-      query = query.ilike('routes', `%${target}%`);
-    } else if (command === 'CLASS') {
-      query = query.ilike('class', `%${target}%`);
-    } else if (command === 'BRANCH') {
-      query = query.ilike('branch', `%${target}%`);
-    }
-
-    const { data: students, error: fetchError } = await query;
-
-    if (fetchError) {
-      console.error('Error fetching students:', fetchError);
-      return `❌ *Error fetching students*`;
-    }
-
-    if (!students || students.length === 0) {
-      return `❌ *No students found in ${command.toLowerCase()}:* ${target}`;
-    }
-
-    // Store message in admin_messages table
-    const { data: insertedMsg, error: insertError } = await supabase
-      .from('admin_messages')
-      .insert([
-        {
-          message: message.trim(),
-          sent_by: adminPhone,
-          sent_by_name: adminData.admin_name,
-          institution_id: adminData.institution_id,
-          type: 'group',
-          target: `${command}:${target}`,
-          recipient_count: students.length,
-          status: 'pending',
-          created_at: new Date().toISOString()
-        }
-      ])
-      .select()
-      .single();
-
-    if (insertError) {
-      console.error('Error inserting message:', insertError);
-      return `❌ *Error storing message*`;
-    }
-
-    // Store individual message records
-    const messageRecords = students
-      .filter(s => s.phone_number || s.phone)
-      .map(student => ({
-        message_id: insertedMsg.id,
-        student_usn: student.usn,
-        student_name: student.full_name,
-        student_phone: student.phone_number || student.phone,
-        message: message.trim(),
-        status: 'pending',
-        route: student.routes || null,
-        class: student.class || null,
-        branch: student.branch || null,
-        institution_id: adminData.institution_id,
-        created_at: new Date().toISOString()
-      }));
-
-    if (messageRecords.length > 0) {
-      const { error: recordError } = await supabase
-        .from('admin_message_logs')
-        .insert(messageRecords);
-
-      if (recordError) {
-        console.error('Error inserting message records:', recordError);
-      }
-    }
-
-    return `✅ *Group Message Stored!*
-
-📋 *Message ID:* ${insertedMsg.id}
-👤 *Sent by:* ${adminData.admin_name || adminPhone}
-🎯 *Target:* ${command} - ${target}
-👥 *Recipients:* ${students.length} students
-📝 *Message:* ${message.trim()}
-
-━━━━━━━━━━━━━━━━━━━━━━
-🟡 Message will be delivered when students message the bot
-
-━━━━━━━━━━━━━━━━━━━━━━
-*📋 Students in ${target}:*
-${students.slice(0, 15).map((s, i) => `${i + 1}. ${s.full_name} (${s.usn})`).join('\n')}
-${students.length > 15 ? `\n... and ${students.length - 15} more` : ''}
-
-💡 *Commands:*
-• PENDING - View pending msgs
-• DELETE ${insertedMsg.id} - Cancel this msg`;
-
-  } catch (error) {
-    console.error('Group message error:', error);
-    return `❌ *Failed to send group message*\n\nError: ${error.message}`;
-  }
-}
-
-// ============================================
-// VIEW PENDING MESSAGES
-// ============================================
-
-async function viewPendingMessages(adminData) {
-  try {
-    const { data: messages, error } = await supabase
-      .from('admin_messages')
-      .select('*')
-      .eq('institution_id', adminData.institution_id)
-      .eq('status', 'pending')
-      .order('created_at', { ascending: false })
-      .limit(10);
-
-    if (error) {
-      console.error('Error fetching pending messages:', error);
-      return `❌ *Error fetching pending messages*`;
-    }
-
-    if (!messages || messages.length === 0) {
-      return `📋 *No Pending Messages*
-
-All messages have been delivered.
-
-💡 Send *BROADCAST <message>* to create new message`;
-    }
-
-    let response = `📋 *PENDING MESSAGES* (${messages.length})\n\n━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-
-    messages.forEach((msg, index) => {
-      response += `📌 *ID:* ${msg.id}
-👤 *Sent by:* ${msg.sent_by_name || msg.sent_by}
-📝 *Message:* ${msg.message.substring(0, 50)}${msg.message.length > 50 ? '...' : ''}
-🎯 *Type:* ${msg.type} | *Target:* ${msg.target}
-👥 *Recipients:* ${msg.recipient_count}
-📅 *Time:* ${new Date(msg.created_at).toLocaleString()}
-${index < messages.length - 1 ? '\n──────────────────────\n\n' : ''}`;
+  
+  const [name, usn, branch, phone] = data;
+  
+  const { error } = await supabase
+    .from('students')
+    .insert({
+      full_name: name,
+      usn: usn,
+      branch: branch,
+      phone_number: phone,
+      total_fees: 0,
+      paid_amount: 0,
+      due_amount: 0,
+      fees_due: false
     });
+  
+  if (error) return `❌ *Failed:* ${error.message}`;
+  
+  return `╔════════════════════════════╗
+║   ✅ *STUDENT ADDED*      ║
+╚════════════════════════════╝
 
-    response += `\n━━━━━━━━━━━━━━━━━━━━━━
-💡 *Delete message:* DELETE <id>`;
-
-    return response;
-
-  } catch (error) {
-    console.error('View pending error:', error);
-    return `❌ *Error viewing messages*`;
-  }
+┌─────────────────────────────┐
+│ 👤 *${name}*
+│ 📋 USN: ${usn}
+│ 📚 Branch: ${branch}
+│ 📞 Phone: ${phone || 'N/A'}
+├─────────────────────────────┤
+│ 📊 Status: Active
+└─────────────────────────────┘`;
 }
 
-// ============================================
-// DELETE MESSAGE
-// ============================================
+async function updateStudentFees(usn, amount) {
+  if (!usn || !amount) {
+    return `❌ *UPDATE FEES FORMAT*
 
-async function deleteMessage(msgId, adminData) {
-  try {
-    // First check if message exists and belongs to admin's institution
-    const { data: msg, error: checkError } = await supabase
-      .from('admin_messages')
-      .select('*')
-      .eq('id', msgId)
-      .eq('institution_id', adminData.institution_id)
-      .single();
-
-    if (checkError || !msg) {
-      return `❌ *Message not found or access denied*\n\nID: ${msgId}`;
-    }
-
-    if (msg.status !== 'pending') {
-      return `❌ *Cannot delete message*\n\nThis message has already been ${msg.status}.`;
-    }
-
-    // Update message status to cancelled
-    const { error: updateError } = await supabase
-      .from('admin_messages')
-      .update({ status: 'cancelled' })
-      .eq('id', msgId);
-
-    if (updateError) {
-      return `❌ *Error deleting message*`;
-    }
-    
-    // Update all associated logs
-    await supabase
-      .from('admin_message_logs')
-      .update({ status: 'cancelled' })
-      .eq('message_id', msgId)
-      .eq('status', 'pending');
-
-    return `✅ *Message Cancelled*
-
-📋 *ID:* ${msgId}
-👤 *Sent by:* ${msg.sent_by_name || msg.sent_by}
-📝 *Message:* ${msg.message}
-🎯 *Type:* ${msg.type} | *Target:* ${msg.target}
-👥 *Affected Recipients:* ${msg.recipient_count}`;
-
-  } catch (error) {
-    console.error('Delete message error:', error);
-    return `❌ *Error deleting message*`;
+┌─────────────────────────────┐
+│ 📝 Format:                  │
+│ UPDATE <usn>|<amount>       │
+├─────────────────────────────┤
+│ 📌 Example:                 │
+│ UPDATE 3TS25CS004|5000      │
+└─────────────────────────────┘`;
   }
+  
+  const { data: student } = await supabase
+    .from('students')
+    .select('paid_amount, due_amount, total_fees')
+    .eq('usn', usn)
+    .single();
+  
+  if (!student) return `❌ *Student not found:* ${usn}`;
+  
+  const newPaid = (student.paid_amount || 0) + Number(amount);
+  const newDue = (student.total_fees || 0) - newPaid;
+  
+  const { error } = await supabase
+    .from('students')
+    .update({
+      paid_amount: newPaid,
+      due_amount: newDue,
+      fees_due: newDue > 0,
+      last_payment_date: new Date().toISOString().split('T')[0],
+      payment_mode: 'WhatsApp Update'
+    })
+    .eq('usn', usn);
+  
+  if (error) return `❌ *Failed:* ${error.message}`;
+  
+  return `╔════════════════════════════╗
+║   ✅ *FEES UPDATED*       ║
+╚════════════════════════════╝
+
+┌─────────────────────────────┐
+│ 📋 USN: ${usn}
+├─────────────────────────────┤
+│ 💰 Previous Paid: ₹${student.paid_amount || 0}
+│ 💵 Amount Added: ₹${amount}
+│ ✅ New Paid: ₹${newPaid}
+│ ⚠️ Due: ₹${newDue}
+├─────────────────────────────┤
+│ 📊 Status: ${newDue > 0 ? '🔴 PENDING' : '🟢 PAID'}
+└─────────────────────────────┘`;
 }
 
-// ============================================
-// VIEW MESSAGE HISTORY
-// ============================================
-
-async function viewMessageHistory(adminData) {
-  try {
-    const { data: messages, error } = await supabase
-      .from('admin_messages')
-      .select('*')
-      .eq('institution_id', adminData.institution_id)
-      .order('created_at', { ascending: false })
-      .limit(10);
-
-    if (error) {
-      console.error('Error fetching history:', error);
-      return `❌ *Error fetching message history*`;
-    }
-
-    if (!messages || messages.length === 0) {
-      return `📋 *No Messages Found*\n\nNo messages have been sent yet.`;
-    }
-
-    let response = `📋 *MESSAGE HISTORY*\n\n━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-
-    messages.forEach((msg, index) => {
-      const statusEmoji = msg.status === 'delivered' ? '🟢' : 
-                          msg.status === 'cancelled' ? '🔴' : 
-                          msg.status === 'pending' ? '🟡' : '⚪';
-      
-      response += `${statusEmoji} *ID:* ${msg.id} | *Status:* ${msg.status.toUpperCase()}
-👤 *Sent by:* ${msg.sent_by_name || msg.sent_by}
-📝 *Message:* ${msg.message.substring(0, 60)}${msg.message.length > 60 ? '...' : ''}
-🎯 *Type:* ${msg.type} | *Target:* ${msg.target}
-👥 *Recipients:* ${msg.recipient_count}
-📅 *Time:* ${new Date(msg.created_at).toLocaleString()}
-${index < messages.length - 1 ? '\n──────────────────────\n\n' : ''}`;
-    });
-
-    response += `\n━━━━━━━━━━━━━━━━━━━━━━
-💡 Total messages shown: ${messages.length}`;
-
-    return response;
-
-  } catch (error) {
-    console.error('View history error:', error);
-    return `❌ *Error viewing history*`;
-  }
-}
-
-// ============================================
-// CHECK AND DELIVER PENDING MESSAGES
-// This is called when a student messages the bot
-// ============================================
-
-export async function checkAndDeliverAdminMessages(phoneNumber) {
-  try {
-    console.log(`📬 Checking pending messages for: ${phoneNumber}`);
-    
-    // Find pending messages for this phone number
-    const { data: pendingMessages, error } = await supabase
-      .from('admin_message_logs')
-      .select('*')
-      .or(`student_phone.eq.${phoneNumber},student_phone.eq.${parseInt(phoneNumber)}`)
-      .eq('status', 'pending')
-      .order('created_at', { ascending: true })
-      .limit(5);
-
-    if (error) {
-      console.error('Error fetching pending messages:', error);
-      return null;
-    }
-
-    if (!pendingMessages || pendingMessages.length === 0) {
-      console.log('📬 No pending messages found');
-      return null;
-    }
-
-    console.log(`📬 Found ${pendingMessages.length} pending messages`);
-
-    // Format messages for return
-    const messages = pendingMessages.map(log => ({
-      id: log.id,
-      message: `📢 *MESSAGE FROM ADMIN*
-
-━━━━━━━━━━━━━━━━━━━━━━
-${log.message}
-━━━━━━━━━━━━━━━━━━━━━━
-
-📅 *Date:* ${new Date(log.created_at).toLocaleDateString()}
-🕐 *Time:* ${new Date(log.created_at).toLocaleTimeString()}`,
-      logId: log.id,
-      messageId: log.message_id,
-      studentUsn: log.student_usn
-    }));
-
-    return messages;
-
-  } catch (error) {
-    console.error('Check admin messages error:', error);
-    return null;
-  }
-}
-
-// ============================================
-// MARK MESSAGES AS DELIVERED
-// ============================================
-
-export async function markMessageAsDelivered(messageIds) {
-  try {
-    if (!messageIds || messageIds.length === 0) {
-      console.log('No message IDs to mark as delivered');
-      return false;
-    }
-
-    console.log(`✅ Marking ${messageIds.length} messages as delivered`);
-    
-    // Update individual message logs to delivered
-    const { error: updateError } = await supabase
-      .from('admin_message_logs')
-      .update({ 
-        status: 'delivered',
-        delivered_at: new Date().toISOString()
-      })
-      .in('id', messageIds);
-
-    if (updateError) {
-      console.error('Error marking as delivered:', updateError);
-      return false;
-    }
-
-    // Get message IDs that were updated
-    const { data: updatedLogs } = await supabase
-      .from('admin_message_logs')
-      .select('message_id')
-      .in('id', messageIds);
-
-    if (!updatedLogs || updatedLogs.length === 0) {
-      return true;
-    }
-
-    // Get unique parent message IDs
-    const parentIds = [...new Set(updatedLogs.map(log => log.message_id))];
-
-    // Check if all child messages are delivered for each parent
-    for (const msgId of parentIds) {
-      const { data: remainingPending } = await supabase
-        .from('admin_message_logs')
-        .select('id')
-        .eq('message_id', msgId)
-        .eq('status', 'pending');
-
-      // If no more pending messages for this parent, mark parent as delivered
-      if (!remainingPending || remainingPending.length === 0) {
-        await supabase
-          .from('admin_messages')
-          .update({ 
-            status: 'delivered',
-            delivered_at: new Date().toISOString()
-          })
-          .eq('id', msgId);
-          
-        console.log(`✅ Parent message ${msgId} fully delivered`);
-      }
-    }
-
-    return true;
-
-  } catch (error) {
-    console.error('Mark delivered error:', error);
-    return false;
-  }
-}
-
-// ============================================
-// PROCESS PENDING MESSAGES (BACKGROUND JOB)
-// Optional: Can be called periodically
-// ============================================
-
-export async function processPendingMessages() {
-  try {
-    console.log('🔄 Processing pending messages batch...');
-    
-    // Get all pending message logs
-    const { data: pendingLogs, error: fetchError } = await supabase
-      .from('admin_message_logs')
-      .select(`
-        id,
-        message_id,
-        student_usn,
-        student_name,
-        student_phone,
-        message,
-        status,
-        created_at,
-        admin_messages!inner(status)
-      `)
-      .eq('status', 'pending')
-      .eq('admin_messages.status', 'pending')
-      .limit(50);
-
-    if (fetchError || !pendingLogs || pendingLogs.length === 0) {
-      console.log('No pending messages to process');
-      return { processed: 0, message: 'No pending messages to process' };
-    }
-
-    console.log(`Found ${pendingLogs.length} pending messages to process`);
-    
-    let processedCount = 0;
-    let failedCount = 0;
-
-    for (const log of pendingLogs) {
-      try {
-        // Format the message for WhatsApp
-        const formattedMessage = `📢 *MESSAGE FROM ADMIN*
-
-━━━━━━━━━━━━━━━━━━━━━━
-${log.message}
-━━━━━━━━━━━━━━━━━━━━━━
-
-📅 *Date:* ${new Date(log.created_at).toLocaleDateString()}
-🕐 *Time:* ${new Date(log.created_at).toLocaleTimeString()}
-
-💡 Reply with HELP for options`;
-
-        // HERE: You would send via WhatsApp API
-        // For now, we just mark as delivered
-        // When you integrate with WhatsApp sending, replace this comment
-        
-        // Example WhatsApp API call:
-        // await sendWhatsAppMessage(log.student_phone, formattedMessage);
-
-        // Mark as delivered
-        await supabase
-          .from('admin_message_logs')
-          .update({ 
-            status: 'delivered',
-            delivered_at: new Date().toISOString()
-          })
-          .eq('id', log.id);
-
-        processedCount++;
-        
-        // Small delay to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 100));
-
-      } catch (error) {
-        console.error(`Error processing log ${log.id}:`, error);
-        failedCount++;
-        
-        // Mark as failed
-        await supabase
-          .from('admin_message_logs')
-          .update({ 
-            status: 'failed',
-            error_message: error.message
-          })
-          .eq('id', log.id);
-      }
-    }
-
-    // Update parent message status if all logs are processed
-    if (processedCount > 0) {
-      const parentMessageIds = [...new Set(pendingLogs.map(log => log.message_id))];
-      
-      for (const msgId of parentMessageIds) {
-        const { data: remainingPending } = await supabase
-          .from('admin_message_logs')
-          .select('id')
-          .eq('message_id', msgId)
-          .eq('status', 'pending');
-
-        if (!remainingPending || remainingPending.length === 0) {
-          await supabase
-            .from('admin_messages')
-            .update({ 
-              status: 'delivered',
-              delivered_at: new Date().toISOString()
-            })
-            .eq('id', msgId);
-            
-          console.log(`✅ Parent message ${msgId} fully delivered`);
-        }
-      }
-    }
-
-    console.log(`✅ Processed: ${processedCount} delivered, ${failedCount} failed`);
-    
-    return { 
-      processed: processedCount, 
-      failed: failedCount,
-      total: pendingLogs.length,
-      message: `Processed ${processedCount}/${pendingLogs.length} messages`
-    };
-
-  } catch (error) {
-    console.error('Process pending messages error:', error);
-    return { processed: 0, error: error.message };
-  }
+async function deleteStudent(usn) {
+  if (!usn) return '❌ *Usage:* DELETE <usn>';
+  
+  const { error } = await supabase
+    .from('students')
+    .delete()
+    .eq('usn', usn);
+  
+  if (error) return `❌ *Failed:* ${error.message}`;
+  
+  return `✅ *Student Deleted:* ${usn}`;
 }
