@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 import { handleAdminCommands } from './admin';
 import { handleStudentCommands } from './student';
-
-const ADMIN_NUMBERS = ['9480072737', '919480072737', '9900842058'];
+import { supabase } from '@/lib/supabase';
 
 export async function POST(request) {
   try {
@@ -36,17 +35,21 @@ export async function POST(request) {
     if (cleanNumber.startsWith('91')) cleanNumber = cleanNumber.substring(2);
     cleanNumber = cleanNumber.replace(/^0+/, '');
     
-    // Check if admin
-    const isAdmin = ADMIN_NUMBERS.some(adminNum => {
-      const cleanAdmin = adminNum.replace(/[^\d]/g, '').replace(/^91/, '').replace(/^0+/, '');
-      return cleanNumber === cleanAdmin;
-    });
+    // Check if admin from DATABASE (using regular supabase client with RLS)
+    const { data: adminData, error: adminError } = await supabase
+      .from('admins')
+      .select('mobile_number')
+      .eq('mobile_number', cleanNumber)
+      .maybeSingle(); // Changed from .single() to .maybeSingle() to avoid errors
+    
+    const isAdmin = adminData !== null;
     
     console.log(`👑 Is Admin: ${isAdmin}`);
     console.log(`🔄 Routing to: ${isAdmin ? 'ADMIN' : 'STUDENT'}`);
     
-    // Route to appropriate handler
     let replyMessage;
+    
+    // Route to appropriate handler
     if (isAdmin) {
       replyMessage = await handleAdminCommands(userMessage, cleanNumber);
     } else {
@@ -66,11 +69,18 @@ export async function POST(request) {
   }
 }
 
-// Shared send function
+// Send WhatsApp message function with PHONE_NUMBER_ID from env
 async function sendWhatsAppMessage(to, message) {
   const apiKey = process.env.VIRALBOOSTUP_API_KEY;
+  const phoneNoId = process.env.PHONE_NUMBER_ID;
+  
   if (!apiKey) {
-    console.log("❌ API Key missing");
+    console.log("❌ VIRALBOOSTUP_API_KEY missing");
+    return;
+  }
+  
+  if (!phoneNoId) {
+    console.log("❌ PHONE_NUMBER_ID missing in environment variables");
     return;
   }
   
@@ -83,7 +93,7 @@ async function sendWhatsAppMessage(to, message) {
       },
       body: JSON.stringify({
         to: to,
-        phoneNoId: "595231930349201",
+        phoneNoId: phoneNoId, // Using from environment variable
         type: "text",
         text: message
       })

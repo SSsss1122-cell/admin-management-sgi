@@ -178,7 +178,7 @@ function formatStudentDetails(student) {
 }
 
 // ============================================
-// HELPER: FORMAT DATE
+// HELPER: FORMAT DATE .. 
 // ============================================
 
 function formatDate(dateString) {

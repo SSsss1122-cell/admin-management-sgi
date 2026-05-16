@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabase';
+import { getInstitutionId } from '../lib/getInstitution';
 import { Lock, Phone, AlertCircle, Eye, EyeOff, Loader2, Shield, LogIn } from 'lucide-react';
 
 export default function LoginPage() {
@@ -12,6 +13,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [currentTime, setCurrentTime] = useState('');
+  const [institutionId, setInstitutionId] = useState('');
   const router = useRouter();
 
   useEffect(() => {
@@ -53,11 +55,40 @@ export default function LoginPage() {
       }
 
       // Check if admin exists
+      // ✅ GET institutionId FIRST
       const { data: admin, error: adminError } = await supabase
-        .from('admins')
-        .select('*')
-        .eq('mobile_number', cleanMobile)
-        .single();
+  .from('admins')
+  .select('*')
+  .eq('mobile_number', cleanMobile)
+  .single();
+
+if (adminError || !admin) {
+  setError('Invalid mobile number or password');
+  setLoading(false);
+  return;
+}
+
+// check institution exists
+if (!admin.institution_id) {
+  setError('Admin not linked to any institution');
+  setLoading(false);
+  return;
+}
+
+// NOW store institution id safely
+localStorage.setItem('institution_id', admin.institution_id);
+
+const instId = localStorage.getItem('institution_id');
+
+if (instId) {
+  setInstitutionId(instId);
+}
+     
+
+// ✅ THEN query
+ 
+
+  
 
       if (adminError || !admin) {
         setError('Invalid mobile number or password');
@@ -65,25 +96,43 @@ export default function LoginPage() {
         return;
       }
 
+      // ✅ NEW CHECK (ADD THIS)
+if (!admin.institution_id) {
+  setError('Admin not linked to any institution');
+  setLoading(false);
+  return;
+}
+
       // Compare passwords
-      if (password === admin.password_hash) {
-        // Store login status with admin name
-        localStorage.setItem('isLoggedIn', 'true');
-        localStorage.setItem('adminMobile', cleanMobile);
-        localStorage.setItem('adminName', admin.admin_name || 'Admin');
-        
-        // Redirect to HOME (main dashboard)
-        router.push('/home');
-        router.refresh();
-      } else {
-        setError('Invalid password');
-      }
+if (password === admin.password_hash) {
+
+  // ✅ STORE LOGIN INFO
+  localStorage.setItem('isLoggedIn', 'true');
+  localStorage.setItem('institution_id', admin.institution_id);
+  localStorage.setItem('adminMobile', cleanMobile);
+  localStorage.setItem('adminName', admin.admin_name || 'Admin');
+
+  // ✅ MAIN MULTI-INSTITUTION LOGIC (VERY IMPORTANT)
+  localStorage.setItem('institution_id', admin.institution_id);
+  localStorage.setItem('admin_id', admin.id);
+
+  console.log("✅ Login Success");
+  console.log("🏫 Institution ID:", admin.institution_id);
+
+  // Redirect
+  router.push('/home');
+  router.refresh();
+
+} else {
+  setError('Invalid password');
+}
     } catch (error) {
       console.error('Login error:', error);
       setError('An error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
+    
   };
 
   // Simple format - just allow numbers
@@ -519,6 +568,12 @@ export default function LoginPage() {
           ADMIN ACCESS ONLY
         </div>
       </div>
+
+      <p style={{ color: 'white' }}>
+        Inst: {institutionId}
+      </p>
+
+      
     </>
   );
 }
