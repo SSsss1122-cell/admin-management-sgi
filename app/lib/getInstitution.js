@@ -7,7 +7,7 @@ export const getAdminInstitution = async () => {
     console.log('ADMIN MOBILE:', adminMobile);
 
     if (!adminMobile) {
-      console.error('No admin mobile found');
+      console.warn('No admin mobile found');
       return null;
     }
 
@@ -18,7 +18,7 @@ export const getAdminInstitution = async () => {
       .single();
 
     if (error) {
-      console.error('Institution fetch error:', error);
+      console.warn('Institution fetch error:', error);
       return null;
     }
 
@@ -26,7 +26,7 @@ export const getAdminInstitution = async () => {
 
     return data;
   } catch (err) {
-    console.error('getAdminInstitution error:', err);
+    console.warn('getAdminInstitution error:', err);
     return null;
   }
 };

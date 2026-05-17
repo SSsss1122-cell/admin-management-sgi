@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabase';
+import { getAdminInstitution } from '../lib/getInstitution';
 
 import { 
   AlertTriangle, 
@@ -61,34 +62,56 @@ function AdminComplaints() {
   }, [complaints, searchTerm, statusFilter]);
 
   const fetchComplaints = async () => {
+  try {
+    // Try to read admin info from localStorage first
+    let institutionId = null;
     try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('complaints')
-        .select(`
-          id, 
-          title, 
-          description, 
-          status, 
-          photo_url, 
-          video_url, 
-          created_at,
-          student_id, 
-          students(full_name, usn, branch, email, phone)
-        `)
-        .order('created_at', { ascending: false });
-
-      if (!error) {
-        setComplaints(data || []);
-      } else {
-        console.error('Error fetching complaints:', error);
+      const adminString = localStorage.getItem('admin');
+      if (adminString) {
+        const admin = JSON.parse(adminString);
+        institutionId = admin?.institution_id || null;
       }
-    } catch (error) {
-      console.error('Error:', error);
-    } finally {
-      setLoading(false);
+    } catch (e) {
+      // ignore JSON parse errors
+      institutionId = null;
     }
-  };
+
+    // Fallback: if we don't have admin object, try to resolve via admin mobile
+    if (!institutionId) {
+      const adminData = await getAdminInstitution();
+      institutionId = adminData?.institution_id || null;
+    }
+
+    if (!institutionId) {
+      // No admin/institution available on client — show empty list and stop loading
+      setComplaints([]);
+      setFilteredComplaints([]);
+      setLoading(false);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('complaints')
+      .select('*')
+      .eq('institution_id', institutionId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.warn('Supabase fetch error (complaints):', error);
+      setComplaints([]);
+      setFilteredComplaints([]);
+      setLoading(false);
+      return;
+    }
+
+    setComplaints(data || []);
+    setLoading(false);
+
+  } catch (err) {
+    console.warn('Fetch complaints error:', err);
+    setLoading(false);
+  }
+};
 
   const filterComplaints = () => {
     let filtered = complaints;
@@ -132,7 +155,7 @@ function AdminComplaints() {
       // Show toast
       alert(`Status updated to ${newStatus.replace('_', ' ')}`);
     } catch (error) {
-      console.error('Error updating status:', error);
+        console.warn('Error updating status:', error);
       alert('Error updating status');
     }
   };

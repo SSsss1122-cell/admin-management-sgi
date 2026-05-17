@@ -113,13 +113,21 @@ const loadInstitutionData = async () => {
 
   // Clear stops when bus changes
   useEffect(() => {
-    if (selectedBus) {
-      clearAllMarkersAndLines();
-      setStops([]);
-      setExistingStops([]);
-      setAvailableStops([]);
-    }
-  }, [selectedBus, direction]);
+  if (!selectedBus) return;
+
+  if (stops.length > 0) {
+    const confirmed = confirm(
+      'Changing bus/direction will clear unsaved stops. Continue?'
+    );
+
+    if (!confirmed) return;
+  }
+
+  clearAllMarkersAndLines();
+  setStops([]);
+  setExistingStops([]);
+  setAvailableStops([]);
+}, [selectedBus, direction]);
 
   const clearAllMarkersAndLines = () => {
     if (mapInstanceRef.current) {
@@ -198,6 +206,7 @@ const loadInstitutionData = async () => {
     const initMap = async () => {
       try {
         const L = await import('leaflet');
+        window.L = L;
         await import('leaflet/dist/leaflet.css');
         
         // Fix leaflet icon issue
@@ -251,28 +260,34 @@ const loadInstitutionData = async () => {
     initMap();
 
     return () => {
-      if (mapInstanceRef.current && !mapContainerRef.current) {
-        mapInstanceRef.current.remove();
-        mapInstanceRef.current = null;
-        setMapInitialized(false);
-      }
-    };
+  if (mapInstanceRef.current) {
+    mapInstanceRef.current.remove();
+    mapInstanceRef.current = null;
+    setMapInitialized(false);
+  }
+};
   }, [mapInitialized]);
 
   // Change map style
-  const changeMapStyle = (style) => {
-    setMapStyle(style);
-    if (mapInstanceRef.current && mapInstanceRef.current.tileLayer) {
-      mapInstanceRef.current.removeLayer(mapInstanceRef.current.tileLayer);
-      const currentLayer = tileLayers[style];
-      const newTileLayer = L.tileLayer(currentLayer.url, {
-        attribution: currentLayer.attribution,
-        maxZoom: 19,
-        subdomains: currentLayer.subdomains || 'abc'
-      }).addTo(mapInstanceRef.current);
-      mapInstanceRef.current.tileLayer = newTileLayer;
-    }
-  };
+  const changeMapStyle = async (style) => {
+  setMapStyle(style);
+
+  if (mapInstanceRef.current && mapInstanceRef.current.tileLayer) {
+    const L = await import('leaflet');
+
+    mapInstanceRef.current.removeLayer(mapInstanceRef.current.tileLayer);
+
+    const currentLayer = tileLayers[style];
+
+    const newTileLayer = L.tileLayer(currentLayer.url, {
+      attribution: currentLayer.attribution,
+      maxZoom: 19,
+      subdomains: currentLayer.subdomains || 'abc'
+    }).addTo(mapInstanceRef.current);
+
+    mapInstanceRef.current.tileLayer = newTileLayer;
+  }
+};
 
   // Update markers and route line when stops change
   const updateMapMarkers = (stopsList) => {

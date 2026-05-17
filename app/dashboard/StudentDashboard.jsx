@@ -9,6 +9,7 @@ import {
   TrendingUp, Shield, Zap, Settings, Bell, Star, Award, Activity
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { getAdminInstitution } from '../lib/getInstitution';
 import { useRouter } from 'next/navigation';
 
 export default function StudentDashboard() {
@@ -21,6 +22,7 @@ export default function StudentDashboard() {
   const [editingStudent, setEditingStudent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [adminName, setAdminName] = useState('');
+  const [institutionId, setInstitutionId] = useState(null);
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
   const [stats, setStats] = useState({
     totalStudents: 0,
@@ -54,21 +56,32 @@ export default function StudentDashboard() {
   ];
 
   useEffect(() => {
-    fetchStudents();
-    const storedAdminName = localStorage.getItem('adminName');
-    if (storedAdminName) {
-      setAdminName(storedAdminName);
-    }
+  loadInstitutionData();
 
-    // Update time
-    const updateTime = () => {
-      const now = new Date();
-      setCurrentTime(now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
-    };
-    updateTime();
-    const timer = setInterval(updateTime, 1000);
-    return () => clearInterval(timer);
-  }, []);
+  const storedAdminName = localStorage.getItem('adminName');
+
+  if (storedAdminName) {
+    setAdminName(storedAdminName);
+  }
+
+  const updateTime = () => {
+    const now = new Date();
+
+    setCurrentTime(
+      now.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      })
+    );
+  };
+
+  updateTime();
+
+  const timer = setInterval(updateTime, 1000);
+
+  return () => clearInterval(timer);
+}, []);
 
   useEffect(() => {
     filterStudents();
@@ -84,11 +97,33 @@ export default function StudentDashboard() {
     }
   }, [toast.show]);
 
-  const fetchStudents = async () => {
+
+  const loadInstitutionData = async () => {
+  try {
+    const adminData = await getAdminInstitution();
+
+    console.log('ADMIN DATA:', adminData);
+
+    if (adminData?.institution_id) {
+      setInstitutionId(adminData.institution_id);
+
+      fetchStudents(adminData.institution_id);
+    } else {
+      showToast('Institution not found for admin', 'error');
+    }
+  } catch (error) {
+    console.error('Error loading institution:', error);
+
+    showToast('Failed to load institution data', 'error');
+  }
+};
+
+  const fetchStudents = async (instId = institutionId) => {
     try {
       const { data, error } = await supabase
         .from('students')
         .select('id, full_name, usn, branch, phone, routes, email, semester, created_at, updated_at')
+        .eq('institution_id', instId)
         .order('usn');
 
       if (error) throw error;
@@ -168,6 +203,7 @@ export default function StudentDashboard() {
       }
 
       const studentData = {
+        institution_id: institutionId,
         full_name: newStudent.full_name,
         usn: newStudent.usn.toUpperCase(),
         branch: newStudent.branch || null,
@@ -214,6 +250,7 @@ export default function StudentDashboard() {
           .from('students')
           .select('usn')
           .eq('usn', newStudent.usn.toUpperCase())
+          .eq('institution_id', institutionId)
           .maybeSingle();
 
         if (existingStudent) {
@@ -240,7 +277,8 @@ export default function StudentDashboard() {
       const { error } = await supabase
         .from('students')
         .update(updateData)
-        .eq('id', editingStudent.id);
+        .eq('id', editingStudent.id)
+        .eq('institution_id', institutionId);
 
       if (error) throw error;
 
@@ -271,7 +309,8 @@ export default function StudentDashboard() {
       const { error } = await supabase
         .from('students')
         .delete()
-        .eq('id', studentId);
+        .eq('id', studentId)
+        .eq('institution_id', institutionId);
 
       if (error) throw error;
 
@@ -292,7 +331,8 @@ export default function StudentDashboard() {
       const { error } = await supabase
         .from('students')
         .delete()
-        .in('id', selectedStudents);
+        .in('id', selectedStudents)
+        .eq('institution_id', institutionId);
 
       if (error) throw error;
 

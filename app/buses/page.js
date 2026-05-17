@@ -22,6 +22,7 @@ function BusesPage() {
   const [viewMode, setViewMode] = useState('grid');
   const [filterStatus, setFilterStatus] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
+  const [institutionId, setInstitutionId] = useState(null);
   
   // Add bus modal state
   const [showAddModal, setShowAddModal] = useState(false);
@@ -62,16 +63,61 @@ function BusesPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    fetchBuses();
-    fetchDrivers();
-  }, []);
+  initializeData();
+}, []);
+
+const initializeData = async () => {
+  const instId = await fetchInstitution();
+
+  if (instId) {
+    await fetchBuses(instId);
+    await fetchDrivers(instId);
+  } else {
+    setLoading(false);
+  }
+};
 
   useEffect(() => {
     filterBuses();
   }, [searchTerm, buses, filterStatus]);
+  
+  const fetchInstitution = async () => {
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
+    if (!user) {
+      console.log('No auth user found');
+      return null;
+    }
+
+    console.log('Auth User ID:', user.id);
+
+    // 🔥 USE user_id NOT id
+    const { data, error } = await supabase
+      .from('admins')
+      .select('institution_id')
+      .eq('user_id', user.id)
+      .single();
+
+    if (error) {
+      console.error('Error fetching institution:', error);
+      return null;
+    }
+
+    console.log('Institution ID:', data?.institution_id);
+
+    setInstitutionId(data?.institution_id || null);
+
+    return data?.institution_id || null;
+  } catch (error) {
+    console.error('Error fetching institution:', error);
+    return null;
+  }
+};
   // 🔥 FIXED: Added error handling for foreign key relation
-  const fetchBuses = async () => {
+  const fetchBuses = async (instId = institutionId) => {
     try {
       // First, try to fetch with driver relation
       let data;
@@ -87,6 +133,7 @@ function BusesPage() {
               contact
             )
           `)
+          .eq('institution_id', instId)
           .order('bus_number');
 
         if (error) throw error;
@@ -97,6 +144,7 @@ function BusesPage() {
         const { data: busesData, error } = await supabase
           .from('buses')
           .select('*')
+          .eq('institution_id', instId)
           .order('bus_number');
 
         if (error) throw error;
@@ -115,11 +163,12 @@ function BusesPage() {
   };
 
   // 🔥 FIXED: Added error handling for drivers fetch
-  const fetchDrivers = async () => {
+  const fetchDrivers = async (instId = institutionId) => {
     try {
       const { data, error } = await supabase
         .from('drivers_new')
         .select('id, name, driver_code, contact, status')
+        .eq('institution_id', instId)
         .order('name');
 
       if (error) {
@@ -184,6 +233,7 @@ function BusesPage() {
       const { data: existing } = await supabase
         .from('buses')
         .select('bus_number')
+        .eq('institution_id', institutionId)
         .eq('bus_number', newBus.bus_number.toUpperCase())
         .maybeSingle();
 
@@ -201,6 +251,7 @@ function BusesPage() {
           capacity: newBus.capacity ? parseInt(newBus.capacity) : null,
           driver_id: newBus.driver_id || null,
           is_active: newBus.is_active,
+          institution_id: institutionId,
           last_maintenance: newBus.last_maintenance || null,
           next_maintenance: newBus.next_maintenance || null,
           fuel_type: newBus.fuel_type || null,
@@ -276,6 +327,7 @@ function BusesPage() {
       const { data: existing } = await supabase
         .from('buses')
         .select('bus_number')
+        .eq('institution_id', institutionId)
         .eq('bus_number', editForm.bus_number.toUpperCase())
         .neq('id', editForm.id)
         .maybeSingle();
@@ -301,7 +353,8 @@ function BusesPage() {
           insurance_expiry: editForm.insurance_expiry || null,
           notes: editForm.notes || null
         })
-        .eq('id', editForm.id);
+        .eq('id', editForm.id)
+        .eq('institution_id', institutionId);
 
       if (error) throw error;
 
@@ -327,7 +380,8 @@ function BusesPage() {
         .update({ 
           is_active: newStatus
         })
-        .eq('id', bus.id);
+        .eq('id', bus.id)
+        .eq('institution_id', institutionId);
 
       if (error) throw error;
 
@@ -350,7 +404,8 @@ function BusesPage() {
       const { error } = await supabase
         .from('buses')
         .delete()
-        .eq('id', busId);
+        .eq('id', busId)
+        .eq('institution_id', institutionId);
 
       if (error) throw error;
 
