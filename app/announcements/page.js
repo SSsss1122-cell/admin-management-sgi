@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Megaphone, Plus, X, Send, Trash2, Edit, ArrowLeft, Calendar, Clock, Bell } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { getAdminInstitution } from '../lib/getInstitution';
 import withAuth from '../../components/withAuth';
 
 function Announcements() {
@@ -12,27 +13,78 @@ function Announcements() {
   const [newAnnouncement, setNewAnnouncement] = useState({ title: '', message: '' });
   const [loading, setLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState('');
+  const [adminData, setAdminData] = useState(null);
+
 
   const router = useRouter();
 
   useEffect(() => {
-    fetchAnnouncements();
-    
-    // Update time
-    const updateTime = () => {
-      const now = new Date();
-      setCurrentTime(now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
-    };
-    updateTime();
-    const timer = setInterval(updateTime, 1000);
-    return () => clearInterval(timer);
-  }, []);
+  initializePage();
 
-  const fetchAnnouncements = async () => {
+  const updateTime = () => {
+    const now = new Date();
+    setCurrentTime(
+      now.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })
+    );
+  };
+
+  updateTime();
+
+  const timer = setInterval(updateTime, 1000);
+
+  return () => clearInterval(timer);
+}, []);
+
+
+const initializePage = async () => {
+  try {
+    const admin = await getAdminInstitution();
+
+    console.log('ADMIN DATA:', admin);
+
+    if (!admin) {
+      alert('Admin institution not found');
+      setLoading(false);
+      return;
+    }
+
+    setAdminData(admin);
+
+    fetchAnnouncements(admin.institution_id);
+  } catch (err) {
+    console.error(err);
+    setLoading(false);
+  }
+};
+
+
+const loadInitialData = async () => {
+  try {
+    const admin = await getAdminInstitution();
+
+    if (!admin) {
+      alert('Admin institution not found');
+      return;
+    }
+
+    setAdminData(admin);
+
+    fetchAnnouncements(admin.institution_id);
+  } catch (error) {
+    console.error('Error loading admin data:', error);
+  }
+};
+
+  const fetchAnnouncements = async (institutionId) => {
     try {
       const { data, error } = await supabase
         .from('announcements')
         .select('*')
+        .eq('institution_id', institutionId)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -51,7 +103,8 @@ function Announcements() {
         .from('announcements')
         .insert([{
           title: newAnnouncement.title,
-          message: newAnnouncement.message
+          message: newAnnouncement.message,
+          institution_id: adminData.institution_id
         }])
         .select();
 
@@ -60,7 +113,7 @@ function Announcements() {
       alert('Announcement created successfully!');
       setNewAnnouncement({ title: '', message: '' });
       setShowForm(false);
-      fetchAnnouncements();
+      fetchAnnouncements(adminData.institution_id);
     } catch (error) {
       console.error('Error creating announcement:', error);
       alert('Error creating announcement: ' + error.message);
@@ -68,23 +121,27 @@ function Announcements() {
   };
 
   const deleteAnnouncement = async (announcementId) => {
-    if (!confirm('Are you sure you want to delete this announcement?')) return;
-    
-    try {
-      const { error } = await supabase
-        .from('announcements')
-        .delete()
-        .eq('id', announcementId);
+  if (!confirm('Are you sure you want to delete this announcement?')) return;
 
-      if (error) throw error;
+  try {
+    const { error } = await supabase
+      .from('announcements')
+      .delete()
+      .eq('id', announcementId)
+      .eq('institution_id', adminData.institution_id);
 
-      alert('Announcement deleted successfully!');
-      fetchAnnouncements();
-    } catch (error) {
-      console.error('Error deleting announcement:', error);
-      alert('Error deleting announcement: ' + error.message);
-    }
-  };
+    if (error) throw error;
+
+    alert('Announcement deleted successfully!');
+
+    fetchAnnouncements(adminData.institution_id);
+
+  } catch (error) {
+    console.error('Error deleting announcement:', error);
+    alert('Error deleting announcement: ' + error.message);
+  }
+};
+
 
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString('en-IN', {

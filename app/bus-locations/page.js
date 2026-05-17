@@ -11,6 +11,8 @@ import {
 import { supabase } from '../../lib/supabase';
 import withAuth from '../../components/withAuth';
 import dynamic from 'next/dynamic';
+import { getAdminInstitution } from '../lib/getInstitution';
+
 
 // Dynamically import Leaflet components (to avoid SSR issues)
 const MapContainer = dynamic(() => import('react-leaflet').then(mod => mod.MapContainer), { ssr: false });
@@ -35,7 +37,7 @@ function BusManagement() {
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
-
+  const [institutionId, setInstitutionId] = useState(null);
   const router = useRouter();
 
   // Load Leaflet CSS and icons
@@ -134,17 +136,10 @@ function BusManagement() {
   }, []);
 
   useEffect(() => {
-    if (mounted) {
-      fetchBuses();
-      fetchDrivers();
-      fetchBusLocations();
-      
-      // Refresh bus locations every 5 seconds for smooth updates
-      const interval = setInterval(fetchBusLocations, 5000);
-      
-      return () => clearInterval(interval);
-    }
-  }, [mounted]);
+  if (mounted) {
+    loadInstitutionData();
+  }
+}, [mounted]);
 
   // Update map markers when locations change
   useEffect(() => {
@@ -191,61 +186,104 @@ function BusManagement() {
     });
   }, [busLocations, leafletLoaded, busIcons]);
 
-  const fetchBuses = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('buses')
-        .select('*')
-        .order('bus_number');
+  const loadInstitutionData = async () => {
+  try {
+    const adminData = await getAdminInstitution();
 
-      if (error) throw error;
-      setBuses(data || []);
-    } catch (error) {
-      console.error('Error fetching buses:', error);
-    }
-  };
+    console.log('ADMIN DATA:', adminData);
 
-  const fetchDrivers = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('drivers_new')
-        .select('id, name, contact, license_no')
-        .order('name');
-
-      if (error) throw error;
-      setDrivers(data || []);
-    } catch (error) {
-      console.error('Error fetching drivers:', error);
-    }
-  };
-
-  const fetchBusLocations = async () => {
-    try {
-      const thirtySecondsAgo = new Date(Date.now() - 30000).toISOString();
-      
-      const { data, error } = await supabase
-        .from('bus_locations')
-        .select('*')
-        .gte('updated_at', thirtySecondsAgo)
-        .order('updated_at', { ascending: false });
-
-      if (error) throw error;
-
-      // Get latest location for each bus
-      const latestLocations = {};
-      data?.forEach(location => {
-        if (!latestLocations[location.bus_id] || new Date(location.updated_at) > new Date(latestLocations[location.bus_id].updated_at)) {
-          latestLocations[location.bus_id] = location;
-        }
-      });
-
-      setBusLocations(Object.values(latestLocations));
+    if (!adminData?.institution_id) {
       setLoading(false);
-    } catch (error) {
-      console.error('Error fetching bus locations:', error);
-      setLoading(false);
+      return;
     }
-  };
+
+    setInstitutionId(adminData.institution_id);
+
+    await Promise.all([
+      fetchBuses(adminData.institution_id),
+      fetchDrivers(adminData.institution_id),
+      fetchBusLocations(adminData.institution_id)
+    ]);
+
+    // Auto refresh every 5 sec
+    const interval = setInterval(() => {
+      fetchBusLocations(adminData.institution_id);
+    }, 5000);
+
+    return () => clearInterval(interval);
+
+  } catch (error) {
+    console.error('Error loading institution data:', error);
+    setLoading(false);
+  }
+};
+
+  const fetchBuses = async (instId) => {
+  try {
+    const { data, error } = await supabase
+      .from('buses')
+      .select('*')
+      .eq('institution_id', instId)
+      .order('bus_number');
+
+    if (error) throw error;
+
+    setBuses(data || []);
+  } catch (error) {
+    console.error('Error fetching buses:', error);
+  }
+};
+
+  const fetchDrivers = async (instId) => {
+  try {
+    const { data, error } = await supabase
+      .from('drivers_new')
+      .select('id, name, contact, license_no')
+      .eq('institution_id', instId)
+      .order('name');
+
+    if (error) throw error;
+
+    setDrivers(data || []);
+  } catch (error) {
+    console.error('Error fetching drivers:', error);
+  }
+};
+
+  const fetchBusLocations = async (instId) => {
+  try {
+    const thirtySecondsAgo = new Date(Date.now() - 30000).toISOString();
+
+    const { data, error } = await supabase
+      .from('bus_locations')
+      .select('*')
+      .eq('institution_id', instId)
+      .gte('updated_at', thirtySecondsAgo)
+      .order('updated_at', { ascending: false });
+
+    if (error) throw error;
+
+    // Latest location per bus
+    const latestLocations = {};
+
+    data?.forEach(location => {
+      if (
+        !latestLocations[location.bus_id] ||
+        new Date(location.updated_at) >
+          new Date(latestLocations[location.bus_id].updated_at)
+      ) {
+        latestLocations[location.bus_id] = location;
+      }
+    });
+
+    setBusLocations(Object.values(latestLocations));
+
+  } catch (error) {
+    console.error('Error fetching bus locations:', error);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const getDriverById = (driverId) => {
     return drivers.find(d => d.id === driverId);
@@ -258,7 +296,8 @@ function BusManagement() {
       const { error } = await supabase
         .from('buses')
         .delete()
-        .eq('id', busId);
+        .eq('id', busId)
+        .eq('institution_id', institutionId);
 
       if (error) throw error;
 

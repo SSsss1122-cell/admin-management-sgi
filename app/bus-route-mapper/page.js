@@ -10,6 +10,7 @@ import {
   Eye, Route
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { getAdminInstitution } from '../lib/getInstitution';
 
 function BusRouteMapper() {
   const [buses, setBuses] = useState([]);
@@ -31,6 +32,7 @@ function BusRouteMapper() {
   const [availableStops, setAvailableStops] = useState([]);
   const [mapStyle, setMapStyle] = useState('streets');
   const [mapInitialized, setMapInitialized] = useState(false);
+  const [institutionId, setInstitutionId] = useState(null);
   
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -57,27 +59,57 @@ function BusRouteMapper() {
 
   // Fetch buses
   useEffect(() => {
-    fetchBuses();
-    return () => {
-      // Cleanup map on component unmount
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
-        mapInstanceRef.current = null;
-      }
-    };
-  }, []);
+  loadInstitutionData();
 
-  const fetchBuses = async () => {
-    const { data, error } = await supabase
-      .from('buses')
-      .select('id, bus_number, route_name')
-      .eq('is_active', true)
-      .order('bus_number');
-    
-    if (!error) {
-      setBuses(data || []);
+  return () => {
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.remove();
+      mapInstanceRef.current = null;
     }
   };
+}, []);
+
+const loadInstitutionData = async () => {
+  try {
+    const adminData = await getAdminInstitution();
+
+    console.log('ADMIN DATA:', adminData);
+
+    if (adminData?.institution_id) {
+      setInstitutionId(adminData.institution_id);
+
+      fetchBuses(adminData.institution_id);
+    } else {
+      setMessage({
+        type: 'error',
+        text: 'Institution not found for admin'
+      });
+    }
+  } catch (error) {
+    console.error('Error loading institution:', error);
+
+    setMessage({
+      type: 'error',
+      text: 'Failed to load institution data'
+    });
+  }
+};
+
+  const fetchBuses = async (instId) => {
+  const { data, error } = await supabase
+    .from('buses')
+    .select('id, bus_number, route_name')
+    .eq('institution_id', instId)
+    .eq('is_active', true)
+    .order('bus_number');
+
+  if (error) {
+    console.error('Error fetching buses:', error);
+    return;
+  }
+
+  setBuses(data || []);
+};
 
   // Clear stops when bus changes
   useEffect(() => {
@@ -118,6 +150,7 @@ function BusRouteMapper() {
     const { data, error } = await supabase
       .from('bus_stops')
       .select('*')
+      .eq('institution_id', institutionId)
       .eq('bus_id', parseInt(selectedBus))
       .eq('direction', direction)
       .order('sequence', { ascending: true });
@@ -463,16 +496,24 @@ function BusRouteMapper() {
       setMessage({ type: 'error', text: 'Please add at least one stop' });
       return;
     }
+    if (!institutionId) {
+  setMessage({
+    type: 'error',
+    text: 'Institution not loaded'
+  });
+  return;
+}
 
     setSaving(true);
     
     try {
       // Delete existing stops for this bus and direction
       const { error: deleteError } = await supabase
-        .from('bus_stops')
-        .delete()
-        .eq('bus_id', parseInt(selectedBus))
-        .eq('direction', direction);
+  .from('bus_stops')
+  .delete()
+  .eq('institution_id', institutionId)
+  .eq('bus_id', parseInt(selectedBus))
+  .eq('direction', direction);
       
       if (deleteError) throw deleteError;
       
@@ -483,6 +524,7 @@ function BusRouteMapper() {
         sequence: index + 1,
         latitude: stop.lat,
         longitude: stop.lng,
+        institution_id: institutionId,
         direction: direction,
         estimated_time: stop.estimated_time || null,
         is_major: stop.is_major || false,

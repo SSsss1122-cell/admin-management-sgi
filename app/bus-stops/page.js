@@ -10,6 +10,7 @@ import {
   Search, RefreshCw, Sun, Moon, Info, Map, Navigation
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { getAdminInstitution } from '../lib/getInstitution';
 
 function BusStopsPage() {
   const [stops, setStops] = useState([]);
@@ -25,6 +26,7 @@ function BusStopsPage() {
   const [mapInstance, setMapInstance] = useState(null);
   const [markerInstance, setMarkerInstance] = useState(null);
   const [currentTime, setCurrentTime] = useState('');
+  const [institutionId, setInstitutionId] = useState(null);
   const mapContainerRef = useRef(null);
   
   const [formData, setFormData] = useState({
@@ -128,43 +130,78 @@ function BusStopsPage() {
     };
   }, [showMapPicker, mapLoaded, formData.latitude, formData.longitude]);
 
-  const fetchBuses = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('buses')
-        .select('id, bus_number, route_name, is_active')
-        .order('bus_number');
-      
-      if (error) throw error;
-      setBuses(data || []);
-    } catch (error) {
-      console.error('Error fetching buses:', error);
+  const loadInstitutionData = async () => {
+  try {
+    const adminData = await getAdminInstitution();
+
+    console.log('ADMIN DATA:', adminData);
+
+    if (adminData?.institution_id) {
+      setInstitutionId(adminData.institution_id);
+    } else {
+      setFormError('No institution assigned to admin');
     }
-  };
+  } catch (error) {
+    console.error('Error loading institution:', error);
+    setFormError('Failed to load institution data');
+  }
+};
+
+  const fetchBuses = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('buses')
+      .select('id, bus_number, route_name, is_active')
+      .eq('institution_id', institutionId)
+      .order('bus_number');
+
+    if (error) throw error;
+
+    setBuses(data || []);
+  } catch (error) {
+    console.error('Error fetching buses:', error);
+  }
+};
 
   const fetchStops = async () => {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('bus_stops')
-        .select('*, buses(bus_number, route_name)')
-        .order('bus_id')
-        .order('direction')
-        .order('sequence');
-      
-      if (error) throw error;
-      setStops(data || []);
-    } catch (error) {
-      console.error('Error fetching stops:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  try {
+    setLoading(true);
+
+    const { data, error } = await supabase
+      .from('bus_stops')
+      .select(`
+        *,
+        buses(
+          bus_number,
+          route_name,
+          institution_id
+        )
+      `)
+      .eq('buses.institution_id', institutionId)
+      .order('bus_id')
+      .order('direction')
+      .order('sequence');
+
+    if (error) throw error;
+
+    setStops(data || []);
+  } catch (error) {
+    console.error('Error fetching stops:', error);
+  } finally {
+    setLoading(false);
+  }
+};
 
   useEffect(() => {
+  loadInstitutionData();
+}, []);
+
+useEffect(() => {
+  if (institutionId) {
     fetchBuses();
     fetchStops();
-  }, []);
+  }
+}, [institutionId]);
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -211,7 +248,8 @@ function BusStopsPage() {
             landmark: formData.landmark || null,
             direction: formData.direction
           })
-          .eq('id', editingStop.id);
+          .eq('id', editingStop.id)
+          .eq('institution_id', institutionId);
 
         if (error) throw error;
         setFormSuccess('Stop updated successfully!');
@@ -219,16 +257,17 @@ function BusStopsPage() {
         const { error } = await supabase
           .from('bus_stops')
           .insert([{
-            bus_id: parseInt(formData.bus_id),
-            stop_name: formData.stop_name,
-            sequence: parseInt(formData.sequence),
-            latitude: parseFloat(formData.latitude),
-            longitude: parseFloat(formData.longitude),
-            estimated_time: formData.estimated_time ? parseInt(formData.estimated_time) : null,
-            is_major: formData.is_major,
-            landmark: formData.landmark || null,
-            direction: formData.direction
-          }]);
+  institution_id: institutionId,
+  bus_id: parseInt(formData.bus_id),
+  stop_name: formData.stop_name,
+  sequence: parseInt(formData.sequence),
+  latitude: parseFloat(formData.latitude),
+  longitude: parseFloat(formData.longitude),
+  estimated_time: formData.estimated_time ? parseInt(formData.estimated_time) : null,
+  is_major: formData.is_major,
+  landmark: formData.landmark || null,
+  direction: formData.direction
+}]);
 
         if (error) throw error;
         setFormSuccess('Stop added successfully!');
@@ -272,9 +311,10 @@ function BusStopsPage() {
 
     try {
       const { error } = await supabase
-        .from('bus_stops')
-        .delete()
-        .eq('id', stopToDelete.id);
+  .from('bus_stops')
+  .delete()
+  .eq('id', stopToDelete.id)
+  .eq('institution_id', institutionId);
 
       if (error) throw error;
       

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { getAdminInstitution } from '../lib/getInstitution';
 import { useRouter } from 'next/navigation';
 import { 
   Bus, 
@@ -46,6 +47,7 @@ function BusDetails() {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentTime, setCurrentTime] = useState('');
   const [editingBus, setEditingBus] = useState(null);
+  const [adminData, setAdminData] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
   const [editFormData, setEditFormData] = useState({
@@ -66,16 +68,25 @@ function BusDetails() {
   const router = useRouter();
 
   useEffect(() => {
-    fetchBuses();
-    
-    const updateTime = () => {
-      const now = new Date();
-      setCurrentTime(now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
-    };
-    updateTime();
-    const timer = setInterval(updateTime, 1000);
-    return () => clearInterval(timer);
-  }, []);
+  initializePage();
+
+  const updateTime = () => {
+    const now = new Date();
+    setCurrentTime(
+      now.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      })
+    );
+  };
+
+  updateTime();
+
+  const timer = setInterval(updateTime, 1000);
+
+  return () => clearInterval(timer);
+}, []);
 
   useEffect(() => {
     if (toast.show) {
@@ -90,28 +101,51 @@ function BusDetails() {
     setToast({ show: true, message, type });
   };
 
-  const fetchBuses = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const { data, error } = await supabase
-        .from('buses')
-        .select('*')
-        .order('bus_number');
+  const initializePage = async () => {
+  try {
+    const admin = await getAdminInstitution();
 
-      if (error) throw error;
+    console.log('ADMIN DATA:', admin);
 
-      setBuses(data || []);
-      
-    } catch (error) {
-      console.error('Error fetching buses:', error);
-      setError(error.message);
-    } finally {
+    if (!admin) {
+      showToast('Admin institution not found', 'error');
       setLoading(false);
+      return;
     }
-  };
 
+    setAdminData(admin);
+
+    fetchBuses(admin.institution_id);
+  } catch (error) {
+    console.error('Error initializing page:', error);
+    setLoading(false);
+  }
+};
+
+
+  const fetchBuses = async (institutionId) => {
+  try {
+    setLoading(true);
+    setError(null);
+
+    const { data, error } = await supabase
+      .from('buses')
+      .select('*')
+      .eq('institution_id', institutionId)
+      .order('bus_number');
+
+    if (error) throw error;
+
+    console.log('BUSES DATA:', data);
+
+    setBuses(data || []);
+  } catch (error) {
+    console.error('Error fetching buses:', error);
+    setError(error.message);
+  } finally {
+    setLoading(false);
+  }
+};
   const handleBack = () => {
     router.back();
   };
@@ -298,12 +332,14 @@ function BusDetails() {
       const { error } = await supabase
         .from('buses')
         .delete()
-        .eq('id', busId);
+        .eq('id', busId)
+        .eq('id', busId)
+        .eq('institution_id', adminData.institution_id);
 
       if (error) throw error;
 
       showToast(`Bus ${busNumber} deleted successfully!`, 'success');
-      fetchBuses();
+      fetchBuses(adminData.institution_id);
     } catch (error) {
       console.error('Error deleting bus:', error);
       showToast('Error deleting bus: ' + error.message, 'error');
@@ -356,14 +392,15 @@ function BusDetails() {
       const { error } = await supabase
         .from('buses')
         .update(updateData)
-        .eq('id', editingBus.id);
+        .eq('id', editingBus.id)
+        .eq('institution_id', adminData.institution_id);
 
       if (error) throw error;
 
       showToast(`Bus ${editFormData.bus_number} updated successfully!`, 'success');
       setShowEditModal(false);
       setEditingBus(null);
-      fetchBuses();
+      fetchBuses(adminData.institution_id);
     } catch (error) {
       console.error('Error updating bus:', error);
       showToast('Error updating bus: ' + error.message, 'error');
