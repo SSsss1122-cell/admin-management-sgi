@@ -21,6 +21,7 @@ function DriversDashboard() {
   const [editingDriver, setEditingDriver] = useState(null);
   const [loading, setLoading] = useState(true);
   const [adminName, setAdminName] = useState('');
+  const [institutionId, setInstitutionId] = useState(null);
   const [stats, setStats] = useState({
     totalDrivers: 0,
     totalWithLicense: 0,
@@ -50,83 +51,98 @@ function DriversDashboard() {
   });
 
   useEffect(() => {
-    fetchDrivers();
-    fetchBuses();
-    const storedAdminName = localStorage.getItem('adminName');
-    if (storedAdminName) {
-      setAdminName(storedAdminName);
-    }
-  }, []);
+  const storedInstitutionId = localStorage.getItem("institutionId");
+  const storedAdminName = localStorage.getItem("adminName");
+
+  if (!storedInstitutionId) {
+    console.error("No institutionId found in localStorage");
+
+    router.push("/login");
+    setLoading(false);
+    return;
+  }
+
+  setInstitutionId(storedInstitutionId);
+  setAdminName(storedAdminName || "Admin");
+
+  fetchDrivers(storedInstitutionId);
+  fetchBuses(storedInstitutionId);
+}, []);
 
   useEffect(() => {
     filterDrivers();
   }, [drivers, searchTerm, filterStatus]);
 
+  
+
   // 🔥 FIXED: Added error handling for missing columns and table structure
-  const fetchDrivers = async () => {
-    try {
-      // First, check if the drivers_new table exists and get its structure
-      const { data: tableInfo, error: tableError } = await supabase
-        .from('drivers_new')
-        .select('*')
-        .limit(1);
+  const fetchDrivers = async (instId) => {
+  try {
+    setLoading(true);
 
-      if (tableError) {
-        console.error('Table error:', tableError);
-        // If table doesn't exist, set empty array and return
-        setDrivers([]);
-        updateStats([]);
-        setLoading(false);
-        return;
-      }
-
-      // Try to fetch with bus relation - if it fails, fetch without relation
-      let data;
-      try {
-        const { data: driversData, error } = await supabase
-          .from('drivers_new')
-          .select(`
-            *,
-            bus:buses!drivers_new_bus_id_fkey (
-              id,
-              bus_number,
-              route_name,
-              capacity
-            )
-          `)
-          .order('name');
-
-        if (error) throw error;
-        data = driversData;
-      } catch (relationError) {
-        console.warn('Bus relation fetch failed, fetching without relation:', relationError);
-        // Fallback: fetch drivers without bus relation
-        const { data: driversData, error } = await supabase
-          .from('drivers_new')
-          .select('*')
-          .order('name');
-
-        if (error) throw error;
-        data = driversData;
-      }
-
-      setDrivers(data || []);
-      updateStats(data || []);
-    } catch (error) {
-      console.error('Error fetching drivers:', error);
-      setDrivers([]);
-      updateStats([]);
-    } finally {
-      setLoading(false);
+    if (!instId) {
+      console.error("Institution ID missing");
+      return;
     }
-  };
+
+    const cleanInstitutionId = String(instId).trim();
+
+    console.log("Fetching drivers for institution:", cleanInstitutionId);
+
+    // STEP 1: fetch drivers only
+    const { data: driversData, error: driversError } = await supabase
+      .from('drivers_new')
+      .select('*')
+      .eq('institution_id', cleanInstitutionId)
+      .order('created_at', { ascending: false });
+
+    if (driversError) {
+      console.error(JSON.stringify(error, null, 2));
+      alert(driversError.message);
+      return;
+    }
+
+    console.log("Drivers fetched:", driversData);
+
+    // STEP 2: fetch buses separately
+    const { data: busesData, error: busesError } = await supabase
+  .from('buses')
+  .select('id, bus_number, route_name')
+  .eq('institution_id', cleanInstitutionId);
+
+    if (busesError) {
+      console.error("Buses fetch error:", JSON.stringify(busesError, null, 2));
+    }
+
+    // STEP 3: manually attach bus info
+    const mergedDrivers = (driversData || []).map(driver => ({
+      ...driver,
+      bus: (busesData || []).find(bus => bus.id === driver.bus_id) || null
+    }));
+
+    console.log("Merged drivers:", mergedDrivers);
+
+    setDrivers(mergedDrivers);
+
+    // IMPORTANT
+    setFilteredDrivers(mergedDrivers);
+
+    updateStats(mergedDrivers);
+
+  } catch (err) {
+    console.error("Unexpected error:", err);
+  } finally {
+    setLoading(false);
+  }
+};
 
   // 🔥 FIXED: Added error handling for buses table
-  const fetchBuses = async () => {
+  const fetchBuses = async (instId) => {
     try {
       const { data, error } = await supabase
         .from('buses')
-        .select('id, bus_number, route_name, capacity, status')
+        .select('id, bus_number, route_name, status')
+        .eq('institution_id', instId)
         .order('bus_number');
 
       if (error) {
@@ -218,6 +234,7 @@ function DriversDashboard() {
 
       // Prepare insert data - only include fields that exist in the table
       const insertData = {
+        institution_id: institutionId,
         name: newDriver.name,
         contact: newDriver.contact || null,
         password: newDriver.password,
@@ -253,8 +270,8 @@ function DriversDashboard() {
       alert('Driver added successfully!');
       resetForm();
       setShowAddForm(false);
-      fetchDrivers();
-      fetchBuses();
+      fetchDrivers(institutionId);
+      fetchBuses(institutionId);
     } catch (error) {
       console.error('Error adding driver:', error);
       alert('Error adding driver: ' + error.message);
@@ -270,6 +287,7 @@ function DriversDashboard() {
           .from('drivers_new')
           .select('driver_code')
           .eq('driver_code', newDriver.driver_code.toUpperCase())
+          .eq('institution_id', institutionId)
           .maybeSingle();
 
         if (existingDriver) {
@@ -311,15 +329,16 @@ function DriversDashboard() {
       const { error } = await supabase
         .from('drivers_new')
         .update(updateData)
-        .eq('id', editingDriver.id);
+        .eq('id', editingDriver.id)
+        .eq('institution_id', institutionId);
 
       if (error) throw error;
 
       alert('Driver updated successfully!');
       setEditingDriver(null);
       resetForm();
-      fetchDrivers();
-      fetchBuses();
+      fetchDrivers(institutionId);
+      fetchBuses(institutionId);
     } catch (error) {
       console.error('Error updating driver:', error);
       alert('Error updating driver: ' + error.message);
@@ -333,13 +352,14 @@ function DriversDashboard() {
       const { error } = await supabase
         .from('drivers_new')
         .delete()
-        .eq('id', driverId);
+        .eq('id', driverId)
+        .eq('institution_id', institutionId);
 
       if (error) throw error;
 
       alert('Driver deleted successfully!');
-      fetchDrivers();
-      fetchBuses();
+      fetchDrivers(institutionId);
+      fetchBuses(institutionId);
     } catch (error) {
       console.error('Error deleting driver:', error);
       alert('Error deleting driver: ' + error.message);
@@ -347,6 +367,7 @@ function DriversDashboard() {
   };
 
   const openEditForm = (driver) => {
+    if (driver.institution_id !== institutionId) return;
     setEditingDriver(driver);
     setNewDriver({
       name: driver.name || '',
@@ -1154,7 +1175,7 @@ function DriversDashboard() {
                           disabled={isAssigned}
                           className={isAssigned ? 'text-gray-500' : ''}
                         >
-                          {bus.bus_number} - {bus.route_name || 'No Route'} {bus.capacity ? `(${bus.capacity} seats)` : ''}
+                          {bus.bus_number} - {bus.route_name || 'No Route'} {bus.status ? `(${bus.status})` : ''}
                           {isAssigned ? ' (Already Assigned)' : ''}
                         </option>
                       );

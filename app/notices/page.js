@@ -1,176 +1,296 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  Bell, Send, User, Mail, Calendar, Plus, X, Users, 
-  FileText, Target, ArrowLeft, Clock, ChevronDown, 
-  CheckCircle, AlertCircle, BookOpen, Link as LinkIcon
+import {
+  Bell,
+  Send,
+  User,
+  Users,
+  FileText,
+  Target,
+  ArrowLeft,
+  Clock,
+  CheckCircle,
+  Link as LinkIcon,
 } from 'lucide-react';
+
 import { supabase } from '../../lib/supabase';
 import withAuth from '../../components/withAuth';
 
 function Notices() {
-  const [students, setStudents] = useState([]);
-  const [selectedStudent, setSelectedStudent] = useState("");
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [pdfUrl, setPdfUrl] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [recentNotices, setRecentNotices] = useState([]);
-  const [showForm, setShowForm] = useState(false);
-  const [sendToAll, setSendToAll] = useState(false);
-  const [currentTime, setCurrentTime] = useState('');
-
   const router = useRouter();
 
-  // Fetch all students
+  // ================= STATES =================
+
+  const [institutionId, setInstitutionId] = useState(null);
+
+  const [students, setStudents] = useState([]);
+  const [recentNotices, setRecentNotices] = useState([]);
+
+  const [selectedStudent, setSelectedStudent] = useState('');
+  const [sendToAll, setSendToAll] = useState(false);
+
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [pdfUrl, setPdfUrl] = useState('');
+
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedBranch, setSelectedBranch] = useState('');
+
+  const [loading, setLoading] = useState(false);
+  const [currentTime, setCurrentTime] = useState('');
+
+  // ================= LOAD INITIAL DATA =================
+
   useEffect(() => {
-    const fetchStudents = async () => {
-      const { data, error } = await supabase
-        .from("students")
-        .select("id, full_name, usn, branch, email")
-        .order('full_name');
+  const institutionId = localStorage.getItem('institutionId');
 
-      if (!error) setStudents(data || []);
-      else console.error(error);
-    };
+  if (!institutionId) {
+    router.push('/login');
+    return;
+  }
 
-    fetchStudents();
-    fetchRecentNotices();
-    
-    // Update time
-    const updateTime = () => {
-      const now = new Date();
-      setCurrentTime(now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
-    };
-    updateTime();
-    const timer = setInterval(updateTime, 1000);
-    return () => clearInterval(timer);
-  }, []);
+  fetchStudents(institutionId);
+  fetchRecentNotices(institutionId);
+}, []);
+  // ================= CLOCK =================
 
-  // Fetch recent notices
-  const fetchRecentNotices = async () => {
-    const { data, error } = await supabase
-      .from("notices")
-      .select(`
-        *,
-        students (full_name, usn)
-      `)
-      .order('created_at', { ascending: false })
-      .limit(5);
+  const updateClock = () => {
+    const now = new Date();
 
-    if (!error) setRecentNotices(data || []);
+    setCurrentTime(
+      now.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })
+    );
   };
 
-  // Send notice
-  const sendNotice = async () => {
-    if ((!selectedStudent && !sendToAll) || !title) {
-      alert("Please select a student or choose 'Send to All', and enter a title!");
-      return;
-    }
+  // ================= FETCH STUDENTS =================
 
-    setLoading(true);
-
+  const fetchStudents = async (instId) => {
     try {
-      let noticeData;
+      const { data, error } = await supabase
+        .from('students')
+        .select('id, full_name, usn, branch, email')
+        .eq('institution_id', instId)
+        .order('full_name', { ascending: true });
 
-      if (sendToAll) {
-        // Send to all students
-        const notices = students.map(student => ({
-          title,
-          description,
-          pdf_url: pdfUrl || null,
-          student_id: student.id,
-        }));
-
-        const { data, error } = await supabase
-          .from("notices")
-          .insert(notices)
-          .select();
-
-        if (error) throw error;
-        noticeData = data;
-      } else {
-        // Send to single student
-        const { data, error } = await supabase
-          .from("notices")
-          .insert([{
-            title,
-            description,
-            pdf_url: pdfUrl || null,
-            student_id: selectedStudent,
-          }])
-          .select();
-
-        if (error) throw error;
-        noticeData = data;
+      if (error) {
+        console.error('Fetch Students Error:', error);
+        return;
       }
 
-      alert(`Notice sent successfully to ${sendToAll ? 'all students' : 'selected student'}!`);
+      setStudents(data || []);
+    } catch (err) {
+      console.error('Fetch Students Exception:', err);
+    }
+  };
 
-      // Reset fields
-      setTitle("");
-      setDescription("");
-      setPdfUrl("");
-      setSelectedStudent("");
+  // ================= FETCH NOTICES =================
+
+  const fetchRecentNotices = async (instId) => {
+    try {
+      const { data, error } = await supabase
+        .from('notices')
+        .select(`
+          id,
+          title,
+          description,
+          pdf_url,
+          created_at,
+          student_id,
+          institution_id,
+          students (
+            full_name,
+            usn
+          )
+        `)
+        .eq('institution_id', instId)
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (error) {
+        console.error('Fetch Notices Error:', error);
+        return;
+      }
+
+      setRecentNotices(data || []);
+    } catch (err) {
+      console.error('Fetch Notices Exception:', err);
+    }
+  };
+
+  // ================= FILTERED STUDENTS =================
+
+  const filteredStudents = useMemo(() => {
+    return students.filter((student) => {
+      const matchesSearch =
+        student.full_name
+          ?.toLowerCase()
+          .includes(searchTerm.toLowerCase()) ||
+        student.usn
+          ?.toLowerCase()
+          .includes(searchTerm.toLowerCase());
+
+      const matchesBranch =
+        !selectedBranch || student.branch === selectedBranch;
+
+      return matchesSearch && matchesBranch;
+    });
+  }, [students, searchTerm, selectedBranch]);
+
+  // ================= SEND NOTICE =================
+
+  const sendNotice = async () => {
+    try {
+      if (!institutionId) {
+        alert('Institution ID missing');
+        return;
+      }
+
+      if (!title.trim()) {
+        alert('Please enter notice title');
+        return;
+      }
+
+      if (!sendToAll && !selectedStudent) {
+        alert('Please select a student');
+        return;
+      }
+
+      setLoading(true);
+
+      // ===== SEND TO ALL =====
+
+      if (sendToAll) {
+        if (filteredStudents.length === 0) {
+          alert('No students found');
+          return;
+        }
+
+        const noticesPayload = filteredStudents.map((student) => ({
+          title: title.trim(),
+          description: description.trim(),
+          pdf_url: pdfUrl || null,
+          student_id: student.id,
+          institution_id: institutionId,
+        }));
+
+        const { error } = await supabase
+          .from('notices')
+          .insert(noticesPayload);
+
+        if (error) throw error;
+      }
+
+      // ===== SEND TO SINGLE =====
+
+      else {
+        const { error } = await supabase.from('notices').insert([
+          {
+            title: title.trim(),
+            description: description.trim(),
+            pdf_url: pdfUrl || null,
+            student_id: selectedStudent,
+            institution_id: institutionId,
+          },
+        ]);
+
+        if (error) throw error;
+      }
+
+      alert(
+        `Notice sent successfully to ${
+          sendToAll ? 'all students' : 'student'
+        }`
+      );
+
+      // RESET FORM
+
+      setTitle('');
+      setDescription('');
+      setPdfUrl('');
+      setSelectedStudent('');
+      setSearchTerm('');
+      setSelectedBranch('');
       setSendToAll(false);
-      setShowForm(false);
-      
-      // Refresh recent notices
-      fetchRecentNotices();
+
+      // REFRESH NOTICES
+
+      fetchRecentNotices(institutionId);
     } catch (error) {
-      console.error(error);
-      alert("Error sending notice: " + error.message);
+      console.error('Send Notice Error:', error);
+      alert(error.message || 'Failed to send notice');
     } finally {
       setLoading(false);
     }
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
-  const formatTimeAgo = (dateString) => {
-    if (!dateString) return 'recently';
-    
-    try {
-      const date = new Date(dateString);
-      const now = new Date();
-      const diffMs = now - date;
-      const diffMins = Math.floor(diffMs / 60000);
-      const diffHours = Math.floor(diffMs / 3600000);
-      const diffDays = Math.floor(diffMs / 86400000);
-
-      if (diffMins < 1) return 'just now';
-      if (diffMins < 60) return `${diffMins} min ago`;
-      if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
-      if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
-      return formatDate(dateString);
-    } catch (e) {
-      return 'recently';
-    }
-  };
-
-  const getSelectedStudentName = () => {
-    if (sendToAll) return "All Students";
-    const student = students.find(s => s.id === selectedStudent);
-    return student ? `${student.full_name} (${student.usn})` : "";
-  };
+  // ================= HELPERS =================
 
   const handleBack = () => {
     router.back();
   };
 
+  const getSelectedStudentName = () => {
+    if (sendToAll) return 'All Students';
+
+    const student = students.find(
+      (s) => s.id === selectedStudent
+    );
+
+    return student
+      ? `${student.full_name} (${student.usn})`
+      : '';
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+
+    return new Date(dateString).toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const formatTimeAgo = (dateString) => {
+    if (!dateString) return 'recently';
+
+    const date = new Date(dateString);
+    const now = new Date();
+
+    const diffMs = now - date;
+
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'just now';
+    if (diffMins < 60) return `${diffMins} min ago`;
+    if (diffHours < 24)
+      return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+    if (diffDays < 7)
+      return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+
+    return formatDate(dateString);
+  };
+
   const today = new Date();
-  const dateStr = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+  const dateStr = today.toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+
+  // ================= RETURN UI BELOW =================
 
   return (
     <>
@@ -679,6 +799,29 @@ function Notices() {
                     }}>
                       Select Student
                     </label>
+                    <input
+  type="text"
+  value={searchTerm}
+  onChange={(e) => setSearchTerm(e.target.value)}
+  placeholder="Search student by name or USN..."
+  className="input-field"
+  style={{ marginBottom: 10 }}
+/>
+                    <select
+  value={selectedBranch}
+  onChange={(e) => setSelectedBranch(e.target.value)}
+  className="input-field"
+  style={{ marginBottom: 10 }}
+>
+  <option value="">All Branches</option>
+
+  {[...new Set(students.map((s) => s.branch))].map((branch) => (
+    <option key={branch} value={branch}>
+      {branch}
+    </option>
+  ))}
+</select>
+
                     <select
                       value={selectedStudent}
                       onChange={(e) => setSelectedStudent(e.target.value)}
@@ -686,7 +829,7 @@ function Notices() {
                       style={{ appearance: 'none' }}
                     >
                       <option value="">-- Choose a student --</option>
-                      {students.map((student) => (
+                      {filteredStudents.map((student) => (
                         <option key={student.id} value={student.id}>
                           {student.full_name} ({student.usn}) - {student.branch}
                         </option>

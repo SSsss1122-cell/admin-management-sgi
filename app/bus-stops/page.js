@@ -171,22 +171,23 @@ function BusStopsPage() {
       .from('bus_stops')
       .select(`
         *,
-        buses(
+        buses (
+          id,
           bus_number,
-          route_name,
-          institution_id
+          route_name
         )
       `)
-      .eq('buses.institution_id', institutionId)
-      .order('bus_id')
-      .order('direction')
-      .order('sequence');
+      .eq('institution_id', institutionId) // IMPORTANT
+      .order('bus_id', { ascending: true })
+      .order('direction', { ascending: true })
+      .order('sequence', { ascending: true });
 
     if (error) throw error;
 
     setStops(data || []);
   } catch (error) {
     console.error('Error fetching stops:', error);
+    setFormError('Failed to fetch stops');
   } finally {
     setLoading(false);
   }
@@ -238,6 +239,7 @@ useEffect(() => {
         const { error } = await supabase
           .from('bus_stops')
           .update({
+            institution_id: institutionId,
             bus_id: parseInt(formData.bus_id),
             stop_name: formData.stop_name,
             sequence: parseInt(formData.sequence),
@@ -291,7 +293,12 @@ useEffect(() => {
   };
 
   const handleEdit = (stop) => {
-    setEditingStop(stop);
+    if (stop.institution_id !== institutionId) {
+  setFormError('Unauthorized access');
+  return;
+}
+
+setEditingStop(stop);
     setFormData({
       bus_id: stop.bus_id.toString(),
       stop_name: stop.stop_name,
@@ -307,28 +314,37 @@ useEffect(() => {
   };
 
   const handleDelete = async () => {
-    if (!stopToDelete) return;
+  if (!stopToDelete) return;
 
-    try {
-      const { error } = await supabase
-  .from('bus_stops')
-  .delete()
-  .eq('id', stopToDelete.id)
-  .eq('institution_id', institutionId);
-
-      if (error) throw error;
-      
-      setShowDeleteModal(false);
-      setStopToDelete(null);
-      fetchStops();
-      setFormSuccess('Stop deleted successfully!');
-      setTimeout(() => setFormSuccess(''), 3000);
-    } catch (error) {
-      console.error('Error deleting stop:', error);
-      setFormError(error.message);
-      setTimeout(() => setFormError(''), 3000);
+  try {
+    // Verify institution ownership first
+    if (stopToDelete.institution_id !== institutionId) {
+      setFormError('Unauthorized delete attempt');
+      return;
     }
-  };
+
+    const { error } = await supabase
+      .from('bus_stops')
+      .delete()
+      .eq('id', stopToDelete.id)
+      .eq('institution_id', institutionId);
+
+    if (error) throw error;
+
+    setShowDeleteModal(false);
+    setStopToDelete(null);
+
+    fetchStops();
+
+    setFormSuccess('Stop deleted successfully!');
+    setTimeout(() => setFormSuccess(''), 3000);
+
+  } catch (error) {
+    console.error('Error deleting stop:', error);
+    setFormError(error.message);
+    setTimeout(() => setFormError(''), 3000);
+  }
+};
 
   const resetForm = () => {
     setEditingStop(null);

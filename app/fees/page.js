@@ -21,6 +21,7 @@ function FeesManagement() {
   const [feeFilter, setFeeFilter] = useState('all');
   const [showFeeForm, setShowFeeForm] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState(null);
+  const [institutionId, setInstitutionId] = useState(null);
   const [feeData, setFeeData] = useState({
     total_fees: '',
     paid_amount: '',
@@ -40,28 +41,46 @@ function FeesManagement() {
   const router = useRouter();
 
   useEffect(() => {
-    fetchStudents();
-  }, []);
+  const instId = localStorage.getItem('institution_id');
+
+  console.log("🏫 Fees Page Institution ID:", instId);
+
+  if (instId) {
+    setInstitutionId(instId);
+    fetchStudents(instId);
+  } else {
+    console.error("❌ No institution_id found");
+    setLoading(false);
+  }
+}, []);
 
   useEffect(() => {
     filterStudents();
   }, [students, searchTerm, feeFilter, selectedPeriod]);
 
-  const fetchStudents = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('students')
-        .select('*')
-        .order('usn');
+  const fetchStudents = async (instId) => {
+  try {
 
-      if (error) throw error;
-      setStudents(data || []);
-    } catch (error) {
-      console.error('Error fetching students:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    console.log("📦 Fetching students for institution:", instId);
+
+    const { data, error } = await supabase
+      .from('students')
+      .select('*')
+      .eq('institution_id', instId) // ✅ IMPORTANT
+      .order('usn');
+
+    if (error) throw error;
+
+    console.log("✅ Students Loaded:", data);
+
+    setStudents(data || []);
+
+  } catch (error) {
+    console.error('❌ Error fetching students:', error);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const filterStudents = () => {
     let filtered = students;

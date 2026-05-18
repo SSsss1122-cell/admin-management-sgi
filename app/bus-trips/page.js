@@ -41,96 +41,125 @@ function BusTripsPage() {
   }, []);
 
   const fetchTrips = async () => {
-    try {
-      setLoading(true);
-      
-      // First fetch all trips
-      const { data: tripsData, error: tripsError } = await supabase
-        .from('driver_trips')
-        .select('*')
-        .order('start_time', { ascending: false });
+  try {
+    setLoading(true);
 
-      if (tripsError) throw tripsError;
+    const institutionId = localStorage.getItem('institutionId');
 
-      // Then fetch drivers and buses separately to avoid join issues
-      const { data: driversData } = await supabase
-        .from('drivers_new')
-        .select('id, name, contact, license_no');
+    if (!institutionId) {
+      console.error('No institutionId found in localStorage');
+      return;
+    }
 
-      const { data: busesData } = await supabase
-        .from('buses')
-        .select('id, bus_number, bus_name');
+    // Fetch only trips for this institution
+    const { data: tripsData, error: tripsError } = await supabase
+      .from('driver_trips')
+      .select('*')
+      .eq('institution_id', institutionId)
+      .order('start_time', { ascending: false });
 
-      setDrivers(driversData || []);
-      setBuses(busesData || []);
-      
-      // Combine the data
-      const tripsWithDetails = (tripsData || []).map(trip => ({
-        ...trip,
-        driver: driversData?.find(d => d.id === trip.driver_id) || null,
-        bus: busesData?.find(b => b.id === trip.bus_id) || null
-      }));
+    if (tripsError) throw tripsError;
 
-      setTrips(tripsWithDetails);
+    // Fetch only institution drivers
+    const { data: driversData } = await supabase
+      .from('drivers_new')
+      .select('id, name, contact, license_no')
+      .eq('institution_id', institutionId);
 
-      // Calculate stats
-      const total = tripsWithDetails.length;
-      const active = tripsWithDetails.filter(t => !t.end_time).length;
-      const morning = tripsWithDetails.filter(t => t.trip_type === 'morning').length;
-      const evening = tripsWithDetails.filter(t => t.trip_type === 'evening').length;
-      const other = tripsWithDetails.filter(t => t.trip_type === 'other').length;
+    // Fetch only institution buses
+    const { data: busesData } = await supabase
+      .from('buses')
+      .select('id, bus_number, bus_name')
+      .eq('institution_id', institutionId);
 
-      // Calculate average duration for completed trips
-      const completedTrips = tripsWithDetails.filter(t => t.end_time) || [];
-      let totalDuration = 0;
-      completedTrips.forEach(trip => {
-        const start = new Date(trip.start_time);
-        const end = new Date(trip.end_time);
-        const duration = (end - start) / (1000 * 60); // minutes
-        totalDuration += duration;
-      });
-      const avgDuration = completedTrips.length > 0 
-        ? Math.round(totalDuration / completedTrips.length) 
+    setDrivers(driversData || []);
+    setBuses(busesData || []);
+
+    // Combine data
+    const tripsWithDetails = (tripsData || []).map(trip => ({
+      ...trip,
+      driver: driversData?.find(d => d.id === trip.driver_id) || null,
+      bus: busesData?.find(b => b.id === trip.bus_id) || null
+    }));
+
+    setTrips(tripsWithDetails);
+
+    // Stats
+    const total = tripsWithDetails.length;
+    const active = tripsWithDetails.filter(t => !t.end_time).length;
+    const morning = tripsWithDetails.filter(t => t.trip_type === 'morning').length;
+    const evening = tripsWithDetails.filter(t => t.trip_type === 'evening').length;
+    const other = tripsWithDetails.filter(t => t.trip_type === 'other').length;
+
+    const completedTrips = tripsWithDetails.filter(t => t.end_time) || [];
+
+    let totalDuration = 0;
+
+    completedTrips.forEach(trip => {
+      const start = new Date(trip.start_time);
+      const end = new Date(trip.end_time);
+      totalDuration += (end - start) / (1000 * 60);
+    });
+
+    const avgDuration =
+      completedTrips.length > 0
+        ? Math.round(totalDuration / completedTrips.length)
         : 0;
 
-      setStats({
-        totalTrips: total,
-        activeTrips: active,
-        morningTrips: morning,
-        eveningTrips: evening,
-        otherTrips: other,
-        avgDuration: avgDuration > 0 ? `${avgDuration} min` : 'N/A'
-      });
+    setStats({
+      totalTrips: total,
+      activeTrips: active,
+      morningTrips: morning,
+      eveningTrips: evening,
+      otherTrips: other,
+      avgDuration: avgDuration > 0 ? `${avgDuration} min` : 'N/A'
+    });
 
-    } catch (error) {
-      console.error('Error fetching trips:', error);
-      // Show user-friendly error
-      alert('Error loading trips. Please check your database connection.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  } catch (error) {
+    console.error('Error fetching trips:', error);
+    alert('Error loading trips');
+  } finally {
+    setLoading(false);
+  }
+};
 
   const fetchDriversAndBuses = async () => {
-    try {
-      const [driversData, busesData] = await Promise.all([
-        supabase.from('drivers_new').select('id, name, contact, license_no'),
-        supabase.from('buses').select('id, bus_number, bus_name')
-      ]);
+  try {
+    const institutionId = localStorage.getItem('institutionId');
 
-      setDrivers(driversData.data || []);
-      setBuses(busesData.data || []);
-    } catch (error) {
-      console.error('Error fetching drivers/buses:', error);
+    if (!institutionId) {
+      console.error('No institutionId found');
+      return;
     }
-  };
+
+    const [driversData, busesData] = await Promise.all([
+      supabase
+        .from('drivers_new')
+        .select('id, name, contact, license_no')
+        .eq('institution_id', institutionId),
+
+      supabase
+        .from('buses')
+        .select('id, bus_number, bus_name')
+        .eq('institution_id', institutionId)
+    ]);
+
+    setDrivers(driversData.data || []);
+    setBuses(busesData.data || []);
+
+  } catch (error) {
+    console.error('Error fetching drivers/buses:', error);
+  }
+};
 
   const handleLogout = () => {
-    localStorage.removeItem('isLoggedIn');
-    localStorage.removeItem('adminMobile');
-    localStorage.removeItem('adminName');
-    router.push('/login');
-  };
+  localStorage.removeItem('isLoggedIn');
+  localStorage.removeItem('adminMobile');
+  localStorage.removeItem('adminName');
+  localStorage.removeItem('institutionId');
+
+  router.push('/login');
+};
 
   const formatDateTime = (timestamp) => {
     if (!timestamp) return '—';
@@ -230,10 +259,12 @@ function BusTripsPage() {
     if (!confirm('Are you sure you want to end this trip?')) return;
     
     try {
+      const institutionId = localStorage.getItem('institutionId');
       const { error } = await supabase
         .from('driver_trips')
         .update({ end_time: new Date().toISOString() })
-        .eq('id', tripId);
+        .eq('id', tripId)
+        .eq('institution_id', institutionId);
 
       if (error) throw error;
       
@@ -249,10 +280,12 @@ function BusTripsPage() {
     if (!confirm('Are you sure you want to delete this trip? This action cannot be undone.')) return;
     
     try {
+      const institutionId = localStorage.getItem('institutionId');
       const { error } = await supabase
         .from('driver_trips')
         .delete()
-        .eq('id', tripId);
+        .eq('id', tripId)
+        .eq('institution_id', institutionId);
 
       if (error) throw error;
       
