@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   Save, X, MapPin, Bus, Plus, Trash2, Edit2, 
@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { getAdminInstitution } from '../lib/getInstitution';
+import 'leaflet/dist/leaflet.css';
 
 function BusRouteMapper() {
   const [buses, setBuses] = useState([]);
@@ -59,75 +60,56 @@ function BusRouteMapper() {
 
   // Fetch buses
   useEffect(() => {
-  loadInstitutionData();
+    loadInstitutionData();
 
-  return () => {
-    if (mapInstanceRef.current) {
-      mapInstanceRef.current.remove();
-      mapInstanceRef.current = null;
-    }
-  };
-}, []);
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
+    };
+  }, []);
 
-const loadInstitutionData = async () => {
-  try {
-    const adminData = await getAdminInstitution();
+  const loadInstitutionData = async () => {
+    try {
+      const adminData = await getAdminInstitution();
+      console.log('ADMIN DATA:', adminData);
 
-    console.log('ADMIN DATA:', adminData);
-
-    if (adminData?.institution_id) {
-      setInstitutionId(adminData.institution_id);
-
-      fetchBuses(adminData.institution_id);
-    } else {
+      if (adminData?.institution_id) {
+        setInstitutionId(adminData.institution_id);
+        fetchBuses(adminData.institution_id);
+      } else {
+        setMessage({
+          type: 'error',
+          text: 'Institution not found for admin'
+        });
+      }
+    } catch (error) {
+      console.error('Error loading institution:', error);
       setMessage({
         type: 'error',
-        text: 'Institution not found for admin'
+        text: 'Failed to load institution data'
       });
     }
-  } catch (error) {
-    console.error('Error loading institution:', error);
-
-    setMessage({
-      type: 'error',
-      text: 'Failed to load institution data'
-    });
-  }
-};
+  };
 
   const fetchBuses = async (instId) => {
-  const { data, error } = await supabase
-    .from('buses')
-    .select('id, bus_number, route_name')
-    .eq('institution_id', instId)
-    .eq('is_active', true)
-    .order('bus_number');
+    const { data, error } = await supabase
+      .from('buses')
+      .select('id, bus_number, route_name')
+      .eq('institution_id', instId)
+      .eq('is_active', true)
+      .order('bus_number');
 
-  if (error) {
-    console.error('Error fetching buses:', error);
-    return;
-  }
+    if (error) {
+      console.error('Error fetching buses:', error);
+      return;
+    }
 
-  setBuses(data || []);
-};
+    setBuses(data || []);
+  };
 
-  // Clear stops when bus changes
-  useEffect(() => {
-  if (!selectedBus) return;
 
-  if (stops.length > 0) {
-    const confirmed = confirm(
-      'Changing bus/direction will clear unsaved stops. Continue?'
-    );
-
-    if (!confirmed) return;
-  }
-
-  clearAllMarkersAndLines();
-  setStops([]);
-  setExistingStops([]);
-  setAvailableStops([]);
-}, [selectedBus, direction]);
 
   const clearAllMarkersAndLines = () => {
     if (mapInstanceRef.current) {
@@ -182,7 +164,6 @@ const loadInstitutionData = async () => {
       setMessage({ type: 'success', text: `Loaded ${formattedStops.length} existing stops!` });
       setTimeout(() => setMessage({ type: '', text: '' }), 2000);
       
-      // Add markers to map
       setTimeout(() => {
         if (mapInstanceRef.current && formattedStops.length > 0) {
           updateMapMarkers(formattedStops);
@@ -199,17 +180,20 @@ const loadInstitutionData = async () => {
     }
   };
 
-  // Initialize map
+  // Initialize map - FIXED for blinking issue
   useEffect(() => {
-    if (!mapContainerRef.current || mapInitialized) return;
+    if (mapInitialized || mapInstanceRef.current) return;
+    if (!mapContainerRef.current) return;
 
     const initMap = async () => {
       try {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        if (!mapContainerRef.current) return;
+        
         const L = await import('leaflet');
         window.L = L;
-        await import('leaflet/dist/leaflet.css');
         
-        // Fix leaflet icon issue
         delete L.Icon.Default.prototype._getIconUrl;
         L.Icon.Default.mergeOptions({
           iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
@@ -217,9 +201,14 @@ const loadInstitutionData = async () => {
           shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
         });
 
-        const mapInstance = L.map(mapContainerRef.current).setView([17.289382, 76.869064], 13);
+        if (!mapContainerRef.current || mapInstanceRef.current) return;
+
+        const mapInstance = L.map(mapContainerRef.current, {
+          center: [17.289382, 76.869064],
+          zoom: 13,
+          zoomControl: false
+        });
         
-        // Add default tile layer (Street Map)
         const currentLayer = tileLayers[mapStyle];
         const tileLayer = L.tileLayer(currentLayer.url, {
           attribution: currentLayer.attribution,
@@ -229,7 +218,6 @@ const loadInstitutionData = async () => {
         
         mapInstance.tileLayer = tileLayer;
 
-        // DOUBLE CLICK handler to add stops
         mapInstance.on('dblclick', (e) => {
           if (!selectedBus) {
             setMessage({ type: 'error', text: 'Please select a bus first' });
@@ -244,65 +232,67 @@ const loadInstitutionData = async () => {
         });
 
         mapInstanceRef.current = mapInstance;
+        
+        L.control.zoom({ position: 'topright' }).addTo(mapInstance);
+        L.control.scale({ metric: true, imperial: false, position: 'bottomleft' }).addTo(mapInstance);
+        
         setMapInitialized(true);
         setLeafletLoaded(true);
         
-        // Add zoom controls
-        L.control.zoom({ position: 'topright' }).addTo(mapInstance);
+        setTimeout(() => {
+          if (mapInstanceRef.current) {
+            mapInstanceRef.current.invalidateSize();
+          }
+        }, 200);
         
-        // Add scale bar
-        L.control.scale({ metric: true, imperial: false, position: 'bottomleft' }).addTo(mapInstance);
       } catch (error) {
         console.error('Error initializing map:', error);
+        setMessage({ type: 'error', text: 'Failed to load map. Please refresh the page.' });
       }
     };
 
     initMap();
 
     return () => {
-  if (mapInstanceRef.current) {
-    mapInstanceRef.current.remove();
-    mapInstanceRef.current = null;
-    setMapInitialized(false);
-  }
-};
-  }, [mapInitialized]);
+      if (mapInstanceRef.current && !mapContainerRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+        setMapInitialized(false);
+        setLeafletLoaded(false);
+      }
+    };
+  }, [mapInitialized, mapStyle, selectedBus]);
 
   // Change map style
   const changeMapStyle = async (style) => {
-  setMapStyle(style);
+    setMapStyle(style);
 
-  if (mapInstanceRef.current && mapInstanceRef.current.tileLayer) {
-    const L = await import('leaflet');
-
-    mapInstanceRef.current.removeLayer(mapInstanceRef.current.tileLayer);
-
-    const currentLayer = tileLayers[style];
-
-    const newTileLayer = L.tileLayer(currentLayer.url, {
-      attribution: currentLayer.attribution,
-      maxZoom: 19,
-      subdomains: currentLayer.subdomains || 'abc'
-    }).addTo(mapInstanceRef.current);
-
-    mapInstanceRef.current.tileLayer = newTileLayer;
-  }
-};
+    if (mapInstanceRef.current && mapInstanceRef.current.tileLayer) {
+      const L = await import('leaflet');
+      mapInstanceRef.current.removeLayer(mapInstanceRef.current.tileLayer);
+      const currentLayer = tileLayers[style];
+      const newTileLayer = L.tileLayer(currentLayer.url, {
+        attribution: currentLayer.attribution,
+        maxZoom: 19,
+        subdomains: currentLayer.subdomains || 'abc'
+      }).addTo(mapInstanceRef.current);
+      mapInstanceRef.current.tileLayer = newTileLayer;
+    }
+  };
 
   // Update markers and route line when stops change
-  const updateMapMarkers = (stopsList) => {
+  const updateMapMarkers = useCallback((stopsList) => {
     if (!mapInstanceRef.current || !leafletLoaded) return;
-
+    if (!window.L) return;
+    
     const L = window.L;
     
-    // Clear existing markers
     markersRef.current.forEach(marker => {
       if (mapInstanceRef.current) mapInstanceRef.current.removeLayer(marker);
     });
     markersRef.current = [];
     
     stopsList.forEach((stop, index) => {
-      // Create custom marker with number and color based on sequence
       const gradient = index === 0 ? '#10b981' : index === stopsList.length - 1 ? '#ef4444' : '#3b82f6';
       const customIcon = L.divIcon({
         html: `<div style="
@@ -328,7 +318,6 @@ const loadInstitutionData = async () => {
       
       const marker = L.marker([stop.lat, stop.lng], { icon: customIcon, draggable: true }).addTo(mapInstanceRef.current);
       
-      // Add hover effect
       marker.on('mouseover', function() {
         this.openPopup();
       });
@@ -364,7 +353,6 @@ const loadInstitutionData = async () => {
     
     setMarkers(markersRef.current);
     
-    // Draw route line connecting stops
     if (stopsList.length > 1) {
       if (routeLineRef.current && mapInstanceRef.current) {
         mapInstanceRef.current.removeLayer(routeLineRef.current);
@@ -375,7 +363,6 @@ const loadInstitutionData = async () => {
       
       const routePoints = stopsList.map(s => [s.lat, s.lng]);
       
-      // Main route line
       routeLineRef.current = L.polyline(routePoints, {
         color: '#3b82f6',
         weight: 5,
@@ -384,7 +371,6 @@ const loadInstitutionData = async () => {
         lineCap: 'round'
       }).addTo(mapInstanceRef.current);
       
-      // Add dashed line effect for better visibility
       dashLineRef.current = L.polyline(routePoints, {
         color: '#06b6d4',
         weight: 2,
@@ -393,20 +379,17 @@ const loadInstitutionData = async () => {
         dashArray: '10, 10'
       }).addTo(mapInstanceRef.current);
     }
-  };
+  }, [leafletLoaded]);
 
   // Update map when stops change
   useEffect(() => {
-    if (leafletLoaded && mapInstanceRef.current) {
+    if (leafletLoaded && mapInstanceRef.current && stops.length > 0) {
       updateMapMarkers(stops);
       
-      // Fit bounds to show all stops
-      if (stops.length > 0) {
-        const bounds = stops.map(s => [s.lat, s.lng]);
-        mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50] });
-      }
+      const bounds = stops.map(s => [s.lat, s.lng]);
+      mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50] });
     }
-  }, [stops, leafletLoaded]);
+  }, [stops, leafletLoaded, updateMapMarkers]);
 
   // Expose functions to window for popup buttons
   useEffect(() => {
@@ -436,8 +419,6 @@ const loadInstitutionData = async () => {
       return;
     }
     
-    const nextSequence = stops.length + 1;
-    
     const newStop = {
       name: tempName.trim(),
       lat: parseFloat(tempLatLng.lat),
@@ -454,7 +435,7 @@ const loadInstitutionData = async () => {
       setMessage({ type: 'success', text: 'Stop updated!' });
     } else {
       setStops([...stops, newStop]);
-      setMessage({ type: 'success', text: `Stop "${tempName.trim()}" added as Stop ${nextSequence}!` });
+      setMessage({ type: 'success', text: `Stop "${tempName.trim()}" added!` });
     }
     
     setShowNameInput(false);
@@ -512,27 +493,22 @@ const loadInstitutionData = async () => {
       return;
     }
     if (!institutionId) {
-  setMessage({
-    type: 'error',
-    text: 'Institution not loaded'
-  });
-  return;
-}
+      setMessage({ type: 'error', text: 'Institution not loaded' });
+      return;
+    }
 
     setSaving(true);
     
     try {
-      // Delete existing stops for this bus and direction
       const { error: deleteError } = await supabase
-  .from('bus_stops')
-  .delete()
-  .eq('institution_id', institutionId)
-  .eq('bus_id', parseInt(selectedBus))
-  .eq('direction', direction);
+        .from('bus_stops')
+        .delete()
+        .eq('institution_id', institutionId)
+        .eq('bus_id', parseInt(selectedBus))
+        .eq('direction', direction);
       
       if (deleteError) throw deleteError;
       
-      // Insert all new stops
       const stopsToInsert = stops.map((stop, index) => ({
         bus_id: parseInt(selectedBus),
         stop_name: stop.name,
@@ -606,6 +582,22 @@ const loadInstitutionData = async () => {
       mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50] });
     }
   };
+
+  // Debug: Log buses when they change
+  useEffect(() => {
+    console.log('Buses loaded:', buses);
+  }, [buses]);
+
+  if (!institutionId) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto mb-4"></div>
+          <p className="text-gray-400">Loading institution data...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ 
@@ -771,7 +763,6 @@ const loadInstitutionData = async () => {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            {/* Map Style Selector */}
             <div style={{ display: 'flex', gap: 4, background: 'rgba(0,0,0,0.3)', borderRadius: 40, padding: 4 }}>
               <button
                 onClick={() => changeMapStyle('streets')}
@@ -889,7 +880,6 @@ const loadInstitutionData = async () => {
         <div style={{ position: 'relative', background: '#1a1a2e' }}>
           <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
           
-          {/* Map Instructions Overlay */}
           <div style={{
             position: 'absolute',
             bottom: 20,
@@ -913,7 +903,6 @@ const loadInstitutionData = async () => {
             <span>🖱️ Drag markers to reposition</span>
           </div>
           
-          {/* Route Summary Overlay */}
           {stops.length > 0 && (
             <div style={{
               position: 'absolute',

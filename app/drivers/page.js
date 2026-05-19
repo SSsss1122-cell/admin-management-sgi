@@ -33,6 +33,7 @@ function DriversDashboard() {
   const [viewMode, setViewMode] = useState('grid');
   const [selectedDrivers, setSelectedDrivers] = useState([]);
   const [filterStatus, setFilterStatus] = useState('all');
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
   const router = useRouter();
 
@@ -46,97 +47,90 @@ function DriversDashboard() {
     bus_id: '',
     experience_years: '',
     license_expiry: '',
-    emergency_contact: '',
-    blood_group: ''
   });
 
   useEffect(() => {
-  const storedInstitutionId = localStorage.getItem("institutionId");
-  const storedAdminName = localStorage.getItem("adminName");
+    const storedInstitutionId = localStorage.getItem("institutionId");
+    const storedAdminName = localStorage.getItem("adminName");
 
-  if (!storedInstitutionId) {
-    console.error("No institutionId found in localStorage");
+    if (!storedInstitutionId) {
+      console.error("No institutionId found in localStorage");
+      router.push("/login");
+      setLoading(false);
+      return;
+    }
 
-    router.push("/login");
-    setLoading(false);
-    return;
-  }
+    setInstitutionId(storedInstitutionId);
+    setAdminName(storedAdminName || "Admin");
 
-  setInstitutionId(storedInstitutionId);
-  setAdminName(storedAdminName || "Admin");
+    fetchDrivers(storedInstitutionId);
+    fetchBuses(storedInstitutionId);
+  }, []);
 
-  fetchDrivers(storedInstitutionId);
-  fetchBuses(storedInstitutionId);
-}, []);
-
+  // Auto-hide toast after 3 seconds
   useEffect(() => {
-    filterDrivers();
-  }, [drivers, searchTerm, filterStatus]);
+    if (toast.show) {
+      const timer = setTimeout(() => {
+        setToast({ show: false, message: '', type: 'success' });
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast.show]);
 
-  
+  // Show toast helper function
+  const showToast = (message, type = 'success') => {
+    setToast({ show: true, message, type });
+  };
 
-  // 🔥 FIXED: Added error handling for missing columns and table structure
   const fetchDrivers = async (instId) => {
-  try {
-    setLoading(true);
+    try {
+      setLoading(true);
 
-    if (!instId) {
-      console.error("Institution ID missing");
-      return;
+      if (!instId) {
+        console.error("Institution ID missing");
+        return;
+      }
+
+      const cleanInstitutionId = String(instId).trim();
+
+      const { data: driversData, error: driversError } = await supabase
+        .from('drivers_new')
+        .select('*')
+        .eq('institution_id', cleanInstitutionId)
+        .order('created_at', { ascending: false });
+
+      if (driversError) {
+        console.error(driversError);
+        showToast(driversError.message, 'error');
+        return;
+      }
+
+      const { data: busesData, error: busesError } = await supabase
+        .from('buses')
+        .select('id, bus_number, route_name')
+        .eq('institution_id', cleanInstitutionId);
+
+      if (busesError) {
+        console.error("Buses fetch error:", busesError);
+      }
+
+      const mergedDrivers = (driversData || []).map(driver => ({
+        ...driver,
+        bus: (busesData || []).find(bus => bus.id === driver.bus_id) || null
+      }));
+
+      setDrivers(mergedDrivers);
+      setFilteredDrivers(mergedDrivers);
+      updateStats(mergedDrivers);
+
+    } catch (err) {
+      console.error("Unexpected error:", err);
+      showToast('Error fetching drivers', 'error');
+    } finally {
+      setLoading(false);
     }
+  };
 
-    const cleanInstitutionId = String(instId).trim();
-
-    console.log("Fetching drivers for institution:", cleanInstitutionId);
-
-    // STEP 1: fetch drivers only
-    const { data: driversData, error: driversError } = await supabase
-      .from('drivers_new')
-      .select('*')
-      .eq('institution_id', cleanInstitutionId)
-      .order('created_at', { ascending: false });
-
-    if (driversError) {
-      console.error(JSON.stringify(error, null, 2));
-      alert(driversError.message);
-      return;
-    }
-
-    console.log("Drivers fetched:", driversData);
-
-    // STEP 2: fetch buses separately
-    const { data: busesData, error: busesError } = await supabase
-  .from('buses')
-  .select('id, bus_number, route_name')
-  .eq('institution_id', cleanInstitutionId);
-
-    if (busesError) {
-      console.error("Buses fetch error:", JSON.stringify(busesError, null, 2));
-    }
-
-    // STEP 3: manually attach bus info
-    const mergedDrivers = (driversData || []).map(driver => ({
-      ...driver,
-      bus: (busesData || []).find(bus => bus.id === driver.bus_id) || null
-    }));
-
-    console.log("Merged drivers:", mergedDrivers);
-
-    setDrivers(mergedDrivers);
-
-    // IMPORTANT
-    setFilteredDrivers(mergedDrivers);
-
-    updateStats(mergedDrivers);
-
-  } catch (err) {
-    console.error("Unexpected error:", err);
-  } finally {
-    setLoading(false);
-  }
-};
-
-  // 🔥 FIXED: Added error handling for buses table
   const fetchBuses = async (instId) => {
     try {
       const { data, error } = await supabase
@@ -157,7 +151,6 @@ function DriversDashboard() {
     }
   };
 
-  // 🔥 FIXED: Added null checks for all stats calculations
   const updateStats = (driverData) => {
     const totalDrivers = driverData?.length || 0;
     
@@ -190,7 +183,6 @@ function DriversDashboard() {
 
     let filtered = [...drivers];
 
-    // Apply search filter
     if (searchTerm && searchTerm.trim() !== '') {
       const searchLower = searchTerm.toLowerCase();
       filtered = filtered.filter(driver => 
@@ -202,7 +194,6 @@ function DriversDashboard() {
       );
     }
 
-    // Apply status filter
     if (filterStatus === 'assigned') {
       filtered = filtered.filter(driver => driver?.bus_id);
     } else if (filterStatus === 'unassigned') {
@@ -220,7 +211,6 @@ function DriversDashboard() {
   const handleAddDriver = async (e) => {
     e.preventDefault();
     try {
-      // Check if driver code already exists
       const { data: existingDriver } = await supabase
         .from('drivers_new')
         .select('driver_code')
@@ -228,11 +218,10 @@ function DriversDashboard() {
         .maybeSingle();
 
       if (existingDriver) {
-        alert('Driver code already exists. Please use a different code.');
+        showToast('Driver code already exists. Please use a different code.', 'error');
         return;
       }
 
-      // Prepare insert data - only include fields that exist in the table
       const insertData = {
         institution_id: institutionId,
         name: newDriver.name,
@@ -245,43 +234,33 @@ function DriversDashboard() {
         updated_at: new Date().toISOString()
       };
 
-      // Only add optional fields if they exist in the table structure
-      // You may need to adjust these based on your actual table schema
       if (newDriver.experience_years) {
         insertData.experience_years = newDriver.experience_years;
       }
       if (newDriver.license_expiry) {
         insertData.license_expiry = newDriver.license_expiry;
       }
-      if (newDriver.emergency_contact) {
-        insertData.emergency_contact = newDriver.emergency_contact;
-      }
-      if (newDriver.blood_group) {
-        insertData.blood_group = newDriver.blood_group;
-      }
 
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('drivers_new')
-        .insert([insertData])
-        .select();
+        .insert([insertData]);
 
       if (error) throw error;
 
-      alert('Driver added successfully!');
+      showToast('Driver added successfully!', 'success');
       resetForm();
       setShowAddForm(false);
       fetchDrivers(institutionId);
       fetchBuses(institutionId);
     } catch (error) {
       console.error('Error adding driver:', error);
-      alert('Error adding driver: ' + error.message);
+      showToast('Error adding driver: ' + error.message, 'error');
     }
   };
 
   const handleEditDriver = async (e) => {
     e.preventDefault();
     try {
-      // Check if driver code is being changed and if it's already taken
       if (newDriver.driver_code.toUpperCase() !== editingDriver.driver_code) {
         const { data: existingDriver } = await supabase
           .from('drivers_new')
@@ -291,12 +270,11 @@ function DriversDashboard() {
           .maybeSingle();
 
         if (existingDriver) {
-          alert('Driver code already exists. Please use a different code.');
+          showToast('Driver code already exists. Please use a different code.', 'error');
           return;
         }
       }
 
-      // Prepare update data
       const updateData = {
         name: newDriver.name,
         contact: newDriver.contact || null,
@@ -307,21 +285,12 @@ function DriversDashboard() {
         updated_at: new Date().toISOString()
       };
 
-      // Only update optional fields if they have values
       if (newDriver.experience_years) {
         updateData.experience_years = newDriver.experience_years;
       }
       if (newDriver.license_expiry) {
         updateData.license_expiry = newDriver.license_expiry;
       }
-      if (newDriver.emergency_contact) {
-        updateData.emergency_contact = newDriver.emergency_contact;
-      }
-      if (newDriver.blood_group) {
-        updateData.blood_group = newDriver.blood_group;
-      }
-
-      // Only update password if it's not empty
       if (newDriver.password) {
         updateData.password = newDriver.password;
       }
@@ -334,14 +303,14 @@ function DriversDashboard() {
 
       if (error) throw error;
 
-      alert('Driver updated successfully!');
+      showToast('Driver updated successfully!', 'success');
       setEditingDriver(null);
       resetForm();
       fetchDrivers(institutionId);
       fetchBuses(institutionId);
     } catch (error) {
       console.error('Error updating driver:', error);
-      alert('Error updating driver: ' + error.message);
+      showToast('Error updating driver: ' + error.message, 'error');
     }
   };
 
@@ -357,12 +326,36 @@ function DriversDashboard() {
 
       if (error) throw error;
 
-      alert('Driver deleted successfully!');
+      showToast('Driver deleted successfully!', 'success');
       fetchDrivers(institutionId);
       fetchBuses(institutionId);
     } catch (error) {
       console.error('Error deleting driver:', error);
-      alert('Error deleting driver: ' + error.message);
+      showToast('Error deleting driver: ' + error.message, 'error');
+    }
+  };
+
+  const deleteSelectedDrivers = async () => {
+    if (selectedDrivers.length === 0) return;
+    
+    if (!confirm(`Are you sure you want to delete ${selectedDrivers.length} driver(s)? This action cannot be undone.`)) return;
+    
+    try {
+      const { error } = await supabase
+        .from('drivers_new')
+        .delete()
+        .in('id', selectedDrivers)
+        .eq('institution_id', institutionId);
+
+      if (error) throw error;
+
+      showToast(`${selectedDrivers.length} driver(s) deleted successfully!`, 'success');
+      setSelectedDrivers([]);
+      fetchDrivers(institutionId);
+      fetchBuses(institutionId);
+    } catch (error) {
+      console.error('Error deleting drivers:', error);
+      showToast('Error deleting drivers: ' + error.message, 'error');
     }
   };
 
@@ -379,8 +372,6 @@ function DriversDashboard() {
       bus_id: driver.bus_id || '',
       experience_years: driver.experience_years || '',
       license_expiry: driver.license_expiry || '',
-      emergency_contact: driver.emergency_contact || '',
-      blood_group: driver.blood_group || ''
     });
   };
 
@@ -395,8 +386,6 @@ function DriversDashboard() {
       bus_id: '',
       experience_years: '',
       license_expiry: '',
-      emergency_contact: '',
-      blood_group: ''
     });
   };
 
@@ -427,20 +416,13 @@ function DriversDashboard() {
   };
 
   const selectAllDrivers = () => {
-    if (selectedDrivers.length === filteredDrivers.length) {
+    if (selectedDrivers.length === filteredDrivers.length && filteredDrivers.length > 0) {
       setSelectedDrivers([]);
     } else {
       setSelectedDrivers(filteredDrivers.map(d => d.id));
     }
   };
 
-  const getBusNumber = (busId) => {
-    if (!busId || !buses) return null;
-    const bus = buses.find(b => b.id === busId);
-    return bus ? bus.bus_number : null;
-  };
-
-  // 🔥 FIXED: Added null checks for license expiry
   const getLicenseStatus = (expiryDate) => {
     if (!expiryDate) return 'unknown';
     try {
@@ -459,14 +441,13 @@ function DriversDashboard() {
 
   const exportDrivers = () => {
     if (!filteredDrivers || filteredDrivers.length === 0) {
-      alert('No drivers to export');
+      showToast('No drivers to export', 'error');
       return;
     }
 
     const headers = [
       'Driver Code', 'Name', 'Contact', 'License No', 'License Expiry',
-      'Experience (Years)', 'Blood Group', 'Emergency Contact',
-      'Assigned Bus', 'Address', 'Status'
+      'Experience (Years)', 'Assigned Bus', 'Address', 'Status'
     ];
     
     const csvData = filteredDrivers.map(driver => [
@@ -476,8 +457,6 @@ function DriversDashboard() {
       driver.license_no || '',
       driver.license_expiry || '',
       driver.experience_years || '0',
-      driver.blood_group || '',
-      driver.emergency_contact || '',
       driver.bus?.bus_number || 'Not Assigned',
       driver.address || '',
       driver.bus_id ? 'Assigned' : 'Unassigned'
@@ -497,6 +476,8 @@ function DriversDashboard() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    
+    showToast(`Exported ${filteredDrivers.length} drivers successfully!`, 'success');
   };
 
   if (loading) {
@@ -552,13 +533,10 @@ function DriversDashboard() {
             </div>
             
             <div className="flex items-center gap-4">
-              {/* Admin Info */}
               <div className="hidden sm:flex items-center gap-3 bg-gray-800/50 backdrop-blur-xl rounded-xl px-4 py-2 border border-gray-700/50">
                 <div className="text-right">
                   <p className="text-xs text-gray-400">Welcome,</p>
-                  <p className="font-semibold text-gray-200">
-                    {adminName || 'Admin'}
-                  </p>
+                  <p className="font-semibold text-gray-200">{adminName || 'Admin'}</p>
                 </div>
                 <div className="w-8 h-8 bg-gradient-to-br from-purple-600 to-pink-600 rounded-full flex items-center justify-center">
                   <User className="text-white" size={16} />
@@ -573,6 +551,16 @@ function DriversDashboard() {
                 >
                   <Download size={18} />
                 </button>
+                
+                {selectedDrivers.length > 0 && (
+                  <button
+                    onClick={deleteSelectedDrivers}
+                    className="flex items-center text-sm bg-rose-600/90 text-white px-4 py-2 rounded-xl hover:bg-rose-700 transition-all shadow-lg shadow-rose-600/20"
+                  >
+                    <Trash2 size={16} className="mr-2" />
+                    Delete ({selectedDrivers.length})
+                  </button>
+                )}
                 
                 <button
                   onClick={handleLogout}
@@ -593,8 +581,9 @@ function DriversDashboard() {
             </div>
           </div>
 
-          {/* Dark Stats Cards */}
+          {/* Stats Cards - Same as before */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Stats cards content - keep as is */}
             <div className="group relative bg-gray-800/50 backdrop-blur-xl rounded-2xl shadow-xl hover:shadow-2xl transition-all border border-gray-700/50 overflow-hidden">
               <div className="absolute inset-0 bg-gradient-to-br from-purple-600/10 to-pink-600/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
               <div className="relative p-6">
@@ -606,10 +595,6 @@ function DriversDashboard() {
                 </div>
                 <h3 className="text-3xl font-bold text-white mb-1">{stats.totalDrivers}</h3>
                 <p className="text-sm text-gray-400">Total Drivers</p>
-                <div className="mt-3 flex items-center gap-2 text-xs">
-                  <span className="text-emerald-400 font-medium">↑ 8%</span>
-                  <span className="text-gray-500">vs last month</span>
-                </div>
               </div>
             </div>
 
@@ -624,12 +609,6 @@ function DriversDashboard() {
                 </div>
                 <h3 className="text-3xl font-bold text-white mb-1">{stats.totalWithLicense}</h3>
                 <p className="text-sm text-gray-400">With Valid License</p>
-                <div className="mt-3 flex items-center gap-2 text-xs">
-                  <span className="text-blue-400 font-medium">
-                    {stats.totalDrivers > 0 ? ((stats.totalWithLicense/stats.totalDrivers)*100).toFixed(1) : 0}%
-                  </span>
-                  <span className="text-gray-500">of total</span>
-                </div>
               </div>
             </div>
 
@@ -644,10 +623,6 @@ function DriversDashboard() {
                 </div>
                 <h3 className="text-3xl font-bold text-white mb-1">{stats.assignedDrivers}</h3>
                 <p className="text-sm text-gray-400">Assigned to Buses</p>
-                <div className="mt-3 flex items-center gap-2 text-xs">
-                  <span className="text-emerald-400 font-medium">{stats.assignedDrivers}/{buses?.length || 0}</span>
-                  <span className="text-gray-500">buses covered</span>
-                </div>
               </div>
             </div>
 
@@ -662,15 +637,11 @@ function DriversDashboard() {
                 </div>
                 <h3 className="text-3xl font-bold text-white mb-1">{stats.experiencedDrivers}</h3>
                 <p className="text-sm text-gray-400">5+ Years Experience</p>
-                <div className="mt-3 flex items-center gap-2 text-xs">
-                  <span className="text-amber-400 font-medium">Senior</span>
-                  <span className="text-gray-500">drivers</span>
-                </div>
               </div>
             </div>
           </div>
 
-          {/* Dark Filters */}
+          {/* Filters */}
           <div className="bg-gray-800/50 backdrop-blur-xl rounded-2xl shadow-xl border border-gray-700/50 p-5">
             <div className="flex flex-col lg:flex-row gap-4">
               <div className="flex-1 relative">
@@ -726,10 +697,18 @@ function DriversDashboard() {
               >
                 Experienced ({stats.experiencedDrivers})
               </button>
+              {selectedDrivers.length > 0 && (
+                <button
+                  onClick={deleteSelectedDrivers}
+                  className="px-3 py-1 bg-rose-950/50 text-rose-400 rounded-lg text-xs font-medium hover:bg-rose-900/50 transition-colors border border-rose-800/50 ml-auto"
+                >
+                  Delete Selected ({selectedDrivers.length})
+                </button>
+              )}
             </div>
           </div>
 
-          {/* Dark Grid View */}
+          {/* Grid View */}
           {viewMode === 'grid' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {filteredDrivers && filteredDrivers.length > 0 ? (
@@ -740,14 +719,12 @@ function DriversDashboard() {
                       key={driver.id}
                       className="group relative bg-gray-800/50 backdrop-blur-xl rounded-2xl shadow-xl hover:shadow-2xl transition-all border border-gray-700/50 overflow-hidden"
                     >
-                      {/* Status Indicator */}
                       <div className={`absolute top-0 left-0 w-1 h-full ${
                         driver?.bus_id ? 'bg-gradient-to-b from-emerald-500 to-emerald-600' :
                         'bg-gradient-to-b from-amber-500 to-amber-600'
                       }`}></div>
 
                       <div className="p-6 pl-7">
-                        {/* Header */}
                         <div className="flex justify-between items-start mb-4">
                           <div className="flex items-center gap-3">
                             <div className="w-12 h-12 bg-gradient-to-br from-purple-600 to-pink-600 rounded-xl flex items-center justify-center shadow-lg shadow-purple-600/20">
@@ -776,7 +753,6 @@ function DriversDashboard() {
                           </div>
                         </div>
 
-                        {/* License Status Badge */}
                         {driver?.license_expiry && (
                           <div className={`mb-3 inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs ${
                             licenseStatus === 'valid' ? 'bg-emerald-950/50 text-emerald-400 border border-emerald-800/50' :
@@ -789,7 +765,6 @@ function DriversDashboard() {
                           </div>
                         )}
 
-                        {/* Details Grid */}
                         <div className="space-y-3 mb-4">
                           <div className="grid grid-cols-2 gap-2">
                             <div className="flex items-center gap-2 text-sm">
@@ -802,7 +777,6 @@ function DriversDashboard() {
                             </div>
                           </div>
 
-                          {/* Bus Assignment */}
                           {driver?.bus ? (
                             <div className="flex items-center gap-2 text-sm p-2 bg-emerald-950/30 rounded-lg border border-emerald-800/50">
                               <Bus size={14} className="text-emerald-400" />
@@ -816,7 +790,6 @@ function DriversDashboard() {
                             </div>
                           )}
 
-                          {/* Experience */}
                           {driver?.experience_years && (
                             <div className="flex items-center gap-2 text-sm">
                               <Award size={14} className="text-gray-600" />
@@ -824,7 +797,6 @@ function DriversDashboard() {
                             </div>
                           )}
 
-                          {/* Address */}
                           {driver?.address && (
                             <div className="flex items-center gap-2 text-sm">
                               <Home size={14} className="text-gray-600" />
@@ -832,15 +804,6 @@ function DriversDashboard() {
                             </div>
                           )}
 
-                          {/* Emergency Contact */}
-                          {driver?.emergency_contact && (
-                            <div className="flex items-center gap-2 text-sm">
-                              <Phone size={14} className="text-gray-600" />
-                              <span className="text-gray-400">Emergency: {driver.emergency_contact}</span>
-                            </div>
-                          )}
-
-                          {/* Password */}
                           <div className="flex items-center gap-2 text-sm pt-2 border-t border-gray-700/50">
                             <Key size={14} className="text-gray-500" />
                             <span className="text-gray-400">
@@ -878,7 +841,7 @@ function DriversDashboard() {
               )}
             </div>
           ) : (
-            /* Dark List View */
+            /* List View */
             <div className="bg-gray-800/50 backdrop-blur-xl rounded-2xl shadow-xl border border-gray-700/50 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full">
@@ -943,9 +906,7 @@ function DriversDashboard() {
                               </div>
                             </td>
                             <td className="px-6 py-4">
-                              <div className="text-sm text-gray-300">
-                                {driver?.contact || 'N/A'}
-                              </div>
+                              <div className="text-sm text-gray-300">{driver?.contact || 'N/A'}</div>
                             </td>
                             <td className="px-6 py-4">
                               {driver?.bus ? (
@@ -1015,7 +976,7 @@ function DriversDashboard() {
         </div>
       </div>
 
-      {/* Dark Add/Edit Driver Modal */}
+      {/* Add/Edit Driver Modal */}
       {(showAddForm || editingDriver) && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-gray-800 rounded-2xl shadow-2xl border border-gray-700 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -1110,36 +1071,6 @@ function DriversDashboard() {
                   />
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Blood Group</label>
-                  <select
-                    value={newDriver.blood_group}
-                    onChange={(e) => setNewDriver(prev => ({ ...prev, blood_group: e.target.value }))}
-                    className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-gray-200 transition-all"
-                  >
-                    <option value="">Select Blood Group</option>
-                    <option value="A+">A+</option>
-                    <option value="A-">A-</option>
-                    <option value="B+">B+</option>
-                    <option value="B-">B-</option>
-                    <option value="O+">O+</option>
-                    <option value="O-">O-</option>
-                    <option value="AB+">AB+</option>
-                    <option value="AB-">AB-</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Emergency Contact</label>
-                  <input
-                    type="tel"
-                    value={newDriver.emergency_contact}
-                    onChange={(e) => setNewDriver(prev => ({ ...prev, emergency_contact: e.target.value }))}
-                    className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-gray-200 placeholder-gray-500 transition-all"
-                    placeholder="Emergency contact number"
-                  />
-                </div>
-
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-300 mb-2">Address</label>
                   <textarea
@@ -1151,7 +1082,6 @@ function DriversDashboard() {
                   />
                 </div>
                 
-                {/* Bus Assignment Dropdown */}
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-300 mb-2">
                     <Bus size={16} className="inline mr-1 text-purple-400" />
@@ -1238,6 +1168,46 @@ function DriversDashboard() {
           <Plus size={24} />
         </button>
       </div>
+
+      {/* Toast Notification Component */}
+      {toast.show && (
+        <div className="fixed top-5 right-5 z-50 animate-slide-in">
+          <div className={`flex items-center gap-3 px-5 py-3 rounded-xl shadow-2xl border-l-4 ${
+            toast.type === 'success' 
+              ? 'bg-emerald-900/95 border-emerald-500 text-emerald-200' 
+              : 'bg-rose-900/95 border-rose-500 text-rose-200'
+          } backdrop-blur-sm`}>
+            {toast.type === 'success' ? (
+              <CheckCircle className="text-emerald-400" size={20} />
+            ) : (
+              <AlertCircle className="text-rose-400" size={20} />
+            )}
+            <span className="font-medium">{toast.message}</span>
+            <button
+              onClick={() => setToast({ show: false, message: '', type: 'success' })}
+              className="ml-2 opacity-70 hover:opacity-100 transition-opacity"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      <style jsx>{`
+        @keyframes slide-in {
+          from {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+        .animate-slide-in {
+          animation: slide-in 0.3s ease-out;
+        }
+      `}</style>
     </div>
   );
 }
