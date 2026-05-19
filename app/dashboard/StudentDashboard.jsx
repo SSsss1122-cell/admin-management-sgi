@@ -11,6 +11,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { getAdminInstitution } from '../lib/getInstitution';
 import { useRouter } from 'next/navigation';
+import { useInstitution } from '../../app/hooks/useInstitution';
 
 export default function StudentDashboard() {
   const [students, setStudents] = useState([]);
@@ -22,7 +23,7 @@ export default function StudentDashboard() {
   const [editingStudent, setEditingStudent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [adminName, setAdminName] = useState('');
-  const [institutionId, setInstitutionId] = useState(null);
+  const { institutionId, loading: institutionLoading } = useInstitution();
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
   const [stats, setStats] = useState({
     totalStudents: 0,
@@ -55,18 +56,16 @@ export default function StudentDashboard() {
     { id: 'route2', name: 'Route 2 - City Center', color: '#06b6d4', glow: 'rgba(6,182,212,0.3)', stops: 15 }
   ];
 
-  useEffect(() => {
-  loadInstitutionData();
-
+ useEffect(() => {
+  // Get admin name from localStorage
   const storedAdminName = localStorage.getItem('adminName');
-
   if (storedAdminName) {
     setAdminName(storedAdminName);
   }
 
+  // Update current time
   const updateTime = () => {
     const now = new Date();
-
     setCurrentTime(
       now.toLocaleTimeString('en-US', {
         hour: '2-digit',
@@ -77,11 +76,16 @@ export default function StudentDashboard() {
   };
 
   updateTime();
-
   const timer = setInterval(updateTime, 1000);
-
   return () => clearInterval(timer);
 }, []);
+
+// ADD THIS NEW useEffect for fetching students when institutionId is available
+useEffect(() => {
+  if (institutionId) {
+    fetchStudents();
+  }
+}, [institutionId]);
 
   useEffect(() => {
     filterStudents();
@@ -98,44 +102,27 @@ export default function StudentDashboard() {
   }, [toast.show]);
 
 
-  const loadInstitutionData = async () => {
+ 
+const fetchStudents = async () => {
+  if (!institutionId) return;
+  
   try {
-    const adminData = await getAdminInstitution();
+    const { data, error } = await supabase
+      .from('students')
+      .select('id, full_name, usn, branch, phone, routes, email, semester, created_at, updated_at')
+      .eq('institution_id', institutionId)
+      .order('usn');
 
-    console.log('ADMIN DATA:', adminData);
-
-    if (adminData?.institution_id) {
-      setInstitutionId(adminData.institution_id);
-
-      fetchStudents(adminData.institution_id);
-    } else {
-      showToast('Institution not found for admin', 'error');
-    }
+    if (error) throw error;
+    setStudents(data || []);
+    updateStats(data || []);
   } catch (error) {
-    console.error('Error loading institution:', error);
-
-    showToast('Failed to load institution data', 'error');
+    console.error('Error fetching students:', error);
+    showToast('Error fetching students', 'error');
+  } finally {
+    setLoading(false);
   }
 };
-
-  const fetchStudents = async (instId = institutionId) => {
-    try {
-      const { data, error } = await supabase
-        .from('students')
-        .select('id, full_name, usn, branch, phone, routes, email, semester, created_at, updated_at')
-        .eq('institution_id', instId)
-        .order('usn');
-
-      if (error) throw error;
-      setStudents(data || []);
-      updateStats(data || []);
-    } catch (error) {
-      console.error('Error fetching students:', error);
-      showToast('Error fetching students', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const showToast = (message, type = 'success') => {
     setToast({ show: true, message, type });
@@ -188,58 +175,76 @@ export default function StudentDashboard() {
   };
 
   const handleAddStudent = async (e) => {
-    e.preventDefault();
-    try {
-      // Check if USN already exists
-      const { data: existingStudent } = await supabase
-        .from('students')
-        .select('usn')
-        .eq('usn', newStudent.usn.toUpperCase())
-        .maybeSingle();
+  e.preventDefault();
+  try {
+    // Check if USN already exists
+    const { data: existingStudent } = await supabase
+      .from('students')
+      .select('usn')
+      .eq('usn', newStudent.usn.toUpperCase())
+      .maybeSingle();
 
-      if (existingStudent) {
-        showToast('USN already exists. Please use a different USN.', 'error');
-        return;
-      }
-
-      const studentData = {
-        institution_id: institutionId,
-        full_name: newStudent.full_name,
-        usn: newStudent.usn.toUpperCase(),
-        branch: newStudent.branch || null,
-        phone: newStudent.phone || null,
-        password: newStudent.password || null,
-        routes: newStudent.routes || null,
-        email: newStudent.email || null,
-        semester: newStudent.semester || null
-      };
-
-      const { data, error } = await supabase
-        .from('students')
-        .insert([studentData])
-        .select();
-
-      if (error) throw error;
-
-      showToast('Student added successfully!', 'success');
-      
-      setNewStudent({
-        full_name: '',
-        usn: '',
-        branch: '',
-        phone: '',
-        password: '',
-        routes: '',
-        email: '',
-        semester: ''
-      });
-      setShowAddForm(false);
-      fetchStudents();
-    } catch (error) {
-      console.error('Error adding student:', error);
-      showToast('Error adding student: ' + error.message, 'error');
+    if (existingStudent) {
+      showToast('USN already exists. Please use a different USN.', 'error');
+      return;
     }
-  };
+
+    // Get current admin user info
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    // Get admin record to get institution_id and user_id
+    const { data: adminData } = await supabase
+      .from('admins')
+      .select('id, institution_id')
+      .eq('mobile_number', localStorage.getItem('adminMobile'))
+      .single();
+
+    const studentData = {
+      institution_id: institutionId, // or adminData?.institution_id
+      user_id: adminData?.id, // IMPORTANT: Add the admin's user_id
+      full_name: newStudent.full_name,
+      usn: newStudent.usn.toUpperCase(),
+      branch: newStudent.branch || null,
+      phone: newStudent.phone || null,
+      password: newStudent.password || null,
+      routes: newStudent.routes || null,
+      email: newStudent.email || null,
+      semester: newStudent.semester || null
+    };
+
+    const { data, error } = await supabase
+      .from('students')
+      .insert([studentData])
+      .select();
+
+    if (error) {
+      console.log('Full error object:', JSON.stringify(error, null, 2));
+      console.log('Error code:', error.code);
+      console.log('Error message:', error.message);
+      console.log('Error details:', error.details);
+      console.log('Error hint:', error.hint);
+      throw error;
+    }
+
+    showToast('Student added successfully!', 'success');
+
+    setNewStudent({
+      full_name: '',
+      usn: '',
+      branch: '',
+      phone: '',
+      password: '',
+      routes: '',
+      email: '',
+      semester: ''
+    });
+    setShowAddForm(false);
+    fetchStudents();
+  } catch (error) {
+    console.error('Error adding student:', error);
+    showToast('Error adding student: ' + error.message, 'error');
+  }
+};
 
   const handleEditStudent = async (e) => {
     e.preventDefault();
@@ -428,7 +433,7 @@ export default function StudentDashboard() {
     showToast('Students exported successfully!', 'success');
   };
 
-  if (loading) {
+if (loading || institutionLoading) {
     return (
       <div style={{ 
         minHeight: '100vh', 
@@ -1669,28 +1674,28 @@ export default function StudentDashboard() {
                 </div>
 
                 {/* Email */}
-                <div style={{ gridColumn: 'span 2' }}>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>Email</label>
-                  <input
-                    type="email"
-                    value={newStudent.email}
-                    onChange={(e) => setNewStudent(prev => ({ ...prev, email: e.target.value }))}
-                    style={{
-                      width: '100%',
-                      padding: '12px 16px',
-                      border: '1px solid var(--border)',
-                      borderRadius: 16,
-                      fontSize: 14,
-                      outline: 'none',
-                      transition: 'all 0.2s ease',
-                      background: 'var(--bg-primary)',
-                      color: 'var(--text-primary)'
-                    }}
-                    onFocus={(e) => e.target.style.borderColor = '#6366f1'}
-                    onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
-                    placeholder="student@example.com"
-                  />
-                </div>
+              <div style={{ gridColumn: 'span 2' }}>
+  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>Email</label>
+  <input
+    type="email"
+    value={newStudent.email}
+    onChange={(e) => setNewStudent(prev => ({ ...prev, email: e.target.value }))}
+    style={{
+      width: '100%',
+      padding: '12px 16px',
+      border: '1px solid var(--border)',
+      borderRadius: 16,
+      fontSize: 14,
+      outline: 'none',
+      transition: 'all 0.2s ease',
+      background: 'var(--bg-primary)',
+      color: 'var(--text-primary)'
+    }}
+    onFocus={(e) => e.target.style.borderColor = '#6366f1'}
+    onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+    placeholder="student@example.com"
+  />
+</div>
 
                 {/* Phone */}
                 <div>
