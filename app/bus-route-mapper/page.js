@@ -7,7 +7,7 @@ import {
   ArrowLeft, CheckCircle, AlertCircle, ChevronLeft,
   GripVertical, Navigation, Sun, Moon, RefreshCw,
   Layers, Map as MapIcon, List, Download, Upload, Maximize2, Minimize2,
-  Eye, Route
+  Eye, Route, Home
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { getAdminInstitution } from '../lib/getInstitution';
@@ -34,12 +34,18 @@ function BusRouteMapper() {
   const [mapStyle, setMapStyle] = useState('streets');
   const [mapInitialized, setMapInitialized] = useState(false);
   const [institutionId, setInstitutionId] = useState(null);
+  const [institutionLocation, setInstitutionLocation] = useState({ lat: 17.289382, lng: 76.869064 });
+  const [institutionName, setInstitutionName] = useState('');
+  const [showCollegePicker, setShowCollegePicker] = useState(false);
+  const [tempCollegeLocation, setTempCollegeLocation] = useState(null);
+  const [isUpdatingLocation, setIsUpdatingLocation] = useState(false);
   
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markersRef = useRef([]);
   const routeLineRef = useRef(null);
   const dashLineRef = useRef(null);
+  const collegeMarkerRef = useRef(null);
   const router = useRouter();
 
   // Tile layer URLs for different map styles
@@ -56,6 +62,126 @@ function BusRouteMapper() {
       subdomains: '',
       name: 'Satellite'
     }
+  };
+
+  // Fetch institution location
+  const fetchInstitutionLocation = async (instId) => {
+    try {
+      const { data, error } = await supabase
+        .from('institutions')
+        .select('name, lat, lan')
+        .eq('id', instId)
+        .single();
+
+      if (error) throw error;
+
+      if (data && data.lat && data.lan) {
+        setInstitutionLocation({
+          lat: parseFloat(data.lat),
+          lng: parseFloat(data.lan)
+        });
+        setInstitutionName(data.name || 'College Location');
+        console.log('Institution location loaded:', data);
+      } else {
+        console.warn('No coordinates found for institution, using default');
+      }
+    } catch (error) {
+      console.error('Error fetching institution location:', error);
+    }
+  };
+
+  // Save college location to database
+  const saveCollegeLocation = async (lat, lng) => {
+    setIsUpdatingLocation(true);
+    
+    try {
+      const { error } = await supabase
+        .from('institutions')
+        .update({ 
+          lat: lat, 
+          lan: lng,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', institutionId);
+
+      if (error) throw error;
+
+      // Update local state
+      setInstitutionLocation({ lat, lng });
+      setMessage({ type: 'success', text: 'College location updated successfully!' });
+      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+
+      // Update the marker on the map
+      if (mapInstanceRef.current && window.L && collegeMarkerRef.current) {
+        mapInstanceRef.current.removeLayer(collegeMarkerRef.current);
+        
+        const L = window.L;
+        const collegeIcon = L.divIcon({
+          html: `<div style="
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            border-radius: 50%;
+            border: 3px solid white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            cursor: pointer;
+          ">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
+            </svg>
+          </div>`,
+          className: 'college-marker',
+          iconSize: [40, 40],
+          iconAnchor: [20, 40]
+        });
+        
+        const collegeMarker = L.marker([lat, lng], { icon: collegeIcon }).addTo(mapInstanceRef.current);
+        collegeMarker.bindPopup(`
+          <div style="padding: 8px; font-family: system-ui;">
+            <strong style="font-size: 14px;">🏛️ ${institutionName || 'College'}</strong><br/>
+            <span style="font-size: 11px; color: #666;">📍 Main Campus</span>
+            <br/>
+            <button onclick="window.centerOnCollege()" style="margin-top: 8px; padding: 4px 12px; background: #6366f1; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 11px;">📍 Center Map</button>
+          </div>
+        `);
+        
+        collegeMarkerRef.current = collegeMarker;
+      }
+      
+      // Turn off college picker mode after saving
+      setShowCollegePicker(false);
+      
+    } catch (error) {
+      console.error('Error saving college location:', error);
+      setMessage({ type: 'error', text: 'Failed to save college location: ' + error.message });
+      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+    } finally {
+      setIsUpdatingLocation(false);
+    }
+  };
+
+  // Enable college location picker mode
+  const enableCollegePicker = () => {
+    if (!institutionId) {
+      setMessage({ type: 'error', text: 'Institution not loaded' });
+      setTimeout(() => setMessage({ type: '', text: '' }), 2000);
+      return;
+    }
+    
+    setShowCollegePicker(true);
+    setMessage({ type: 'info', text: 'College location picker mode activated. Double-click on map to set new college location.' });
+    setTimeout(() => setMessage({ type: '', text: '' }), 4000);
+  };
+
+  // Cancel college picker mode
+  const cancelCollegePicker = () => {
+    setShowCollegePicker(false);
+    setTempCollegeLocation(null);
+    setMessage({ type: 'info', text: 'College location picker mode cancelled.' });
+    setTimeout(() => setMessage({ type: '', text: '' }), 2000);
   };
 
   // Fetch buses
@@ -77,6 +203,11 @@ function BusRouteMapper() {
 
       if (adminData?.institution_id) {
         setInstitutionId(adminData.institution_id);
+        
+        // Fetch institution location
+        await fetchInstitutionLocation(adminData.institution_id);
+        
+        // Fetch buses
         fetchBuses(adminData.institution_id);
       } else {
         setMessage({
@@ -94,22 +225,50 @@ function BusRouteMapper() {
   };
 
   const fetchBuses = async (instId) => {
+    console.log('Fetching buses for institution:', instId);
+    
+    if (!instId) {
+      console.error('No institution ID provided');
+      return;
+    }
+    
     const { data, error } = await supabase
       .from('buses')
       .select('id, bus_number, route_name')
       .eq('institution_id', instId)
-      .eq('is_active', true)
       .order('bus_number');
 
     if (error) {
       console.error('Error fetching buses:', error);
+      setMessage({ type: 'error', text: 'Error loading buses: ' + error.message });
       return;
     }
 
+    console.log('Buses found:', data?.length || 0, data);
     setBuses(data || []);
+    
+    if (!data || data.length === 0) {
+      setMessage({ type: 'info', text: 'No buses found. Please add buses first.' });
+      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+    }
   };
 
+  // Clear stops when bus changes
+  useEffect(() => {
+    if (!selectedBus) return;
 
+    if (stops.length > 0) {
+      const confirmed = confirm(
+        'Changing bus/direction will clear unsaved stops. Continue?'
+      );
+      if (!confirmed) return;
+    }
+
+    clearAllMarkersAndLines();
+    setStops([]);
+    setExistingStops([]);
+    setAvailableStops([]);
+  }, [selectedBus, direction]);
 
   const clearAllMarkersAndLines = () => {
     if (mapInstanceRef.current) {
@@ -180,7 +339,31 @@ function BusRouteMapper() {
     }
   };
 
-  // Initialize map - FIXED for blinking issue
+  // Center map on college
+  const centerMapOnCollege = () => {
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.setView([institutionLocation.lat, institutionLocation.lng], 15);
+      setMessage({ type: 'success', text: 'Map centered on college campus!' });
+      setTimeout(() => setMessage({ type: '', text: '' }), 1500);
+    }
+  };
+
+  // Handle college picker mode changes without reinitializing map
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+    
+    // Change cursor style based on picker mode
+    const mapContainer = mapContainerRef.current;
+    if (mapContainer) {
+      if (showCollegePicker) {
+        mapContainer.style.cursor = 'crosshair';
+      } else {
+        mapContainer.style.cursor = '';
+      }
+    }
+  }, [showCollegePicker]);
+
+  // Initialize map - Centered on institution location
   useEffect(() => {
     if (mapInitialized || mapInstanceRef.current) return;
     if (!mapContainerRef.current) return;
@@ -203,9 +386,13 @@ function BusRouteMapper() {
 
         if (!mapContainerRef.current || mapInstanceRef.current) return;
 
+        // Use institution location or default
+        const centerLat = institutionLocation.lat;
+        const centerLng = institutionLocation.lng;
+        
         const mapInstance = L.map(mapContainerRef.current, {
-          center: [17.289382, 76.869064],
-          zoom: 13,
+          center: [centerLat, centerLng],
+          zoom: 15,
           zoomControl: false
         });
         
@@ -218,13 +405,61 @@ function BusRouteMapper() {
         
         mapInstance.tileLayer = tileLayer;
 
+        // Add a marker for the college location
+        const collegeIcon = L.divIcon({
+          html: `<div style="
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            border-radius: 50%;
+            border: 3px solid white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            cursor: pointer;
+          ">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
+            </svg>
+          </div>`,
+          className: 'college-marker',
+          iconSize: [40, 40],
+          iconAnchor: [20, 40]
+        });
+        
+        const collegeMarker = L.marker([centerLat, centerLng], { icon: collegeIcon }).addTo(mapInstance);
+        collegeMarker.bindPopup(`
+          <div style="padding: 8px; font-family: system-ui;">
+            <strong style="font-size: 14px;">🏛️ ${institutionName || 'College'}</strong><br/>
+            <span style="font-size: 11px; color: #666;">📍 Main Campus</span>
+            <br/>
+            <button onclick="window.centerOnCollege()" style="margin-top: 8px; padding: 4px 12px; background: #6366f1; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 11px;">📍 Center Map</button>
+          </div>
+        `);
+        
+        collegeMarkerRef.current = collegeMarker;
+
+        // DOUBLE CLICK handler - FIXED: Check showCollegePicker first
         mapInstance.on('dblclick', (e) => {
+          const { lat, lng } = e.latlng;
+          
+          // Check college picker mode FIRST before any other condition
+          if (showCollegePicker) {
+            const confirmSave = confirm(`Set college location to:\nLatitude: ${lat.toFixed(6)}\nLongitude: ${lng.toFixed(6)}\n\nContinue?`);
+            if (confirmSave) {
+              saveCollegeLocation(lat, lng);
+            }
+            return; // Stop execution here
+          }
+          
+          // Normal stop addition (only if bus is selected)
           if (!selectedBus) {
             setMessage({ type: 'error', text: 'Please select a bus first' });
             setTimeout(() => setMessage({ type: '', text: '' }), 2000);
             return;
           }
-          const { lat, lng } = e.latlng;
+          
           setTempLatLng({ lat: lat.toFixed(8), lng: lng.toFixed(8) });
           setTempName('');
           setEditingIndex(null);
@@ -261,7 +496,18 @@ function BusRouteMapper() {
         setLeafletLoaded(false);
       }
     };
-  }, [mapInitialized, mapStyle, selectedBus]);
+  }, [mapInitialized, mapStyle, selectedBus, institutionLocation, institutionName]); // Removed showCollegePicker from deps
+
+  // Expose center function to window for popup button
+  useEffect(() => {
+    window.centerOnCollege = () => {
+      centerMapOnCollege();
+    };
+    
+    return () => {
+      delete window.centerOnCollege;
+    };
+  }, [institutionLocation]);
 
   // Change map style
   const changeMapStyle = async (style) => {
@@ -583,11 +829,6 @@ function BusRouteMapper() {
     }
   };
 
-  // Debug: Log buses when they change
-  useEffect(() => {
-    console.log('Buses loaded:', buses);
-  }, [buses]);
-
   if (!institutionId) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center">
@@ -660,6 +901,12 @@ function BusRouteMapper() {
           border-color: #ef4444;
         }
         
+        .college-picker-active {
+          background: rgba(139,92,246,0.2);
+          border-color: #8b5cf6;
+          color: #8b5cf6;
+        }
+        
         .input-field {
           width: 100%;
           padding: 12px 16px;
@@ -725,6 +972,14 @@ function BusRouteMapper() {
         }
         
         .stop-marker:hover {
+          transform: scale(1.1);
+        }
+        
+        .college-marker {
+          transition: transform 0.2s;
+        }
+        
+        .college-marker:hover {
           transform: scale(1.1);
         }
       `}</style>
@@ -804,6 +1059,37 @@ function BusRouteMapper() {
               </button>
             </div>
             <button
+              onClick={centerMapOnCollege}
+              className="action-button"
+              title="Center on College"
+            >
+              <Home size={16} />
+              <span>Center College</span>
+            </button>
+            <button
+              onClick={enableCollegePicker}
+              disabled={isUpdatingLocation}
+              className={`action-button ${showCollegePicker ? 'college-picker-active' : ''}`}
+              title="Set College Location"
+              style={{
+                background: showCollegePicker ? 'rgba(139,92,246,0.2)' : '',
+                borderColor: showCollegePicker ? '#8b5cf6' : '',
+                color: showCollegePicker ? '#8b5cf6' : ''
+              }}
+            >
+              <MapPin size={16} />
+              <span>{showCollegePicker ? 'Picker Active...' : 'Set College Location'}</span>
+            </button>
+            {showCollegePicker && (
+              <button
+                onClick={cancelCollegePicker}
+                className="action-button danger"
+              >
+                <X size={16} />
+                <span>Cancel</span>
+              </button>
+            )}
+            <button
               onClick={loadExistingStops}
               disabled={!selectedBus || loading}
               className="action-button"
@@ -857,7 +1143,8 @@ function BusRouteMapper() {
           borderRadius: 12,
           background: message.type === 'error' ? 'rgba(239,68,68,0.95)' : 
                      message.type === 'success' ? 'rgba(16,185,129,0.95)' :
-                     'rgba(59,130,246,0.95)',
+                     message.type === 'info' ? 'rgba(59,130,246,0.95)' :
+                     'rgba(16,185,129,0.95)',
           color: 'white',
           fontSize: 14,
           backdropFilter: 'blur(8px)',
@@ -866,6 +1153,29 @@ function BusRouteMapper() {
         }}>
           {message.type === 'success' ? '✅ ' : message.type === 'error' ? '❌ ' : 'ℹ️ '}
           {message.text}
+        </div>
+      )}
+
+      {/* College Picker Mode Overlay */}
+      {showCollegePicker && (
+        <div style={{
+          position: 'fixed',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          background: 'linear-gradient(135deg, #8b5cf6, #6366f1)',
+          padding: '16px 32px',
+          borderRadius: 50,
+          color: 'white',
+          fontWeight: 'bold',
+          fontSize: 16,
+          zIndex: 100,
+          boxShadow: '0 10px 40px rgba(139,92,246,0.5)',
+          pointerEvents: 'none',
+          animation: 'pulse 1s infinite',
+          whiteSpace: 'nowrap'
+        }}>
+          📍 College Location Picker Active - Double-click on map to set location
         </div>
       )}
 
@@ -955,6 +1265,11 @@ function BusRouteMapper() {
                   </option>
                 ))}
               </select>
+              {buses.length === 0 && (
+                <p style={{ fontSize: 11, color: '#ef4444', marginTop: 6 }}>
+                  No buses found. Please add buses first.
+                </p>
+              )}
             </div>
 
             <div style={{ marginBottom: 16 }}>
