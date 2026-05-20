@@ -22,6 +22,7 @@ function FeesManagement() {
   const [showFeeForm, setShowFeeForm] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [institutionId, setInstitutionId] = useState(null);
+  const [toast, setToast] = useState({ show: false, type: '', message: '' });
   const [feeData, setFeeData] = useState({
     total_fees: '',
     paid_amount: '',
@@ -40,47 +41,63 @@ function FeesManagement() {
 
   const router = useRouter();
 
+  // Toast notification function
+  const showToast = (type, message) => {
+    setToast({ show: true, type, message });
+    setTimeout(() => {
+      setToast({ show: false, type: '', message: '' });
+    }, 3000);
+  };
+
   useEffect(() => {
-  const instId = localStorage.getItem('institution_id');
-
-  console.log("🏫 Fees Page Institution ID:", instId);
-
-  if (instId) {
-    setInstitutionId(instId);
-    fetchStudents(instId);
-  } else {
-    console.error("❌ No institution_id found");
-    setLoading(false);
-  }
-}, []);
+    const instId = localStorage.getItem('institutionId') || localStorage.getItem('institution_id');
+    
+    console.log("🏫 Fees Page Institution ID:", instId);
+    
+    if (instId) {
+      setInstitutionId(instId);
+      fetchStudents(instId);
+    } else {
+      console.error("❌ No institution_id found");
+      setLoading(false);
+      showToast('error', 'Institution not found. Please login again.');
+    }
+  }, []);
 
   useEffect(() => {
     filterStudents();
   }, [students, searchTerm, feeFilter, selectedPeriod]);
 
   const fetchStudents = async (instId) => {
-  try {
+    try {
+      console.log("📦 Fetching students for institution:", instId);
+      
+      if (!instId) {
+        console.error("No institution ID provided");
+        setLoading(false);
+        return;
+      }
 
-    console.log("📦 Fetching students for institution:", instId);
+      const { data, error } = await supabase
+        .from('students')
+        .select('*')
+        .eq('institution_id', instId)
+        .order('usn');
 
-    const { data, error } = await supabase
-      .from('students')
-      .select('*')
-      .eq('institution_id', instId) // ✅ IMPORTANT
-      .order('usn');
+      if (error) {
+        console.error("Supabase error:", error);
+        throw error;
+      }
 
-    if (error) throw error;
-
-    console.log("✅ Students Loaded:", data);
-
-    setStudents(data || []);
-
-  } catch (error) {
-    console.error('❌ Error fetching students:', error);
-  } finally {
-    setLoading(false);
-  }
-};
+      console.log("✅ Students Loaded:", data?.length || 0, "students");
+      setStudents(data || []);
+    } catch (error) {
+      console.error('❌ Error fetching students:', error);
+      showToast('error', 'Error fetching students: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filterStudents = () => {
     let filtered = students;
@@ -147,7 +164,13 @@ function FeesManagement() {
 
   const handleFeeSubmit = async (e) => {
     e.preventDefault();
+    
     try {
+      if (!institutionId) {
+        showToast('error', 'Institution ID not found. Please refresh the page.');
+        return;
+      }
+
       const total = parseFloat(feeData.total_fees) || 0;
       const paid = parseFloat(feeData.paid_amount) || 0;
       const due = total - paid;
@@ -163,13 +186,24 @@ function FeesManagement() {
         last_updated: new Date().toISOString()
       };
 
-      const { error } = await supabase
+      console.log("Updating student:", selectedStudent.id);
+      console.log("Update data:", updateData);
+
+      const { data, error } = await supabase
         .from('students')
         .update(updateData)
-        .eq('id', selectedStudent.id);
+        .eq('id', selectedStudent.id)
+        .eq('institution_id', institutionId);
 
-      if (error) throw error;
+      if (error) {
+        console.error("Supabase update error:", error);
+        throw error;
+      }
 
+      console.log("Update successful:", data);
+
+      showToast('success', `✅ Fee details updated successfully for ${selectedStudent.full_name}!`);
+      
       setShowFeeForm(false);
       setSelectedStudent(null);
       setFeeData({
@@ -180,10 +214,12 @@ function FeesManagement() {
         next_payment_date: '',
         payment_mode: ''
       });
-      fetchStudents();
+      
+      await fetchStudents(institutionId);
+      
     } catch (error) {
       console.error('Error updating fee details:', error);
-      alert('Error updating fee details: ' + error.message);
+      showToast('error', '❌ Error updating fee details: ' + error.message);
     }
   };
 
@@ -299,6 +335,8 @@ function FeesManagement() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    
+    showToast('success', '📊 Fee report exported successfully!');
   };
 
   const handleBack = () => {
@@ -365,6 +403,40 @@ function FeesManagement() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
+      {/* Toast Notification */}
+      {toast.show && (
+        <div className="fixed top-20 right-4 z-50 animate-slide-in">
+          <div className={`flex items-center gap-3 px-5 py-3 rounded-xl shadow-2xl backdrop-blur-md border ${
+            toast.type === 'success' 
+              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' 
+              : 'bg-rose-500/10 border-rose-500/30 text-rose-400'
+          }`}>
+            {toast.type === 'success' ? (
+              <CheckCircle size={20} className="text-emerald-400" />
+            ) : (
+              <AlertCircle size={20} className="text-rose-400" />
+            )}
+            <span className="text-sm font-medium">{toast.message}</span>
+          </div>
+        </div>
+      )}
+
+      <style jsx>{`
+        @keyframes slide-in {
+          from {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+        .animate-slide-in {
+          animation: slide-in 0.3s ease-out;
+        }
+      `}</style>
+
       {/* Dark decorative elements */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-indigo-600/10 to-purple-600/10 rounded-full blur-3xl"></div>
@@ -374,7 +446,7 @@ function FeesManagement() {
 
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
         <div className="space-y-6 lg:space-y-8">
-          {/* Enhanced Dark Header */}
+          {/* Header */}
           <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
             <div className="flex items-center gap-4">
               <button
@@ -413,7 +485,7 @@ function FeesManagement() {
             </div>
           </div>
 
-          {/* Dark Stats Cards */}
+          {/* Stats Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="group relative bg-gray-800/50 backdrop-blur-xl rounded-2xl shadow-xl hover:shadow-2xl transition-all border border-gray-700/50 overflow-hidden">
               <div className="absolute inset-0 bg-gradient-to-br from-indigo-600/10 to-purple-600/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
@@ -488,7 +560,7 @@ function FeesManagement() {
             </div>
           </div>
 
-          {/* Dark Financial Overview */}
+          {/* Financial Overview */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-gradient-to-br from-indigo-950 to-indigo-900 rounded-2xl p-6 shadow-xl shadow-indigo-900/30 border border-indigo-800/50">
               <div className="flex items-center justify-between mb-4">
@@ -533,7 +605,7 @@ function FeesManagement() {
             </div>
           </div>
 
-          {/* Dark Filters */}
+          {/* Filters */}
           <div className="bg-gray-800/50 backdrop-blur-xl rounded-2xl shadow-xl border border-gray-700/50 p-5">
             <div className="flex flex-col lg:flex-row gap-4">
               <div className="flex-1 relative">
@@ -579,7 +651,6 @@ function FeesManagement() {
               </div>
             </div>
 
-            {/* Dark Quick Filters */}
             <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-gray-700/50">
               <span className="text-xs font-medium text-gray-500 py-1">Quick filters:</span>
               <button
@@ -603,7 +674,7 @@ function FeesManagement() {
             </div>
           </div>
 
-          {/* Dark Grid View */}
+          {/* Rest of your grid/list view code remains the same */}
           {viewMode === 'grid' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {filteredStudents.map((student) => (
@@ -611,7 +682,6 @@ function FeesManagement() {
                   key={student.id}
                   className="group relative bg-gray-800/50 backdrop-blur-xl rounded-2xl shadow-xl hover:shadow-2xl transition-all border border-gray-700/50 overflow-hidden"
                 >
-                  {/* Status Indicator */}
                   <div className={`absolute top-0 left-0 w-1 h-full ${
                     getFeesStatusText(student).includes('Paid') ? 'bg-gradient-to-b from-emerald-500 to-emerald-600' :
                     getFeesStatusText(student).includes('Partial') ? 'bg-gradient-to-b from-amber-500 to-amber-600' :
@@ -620,7 +690,6 @@ function FeesManagement() {
                   }`}></div>
 
                   <div className="p-6 pl-7">
-                    {/* Header */}
                     <div className="flex justify-between items-start mb-4">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-600/20">
@@ -636,14 +705,12 @@ function FeesManagement() {
                       </span>
                     </div>
 
-                    {/* Details */}
                     <div className="space-y-3 mb-4">
                       <div className="flex items-center gap-2 text-sm">
                         <BookOpen size={14} className="text-gray-600" />
                         <span className="text-gray-400">{student.branch} • {student.class}-{student.division}</span>
                       </div>
                       
-                      {/* Fee Progress Bar */}
                       {parseFloat(student.total_fees) > 0 && (
                         <div className="space-y-1">
                           <div className="flex justify-between text-xs">
@@ -665,7 +732,6 @@ function FeesManagement() {
                         </div>
                       )}
 
-                      {/* Fee Amounts */}
                       <div className="grid grid-cols-3 gap-2 pt-2">
                         <div className="text-center p-2 bg-gray-900/50 rounded-lg border border-gray-700/50">
                           <p className="text-xs text-gray-500">Total</p>
@@ -681,7 +747,6 @@ function FeesManagement() {
                         </div>
                       </div>
 
-                      {/* Next Payment */}
                       {student.next_payment_date && (
                         <div className={`flex items-center gap-2 text-xs p-2 rounded-lg ${
                           isUpcomingPayment(student.next_payment_date) 
@@ -697,7 +762,6 @@ function FeesManagement() {
                       )}
                     </div>
 
-                    {/* Actions - Only Edit button remains */}
                     <div className="flex justify-end gap-2 pt-3 border-t border-gray-700/50">
                       <button
                         onClick={() => openFeeForm(student)}
@@ -712,7 +776,6 @@ function FeesManagement() {
               ))}
             </div>
           ) : (
-            /* Dark List View */
             <div className="bg-gray-800/50 backdrop-blur-xl rounded-2xl shadow-xl border border-gray-700/50 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full">
@@ -789,7 +852,7 @@ function FeesManagement() {
             </div>
           )}
 
-          {/* Dark Empty State */}
+          {/* Empty State */}
           {filteredStudents.length === 0 && (
             <div className="text-center py-12 bg-gray-800/50 backdrop-blur-xl rounded-2xl border border-gray-700/50">
               <div className="w-20 h-20 bg-gradient-to-br from-indigo-600/20 to-purple-600/20 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-indigo-500/30">
@@ -812,7 +875,7 @@ function FeesManagement() {
         </div>
       </div>
 
-      {/* Dark Fee Modal */}
+      {/* Fee Modal */}
       {showFeeForm && selectedStudent && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-gray-800 rounded-2xl shadow-2xl border border-gray-700 max-w-md w-full max-h-[90vh] overflow-y-auto">
