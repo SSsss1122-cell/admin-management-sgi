@@ -2,1604 +2,892 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  Save, X, MapPin, Bus, Plus, Trash2, Edit2, 
-  ArrowLeft, CheckCircle, AlertCircle, ChevronLeft,
-  GripVertical, Navigation, Sun, Moon, RefreshCw,
-  Layers, Map as MapIcon, List, Download, Upload, Maximize2, Minimize2,
-  Eye, Route, Home
+import {
+  Save, X, MapPin, Bus, Trash2, ChevronLeft,
+  RefreshCw, Layers, Map as MapIcon, Eye, Route,
+  Sun, Moon, Navigation, AlertCircle, CheckCircle,
+  Info, Edit2
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { getAdminInstitution } from '../lib/getInstitution';
+import withAuth from '../../components/withAuth';
 import 'leaflet/dist/leaflet.css';
 
+/* ── Design tokens ── */
+const T = {
+  bg:      '#0b0b14',
+  surface: '#11111d',
+  card:    '#17172a',
+  border:  'rgba(255,255,255,0.08)',
+  text:    '#e2e2ef',
+  muted:   '#7878a0',
+  faint:   '#38385a',
+  blue:    '#5b8def',
+  cyan:    '#22d3ee',
+  green:   '#10b981',
+  red:     '#f43f5e',
+  amber:   '#f59e0b',
+  purple:  '#a78bfa',
+};
+
+/* ── Tile layers ── */
+const TILES = {
+  streets: {
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    subdomains: 'abc',
+  },
+  satellite: {
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    attribution: '&copy; Esri &mdash; Esri, DeLorme, NAVTEQ',
+    subdomains: '',
+  },
+};
+
+/* ── Stop colour by position ── */
+const stopCol = (i, total) => {
+  if (i === 0)           return { a: '#10b981', b: '#34d399' };
+  if (i === total - 1)   return { a: '#f43f5e', b: '#fb7185' };
+  return                        { a: '#5b8def', b: '#22d3ee' };
+};
+
+/* ═══════════════════════════════════════════ */
 function BusRouteMapper() {
-  const [buses, setBuses] = useState([]);
-  const [selectedBus, setSelectedBus] = useState('');
-  const [selectedBusNumber, setSelectedBusNumber] = useState('');
-  const [direction, setDirection] = useState('morning');
-  const [stops, setStops] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState({ type: '', text: '' });
-  const [markers, setMarkers] = useState([]);
-  const [showNameInput, setShowNameInput] = useState(false);
-  const [tempName, setTempName] = useState('');
-  const [tempLatLng, setTempLatLng] = useState(null);
-  const [editingIndex, setEditingIndex] = useState(null);
-  const [draggedIndex, setDraggedIndex] = useState(null);
-  const [existingStops, setExistingStops] = useState([]);
-  const [leafletLoaded, setLeafletLoaded] = useState(false);
-  const [availableStops, setAvailableStops] = useState([]);
-  const [mapStyle, setMapStyle] = useState('streets');
-  const [mapInitialized, setMapInitialized] = useState(false);
-  const [institutionId, setInstitutionId] = useState(null);
-  const [institutionLocation, setInstitutionLocation] = useState({ lat: 17.289382, lng: 76.869064 });
-  const [institutionName, setInstitutionName] = useState('');
-  const [showCollegePicker, setShowCollegePicker] = useState(false);
-  const [tempCollegeLocation, setTempCollegeLocation] = useState(null);
-  const [isUpdatingLocation, setIsUpdatingLocation] = useState(false);
-  
-  const mapContainerRef = useRef(null);
-  const mapInstanceRef = useRef(null);
-  const markersRef = useRef([]);
-  const routeLineRef = useRef(null);
-  const dashLineRef = useRef(null);
-  const collegeMarkerRef = useRef(null);
+
+  /* ── State ── */
+  const [buses,             setBuses]             = useState([]);
+  const [selectedBus,       setSelectedBus]       = useState('');
+  const [direction,         setDirection]         = useState('morning');
+  const [stops,             setStops]             = useState([]);
+  const [loading,           setLoading]           = useState(false);
+  const [saving,            setSaving]            = useState(false);
+  const [toast,             setToast]             = useState({ type: '', text: '' });
+  const [showModal,         setShowModal]         = useState(false);
+  const [tempName,          setTempName]          = useState('');
+  const [tempLL,            setTempLL]            = useState(null);
+  const [editIdx,           setEditIdx]           = useState(null);
+  const [dragIdx,           setDragIdx]           = useState(null);
+  const [mapStyle,          setMapStyle]          = useState('streets');
+  const [mapReady,          setMapReady]          = useState(false);
+  const [instId,            setInstId]            = useState(null);
+  const [instLoc,           setInstLoc]           = useState({ lat: 17.2894, lng: 76.8691 });
+  const [instName,          setInstName]          = useState('College');
+  const [campusPickerMode,  setCampusPickerMode]  = useState(false);
+  const [savingCampus,      setSavingCampus]      = useState(false);
+  const [leafletLoaded,     setLeafletLoaded]     = useState(false);
+
+  /* ── Refs ── */
+  const mapEl        = useRef(null);
+  const mapRef       = useRef(null);
+  const markersRef   = useRef([]);
+  const lineRef      = useRef(null);
+  const campusRef    = useRef(null);
+  const tileRef      = useRef(null);
+
+  /* mutable refs so Leaflet closures always see fresh state */
+  const busRef       = useRef(selectedBus);
+  const stopsRef     = useRef(stops);
+  const pickerRef    = useRef(campusPickerMode);
+  const instLocRef   = useRef(instLoc);
+  const instIdRef    = useRef(instId);
+  const instNameRef  = useRef(instName);
+
+  useEffect(() => { busRef.current      = selectedBus;     }, [selectedBus]);
+  useEffect(() => { stopsRef.current    = stops;           }, [stops]);
+  useEffect(() => { pickerRef.current   = campusPickerMode;}, [campusPickerMode]);
+  useEffect(() => { instLocRef.current  = instLoc;        }, [instLoc]);
+  useEffect(() => { instIdRef.current   = instId;         }, [instId]);
+  useEffect(() => { instNameRef.current = instName;       }, [instName]);
+
   const router = useRouter();
 
-  // Tile layer URLs for different map styles
-  const tileLayers = {
-    streets: {
-      url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-      subdomains: 'abcd',
-      name: 'Street Map'
-    },
-    satellite: {
-      url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-      attribution: '&copy; <a href="https://www.esri.com">Esri</a> | &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-      subdomains: '',
-      name: 'Satellite'
-    }
+  /* ── Toast ── */
+  const msg = (type, text, ms = 3500) => {
+    setToast({ type, text });
+    setTimeout(() => setToast({ type: '', text: '' }), ms);
   };
 
-  // Fetch institution location
-  const fetchInstitutionLocation = async (instId) => {
-    try {
-      const { data, error } = await supabase
-        .from('institutions')
-        .select('name, lat, lan')
-        .eq('id', instId)
-        .single();
-
-      if (error) throw error;
-
-      if (data && data.lat && data.lan) {
-        setInstitutionLocation({
-          lat: parseFloat(data.lat),
-          lng: parseFloat(data.lan)
-        });
-        setInstitutionName(data.name || 'College Location');
-        console.log('Institution location loaded:', data);
-      } else {
-        console.warn('No coordinates found for institution, using default');
-      }
-    } catch (error) {
-      console.error('Error fetching institution location:', error);
-    }
-  };
-
-  // Save college location to database
-  const saveCollegeLocation = async (lat, lng) => {
-    setIsUpdatingLocation(true);
-    
-    try {
-      const { error } = await supabase
-        .from('institutions')
-        .update({ 
-          lat: lat, 
-          lan: lng,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', institutionId);
-
-      if (error) throw error;
-
-      // Update local state
-      setInstitutionLocation({ lat, lng });
-      setMessage({ type: 'success', text: 'College location updated successfully!' });
-      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
-
-      // Update the marker on the map
-      if (mapInstanceRef.current && window.L && collegeMarkerRef.current) {
-        mapInstanceRef.current.removeLayer(collegeMarkerRef.current);
-        
-        const L = window.L;
-        const collegeIcon = L.divIcon({
-          html: `<div style="
-            width: 40px;
-            height: 40px;
-            background: linear-gradient(135deg, #6366f1, #8b5cf6);
-            border-radius: 50%;
-            border: 3px solid white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-            cursor: pointer;
-          ">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
-              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
-            </svg>
-          </div>`,
-          className: 'college-marker',
-          iconSize: [40, 40],
-          iconAnchor: [20, 40]
-        });
-        
-        const collegeMarker = L.marker([lat, lng], { icon: collegeIcon }).addTo(mapInstanceRef.current);
-        collegeMarker.bindPopup(`
-          <div style="padding: 8px; font-family: system-ui;">
-            <strong style="font-size: 14px;">🏛️ ${institutionName || 'College'}</strong><br/>
-            <span style="font-size: 11px; color: #666;">📍 Main Campus</span>
-            <br/>
-            <button onclick="window.centerOnCollege()" style="margin-top: 8px; padding: 4px 12px; background: #6366f1; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 11px;">📍 Center Map</button>
-          </div>
-        `);
-        
-        collegeMarkerRef.current = collegeMarker;
-      }
-      
-      // Turn off college picker mode after saving
-      setShowCollegePicker(false);
-      
-    } catch (error) {
-      console.error('Error saving college location:', error);
-      setMessage({ type: 'error', text: 'Failed to save college location: ' + error.message });
-      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
-    } finally {
-      setIsUpdatingLocation(false);
-    }
-  };
-
-  // Enable college location picker mode
-  const enableCollegePicker = () => {
-    if (!institutionId) {
-      setMessage({ type: 'error', text: 'Institution not loaded' });
-      setTimeout(() => setMessage({ type: '', text: '' }), 2000);
-      return;
-    }
-    
-    setShowCollegePicker(true);
-    setMessage({ type: 'info', text: 'College location picker mode activated. Double-click on map to set new college location.' });
-    setTimeout(() => setMessage({ type: '', text: '' }), 4000);
-  };
-
-  // Cancel college picker mode
-  const cancelCollegePicker = () => {
-    setShowCollegePicker(false);
-    setTempCollegeLocation(null);
-    setMessage({ type: 'info', text: 'College location picker mode cancelled.' });
-    setTimeout(() => setMessage({ type: '', text: '' }), 2000);
-  };
-
-  // Fetch buses
+  /* ─────────────────── INIT ─────────────────── */
   useEffect(() => {
-    loadInstitutionData();
-
-    return () => {
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
-        mapInstanceRef.current = null;
-      }
+    load();
+    return () => { 
+      if (mapRef.current) { 
+        mapRef.current.remove(); 
+        mapRef.current = null; 
+      } 
     };
   }, []);
 
-  const loadInstitutionData = async () => {
+  const load = async () => {
     try {
-      const adminData = await getAdminInstitution();
-      console.log('ADMIN DATA:', adminData);
-
-      if (adminData?.institution_id) {
-        setInstitutionId(adminData.institution_id);
-        
-        // Fetch institution location
-        await fetchInstitutionLocation(adminData.institution_id);
-        
-        // Fetch buses
-        fetchBuses(adminData.institution_id);
-      } else {
-        setMessage({
-          type: 'error',
-          text: 'Institution not found for admin'
-        });
+      const admin = await getAdminInstitution();
+      if (!admin?.institution_id) { 
+        msg('error', 'Institution not found'); 
+        return; 
       }
-    } catch (error) {
-      console.error('Error loading institution:', error);
-      setMessage({
-        type: 'error',
-        text: 'Failed to load institution data'
-      });
+      setInstId(admin.institution_id);
+      instIdRef.current = admin.institution_id;
+
+      const { data, error } = await supabase
+        .from('institutions')
+        .select('name, lat, lan')
+        .eq('id', admin.institution_id)
+        .single();
+      if (!error && data) {
+        const loc = { lat: parseFloat(data.lat) || 17.2894, lng: parseFloat(data.lan) || 76.8691 };
+        setInstLoc(loc); 
+        instLocRef.current = loc;
+        setInstName(data.name || 'College'); 
+        instNameRef.current = data.name || 'College';
+      }
+
+      const { data: bdata } = await supabase
+        .from('buses')
+        .select('id, bus_number, route_name')
+        .eq('institution_id', admin.institution_id)
+        .order('bus_number');
+      setBuses(bdata || []);
+    } catch (e) {
+      msg('error', 'Failed to load: ' + e.message);
     }
   };
 
-  const fetchBuses = async (instId) => {
-    console.log('Fetching buses for institution:', instId);
-    
-    if (!instId) {
-      console.error('No institution ID provided');
-      return;
-    }
-    
-    const { data, error } = await supabase
-      .from('buses')
-      .select('id, bus_number, route_name')
-      .eq('institution_id', instId)
-      .order('bus_number');
-
-    if (error) {
-      console.error('Error fetching buses:', error);
-      setMessage({ type: 'error', text: 'Error loading buses: ' + error.message });
-      return;
-    }
-
-    console.log('Buses found:', data?.length || 0, data);
-    setBuses(data || []);
-    
-    if (!data || data.length === 0) {
-      setMessage({ type: 'info', text: 'No buses found. Please add buses first.' });
-      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
-    }
-  };
-
-  // Clear stops when bus changes
+  /* ─────────────────── MAP INIT (once) ─────────────────── */
   useEffect(() => {
-    if (!selectedBus) return;
-
-    if (stops.length > 0) {
-      const confirmed = confirm(
-        'Changing bus/direction will clear unsaved stops. Continue?'
-      );
-      if (!confirmed) return;
-    }
-
-    clearAllMarkersAndLines();
-    setStops([]);
-    setExistingStops([]);
-    setAvailableStops([]);
-  }, [selectedBus, direction]);
-
-  const clearAllMarkersAndLines = () => {
-    if (mapInstanceRef.current) {
-      markersRef.current.forEach(marker => {
-        if (mapInstanceRef.current) mapInstanceRef.current.removeLayer(marker);
-      });
-      markersRef.current = [];
-      if (routeLineRef.current && mapInstanceRef.current) {
-        mapInstanceRef.current.removeLayer(routeLineRef.current);
-        routeLineRef.current = null;
-      }
-      if (dashLineRef.current && mapInstanceRef.current) {
-        mapInstanceRef.current.removeLayer(dashLineRef.current);
-        dashLineRef.current = null;
-      }
-    }
-  };
-
-  // Load existing stops when "Show Stops" is clicked
-  const loadExistingStops = async () => {
-    if (!selectedBus) {
-      setMessage({ type: 'error', text: 'Please select a bus first' });
-      setTimeout(() => setMessage({ type: '', text: '' }), 2000);
-      return;
-    }
-
-    setLoading(true);
-    const { data, error } = await supabase
-      .from('bus_stops')
-      .select('*')
-      .eq('institution_id', institutionId)
-      .eq('bus_id', parseInt(selectedBus))
-      .eq('direction', direction)
-      .order('sequence', { ascending: true });
-    
-    setLoading(false);
-    
-    if (!error && data && data.length > 0) {
-      const formattedStops = data.map(stop => ({
-        id: stop.id,
-        name: stop.stop_name,
-        lat: stop.latitude,
-        lng: stop.longitude,
-        sequence: stop.sequence,
-        landmark: stop.landmark,
-        estimated_time: stop.estimated_time,
-        is_major: stop.is_major
-      }));
-      setExistingStops(formattedStops);
-      setAvailableStops(formattedStops);
-      setStops(formattedStops);
-      setMessage({ type: 'success', text: `Loaded ${formattedStops.length} existing stops!` });
-      setTimeout(() => setMessage({ type: '', text: '' }), 2000);
-      
-      setTimeout(() => {
-        if (mapInstanceRef.current && formattedStops.length > 0) {
-          updateMapMarkers(formattedStops);
-          const bounds = formattedStops.map(s => [s.lat, s.lng]);
-          mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50] });
-        }
-      }, 500);
-    } else {
-      setExistingStops([]);
-      setAvailableStops([]);
-      setStops([]);
-      setMessage({ type: 'info', text: 'No existing stops found. You can add new stops by double-clicking on the map.' });
-      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
-    }
-  };
-
-  // Center map on college
-  const centerMapOnCollege = () => {
-    if (mapInstanceRef.current) {
-      mapInstanceRef.current.setView([institutionLocation.lat, institutionLocation.lng], 15);
-      setMessage({ type: 'success', text: 'Map centered on college campus!' });
-      setTimeout(() => setMessage({ type: '', text: '' }), 1500);
-    }
-  };
-
-  // Handle college picker mode changes without reinitializing map
-  useEffect(() => {
-    if (!mapInstanceRef.current) return;
-    
-    // Change cursor style based on picker mode
-    const mapContainer = mapContainerRef.current;
-    if (mapContainer) {
-      if (showCollegePicker) {
-        mapContainer.style.cursor = 'crosshair';
-      } else {
-        mapContainer.style.cursor = '';
-      }
-    }
-  }, [showCollegePicker]);
-
-  // Initialize map - Centered on institution location
-  useEffect(() => {
-    if (mapInitialized || mapInstanceRef.current) return;
-    if (!mapContainerRef.current) return;
+    if (mapReady || mapRef.current || !mapEl.current || !instId) return;
+    let cancelled = false;
 
     const initMap = async () => {
       try {
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        if (!mapContainerRef.current) return;
-        
+        await new Promise(r => setTimeout(r, 100));
+        if (cancelled || !mapEl.current || mapRef.current) return;
+
+        // Dynamically import Leaflet
         const L = await import('leaflet');
         window.L = L;
-        
+
+        // Fix default icon paths
         delete L.Icon.Default.prototype._getIconUrl;
         L.Icon.Default.mergeOptions({
-          iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
           iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
+          iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
           shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
         });
 
-        if (!mapContainerRef.current || mapInstanceRef.current) return;
-
-        // Use institution location or default
-        const centerLat = institutionLocation.lat;
-        const centerLng = institutionLocation.lng;
-        
-        const mapInstance = L.map(mapContainerRef.current, {
-          center: [centerLat, centerLng],
+        const map = L.map(mapEl.current, {
+          center: [instLocRef.current.lat, instLocRef.current.lng],
           zoom: 15,
-          zoomControl: false
+          zoomControl: false,
+          doubleClickZoom: false,
         });
-        
-        const currentLayer = tileLayers[mapStyle];
-        const tileLayer = L.tileLayer(currentLayer.url, {
-          attribution: currentLayer.attribution,
+
+        const t = TILES[mapStyle];
+        tileRef.current = L.tileLayer(t.url, {
+          attribution: t.attribution,
           maxZoom: 19,
-          subdomains: currentLayer.subdomains || 'abc'
-        }).addTo(mapInstance);
-        
-        mapInstance.tileLayer = tileLayer;
+          subdomains: t.subdomains || 'abc',
+        }).addTo(map);
 
-        // Add a marker for the college location
-        const collegeIcon = L.divIcon({
-          html: `<div style="
-            width: 40px;
-            height: 40px;
-            background: linear-gradient(135deg, #6366f1, #8b5cf6);
-            border-radius: 50%;
-            border: 3px solid white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-            cursor: pointer;
-          ">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
-              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
-            </svg>
-          </div>`,
-          className: 'college-marker',
-          iconSize: [40, 40],
-          iconAnchor: [20, 40]
-        });
-        
-        const collegeMarker = L.marker([centerLat, centerLng], { icon: collegeIcon }).addTo(mapInstance);
-        collegeMarker.bindPopup(`
-          <div style="padding: 8px; font-family: system-ui;">
-            <strong style="font-size: 14px;">🏛️ ${institutionName || 'College'}</strong><br/>
-            <span style="font-size: 11px; color: #666;">📍 Main Campus</span>
-            <br/>
-            <button onclick="window.centerOnCollege()" style="margin-top: 8px; padding: 4px 12px; background: #6366f1; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 11px;">📍 Center Map</button>
-          </div>
-        `);
-        
-        collegeMarkerRef.current = collegeMarker;
+        // Campus marker
+        campusRef.current = makeCampusMarker(L, map,
+          instLocRef.current.lat, instLocRef.current.lng, instNameRef.current);
 
-        // DOUBLE CLICK handler - FIXED: Check showCollegePicker first
-        mapInstance.on('dblclick', (e) => {
+        // DOUBLE-CLICK handler
+        map.on('dblclick', e => {
           const { lat, lng } = e.latlng;
-          
-          // Check college picker mode FIRST before any other condition
-          if (showCollegePicker) {
-            const confirmSave = confirm(`Set college location to:\nLatitude: ${lat.toFixed(6)}\nLongitude: ${lng.toFixed(6)}\n\nContinue?`);
-            if (confirmSave) {
-              saveCollegeLocation(lat, lng);
-            }
-            return; // Stop execution here
-          }
-          
-          // Normal stop addition (only if bus is selected)
-          if (!selectedBus) {
-            setMessage({ type: 'error', text: 'Please select a bus first' });
-            setTimeout(() => setMessage({ type: '', text: '' }), 2000);
+
+          if (pickerRef.current) {
+            doSaveCampus(lat, lng);
             return;
           }
-          
-          setTempLatLng({ lat: lat.toFixed(8), lng: lng.toFixed(8) });
+
+          if (!busRef.current) {
+            msg('error', 'Select a bus first, then double-click to add stops');
+            return;
+          }
+
+          setTempLL({ lat: lat.toFixed(7), lng: lng.toFixed(7) });
           setTempName('');
-          setEditingIndex(null);
-          setShowNameInput(true);
+          setEditIdx(null);
+          setShowModal(true);
         });
 
-        mapInstanceRef.current = mapInstance;
-        
-        L.control.zoom({ position: 'topright' }).addTo(mapInstance);
-        L.control.scale({ metric: true, imperial: false, position: 'bottomleft' }).addTo(mapInstance);
-        
-        setMapInitialized(true);
+        L.control.zoom({ position: 'topright' }).addTo(map);
+        L.control.scale({ metric: true, imperial: false, position: 'bottomleft' }).addTo(map);
+
+        mapRef.current = map;
+        setMapReady(true);
         setLeafletLoaded(true);
         
         setTimeout(() => {
-          if (mapInstanceRef.current) {
-            mapInstanceRef.current.invalidateSize();
+          if (mapRef.current) {
+            mapRef.current.invalidateSize();
           }
         }, 200);
         
       } catch (error) {
         console.error('Error initializing map:', error);
-        setMessage({ type: 'error', text: 'Failed to load map. Please refresh the page.' });
+        msg('error', 'Failed to load map. Please refresh the page.');
       }
     };
 
     initMap();
 
-    return () => {
-      if (mapInstanceRef.current && !mapContainerRef.current) {
-        mapInstanceRef.current.remove();
-        mapInstanceRef.current = null;
-        setMapInitialized(false);
-        setLeafletLoaded(false);
+    return () => { 
+      cancelled = true; 
+    };
+  }, [instId]); // Only re-run when instId is set
+
+  /* ─────────────────── CAMPUS MARKER ─────────────────── */
+  function makeCampusMarker(L, map, lat, lng, name) {
+    const icon = L.divIcon({
+      html: `<div style="
+        width:40px;height:40px;
+        background:linear-gradient(135deg,#6366f1,#a78bfa);
+        border-radius:50%;border:3px solid rgba(255,255,255,.9);
+        display:flex;align-items:center;justify-content:center;
+        box-shadow:0 0 0 4px rgba(99,102,241,.25),0 4px 14px rgba(0,0,0,.5);">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
+          <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5s2.5 1.12 2.5 2.5S13.38 11.5 12 11.5z"/>
+        </svg>
+      </div>`,
+      className: '',
+      iconSize: [40, 40],
+      iconAnchor: [20, 40],
+      popupAnchor: [0, -44],
+    });
+    const m = L.marker([lat, lng], { icon }).addTo(map);
+    m.bindPopup(`
+      <div style="padding:12px 14px;font-family:system-ui;min-width:160px;">
+        <div style="font-weight:700;font-size:13px;color:#e2e2ef;margin-bottom:3px;">🏛️ ${name}</div>
+        <div style="font-size:11px;color:#7878a0;">Main Campus</div>
+        <div style="font-size:10px;color:#38385a;margin-top:4px;">${lat.toFixed(5)}, ${lng.toFixed(5)}</div>
+        <button onclick="window.__centerCampus()" style="margin-top:9px;width:100%;padding:6px;background:#6366f1;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:12px;font-weight:600;">📍 Center map</button>
+      </div>
+    `);
+    return m;
+  }
+
+  /* ─────────────────── CAMPUS LOCATION SAVE ─────────────────── */
+  const doSaveCampus = async (lat, lng) => {
+    if (!instIdRef.current) return;
+    setSavingCampus(true);
+    try {
+      const { error } = await supabase
+        .from('institutions')
+        .update({ lat, lan: lng, updated_at: new Date().toISOString() })
+        .eq('id', instIdRef.current);
+      if (error) throw error;
+
+      const loc = { lat, lng };
+      setInstLoc(loc); 
+      instLocRef.current = loc;
+      setCampusPickerMode(false);
+
+      if (mapRef.current && window.L && campusRef.current) {
+        mapRef.current.removeLayer(campusRef.current);
+        campusRef.current = makeCampusMarker(window.L, mapRef.current, lat, lng, instNameRef.current);
       }
-    };
-  }, [mapInitialized, mapStyle, selectedBus, institutionLocation, institutionName]); // Removed showCollegePicker from deps
-
-  // Expose center function to window for popup button
-  useEffect(() => {
-    window.centerOnCollege = () => {
-      centerMapOnCollege();
-    };
-    
-    return () => {
-      delete window.centerOnCollege;
-    };
-  }, [institutionLocation]);
-
-  // Change map style
-  const changeMapStyle = async (style) => {
-    setMapStyle(style);
-
-    if (mapInstanceRef.current && mapInstanceRef.current.tileLayer) {
-      const L = await import('leaflet');
-      mapInstanceRef.current.removeLayer(mapInstanceRef.current.tileLayer);
-      const currentLayer = tileLayers[style];
-      const newTileLayer = L.tileLayer(currentLayer.url, {
-        attribution: currentLayer.attribution,
-        maxZoom: 19,
-        subdomains: currentLayer.subdomains || 'abc'
-      }).addTo(mapInstanceRef.current);
-      mapInstanceRef.current.tileLayer = newTileLayer;
+      msg('success', 'Campus location updated!');
+    } catch (e) {
+      msg('error', 'Failed to save: ' + e.message);
+    } finally {
+      setSavingCampus(false);
     }
   };
 
-  // Update markers and route line when stops change
-  const updateMapMarkers = useCallback((stopsList) => {
-    if (!mapInstanceRef.current || !leafletLoaded) return;
-    if (!window.L) return;
-    
+  /* expose to popup button */
+  useEffect(() => {
+    window.__centerCampus = () => {
+      if (mapRef.current) {
+        mapRef.current.setView([instLocRef.current.lat, instLocRef.current.lng], 15);
+      }
+    };
+    return () => { delete window.__centerCampus; };
+  }, []);
+
+  /* ─────────────────── TILE STYLE SWITCH ─────────────────── */
+  const switchStyle = async (style) => {
+    setMapStyle(style);
+    if (!mapRef.current || !window.L) return;
     const L = window.L;
-    
-    markersRef.current.forEach(marker => {
-      if (mapInstanceRef.current) mapInstanceRef.current.removeLayer(marker);
+    if (tileRef.current) mapRef.current.removeLayer(tileRef.current);
+    const t = TILES[style];
+    tileRef.current = L.tileLayer(t.url, {
+      attribution: t.attribution, 
+      maxZoom: 19, 
+      subdomains: t.subdomains || 'abc',
+    }).addTo(mapRef.current);
+    if (campusRef.current) campusRef.current.bringToFront?.();
+  };
+
+  /* ─────────────────── MAP MARKERS + ROUTE LINE ─────────────────── */
+  const renderMap = useCallback((list) => {
+    if (!mapRef.current || !window.L) return;
+    const L = window.L;
+
+    markersRef.current.forEach(m => {
+      if (mapRef.current) mapRef.current.removeLayer(m);
     });
     markersRef.current = [];
-    
-    stopsList.forEach((stop, index) => {
-      const gradient = index === 0 ? '#10b981' : index === stopsList.length - 1 ? '#ef4444' : '#3b82f6';
-      const customIcon = L.divIcon({
+    if (lineRef.current) { 
+      if (mapRef.current) mapRef.current.removeLayer(lineRef.current); 
+      lineRef.current = null; 
+    }
+
+    list.forEach((stop, i) => {
+      const c = stopCol(i, list.length);
+      const icon = L.divIcon({
         html: `<div style="
-          width: 34px;
-          height: 34px;
-          background: linear-gradient(135deg, ${gradient}, ${gradient === '#3b82f6' ? '#06b6d4' : gradient === '#10b981' ? '#34d399' : '#f87171'});
-          border-radius: 50%;
-          border: 3px solid white;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-weight: bold;
-          font-size: 13px;
-          color: white;
-          box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-          cursor: pointer;
-          transition: transform 0.2s;
-        ">${index + 1}</div>`,
-        className: 'stop-marker',
-        iconSize: [34, 34],
-        iconAnchor: [17, 17]
+          width:36px;height:36px;
+          background:linear-gradient(135deg,${c.a},${c.b});
+          border-radius:50%;border:2.5px solid rgba(255,255,255,.88);
+          display:flex;align-items:center;justify-content:center;
+          font-weight:700;font-size:13px;color:#fff;
+          box-shadow:0 0 0 3px ${c.a}44,0 3px 10px rgba(0,0,0,.45);">
+          ${i + 1}
+        </div>`,
+        className: '',
+        iconSize: [36, 36],
+        iconAnchor: [18, 18],
+        popupAnchor: [0, -22],
       });
-      
-      const marker = L.marker([stop.lat, stop.lng], { icon: customIcon, draggable: true }).addTo(mapInstanceRef.current);
-      
-      marker.on('mouseover', function() {
-        this.openPopup();
-      });
-      
-      marker.bindPopup(`
-        <div style="padding: 10px; min-width: 180px; font-family: system-ui;">
-          <div style="font-weight: bold; margin-bottom: 8px; color: #1f2937;">
-            🚏 Stop ${index + 1}: ${stop.name}
-          </div>
-          <div style="font-size: 11px; color: #6b7280; margin-bottom: 8px;">
-            📍 ${stop.lat.toFixed(6)}, ${stop.lng.toFixed(6)}
-          </div>
-          <div style="display: flex; gap: 8px; margin-top: 8px;">
-            <button onclick="window.editStop(${index})" style="padding: 4px 12px; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">✏️ Edit</button>
-            <button onclick="window.deleteStop(${index})" style="padding: 4px 12px; background: #ef4444; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">🗑️ Delete</button>
+
+      const mk = L.marker([stop.lat, stop.lng], { icon, draggable: true }).addTo(mapRef.current);
+      mk.bindPopup(`
+        <div style="padding:12px 14px;min-width:190px;font-family:system-ui;">
+          <div style="font-weight:700;font-size:13px;color:#e2e2ef;margin-bottom:5px;">🚏 Stop ${i + 1}: ${stop.name}</div>
+          <div style="font-size:10px;color:#7878a0;font-family:monospace;margin-bottom:10px;">${Number(stop.lat).toFixed(6)}, ${Number(stop.lng).toFixed(6)}</div>
+          <div style="display:flex;gap:7px;">
+            <button onclick="window.__editStop(${i})"
+              style="flex:1;padding:6px;background:#5b8def;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:12px;font-weight:600;">✏️ Edit</button>
+            <button onclick="window.__delStop(${i})"
+              style="flex:1;padding:6px;background:#f43f5e;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:12px;font-weight:600;">🗑️ Delete</button>
           </div>
         </div>
       `);
-      
-      marker.on('dragend', () => {
-        const pos = marker.getLatLng();
-        const updatedStops = [...stopsList];
-        updatedStops[index] = {
-          ...updatedStops[index],
-          lat: pos.lat,
-          lng: pos.lng
-        };
-        setStops(updatedStops);
+
+      mk.on('dragend', () => {
+        const p = mk.getLatLng();
+        setStops(prev => prev.map((s, idx) => idx === i ? { ...s, lat: p.lat, lng: p.lng } : s));
       });
-      
-      markersRef.current.push(marker);
+
+      markersRef.current.push(mk);
     });
-    
-    setMarkers(markersRef.current);
-    
-    if (stopsList.length > 1) {
-      if (routeLineRef.current && mapInstanceRef.current) {
-        mapInstanceRef.current.removeLayer(routeLineRef.current);
-      }
-      if (dashLineRef.current && mapInstanceRef.current) {
-        mapInstanceRef.current.removeLayer(dashLineRef.current);
-      }
-      
-      const routePoints = stopsList.map(s => [s.lat, s.lng]);
-      
-      routeLineRef.current = L.polyline(routePoints, {
-        color: '#3b82f6',
-        weight: 5,
-        opacity: 0.9,
+
+    if (list.length > 1 && mapRef.current) {
+      const pts = list.map(s => [s.lat, s.lng]);
+      lineRef.current = L.polyline(pts, {
+        color: T.blue,
+        weight: 4,
+        opacity: 0.85,
+        lineCap: 'round',
         lineJoin: 'round',
-        lineCap: 'round'
-      }).addTo(mapInstanceRef.current);
-      
-      dashLineRef.current = L.polyline(routePoints, {
-        color: '#06b6d4',
+      }).addTo(mapRef.current);
+
+      L.polyline(pts, {
+        color: T.cyan,
         weight: 2,
-        opacity: 0.5,
-        lineJoin: 'round',
-        dashArray: '10, 10'
-      }).addTo(mapInstanceRef.current);
+        opacity: 0.45,
+        dashArray: '7 10',
+      }).addTo(mapRef.current);
     }
-  }, [leafletLoaded]);
+  }, []);
 
-  // Update map when stops change
   useEffect(() => {
-    if (leafletLoaded && mapInstanceRef.current && stops.length > 0) {
-      updateMapMarkers(stops);
-      
+    if (!mapReady || !leafletLoaded) return;
+    renderMap(stops);
+    if (stops.length > 0 && mapRef.current) {
       const bounds = stops.map(s => [s.lat, s.lng]);
-      mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50] });
+      mapRef.current.fitBounds(bounds, { padding: [60, 60] });
     }
-  }, [stops, leafletLoaded, updateMapMarkers]);
+  }, [stops, mapReady, leafletLoaded, renderMap]);
 
-  // Expose functions to window for popup buttons
+  /* popup button handlers */
   useEffect(() => {
-    window.editStop = (index) => {
-      setEditingIndex(index);
-      setTempName(stops[index].name);
-      setTempLatLng({ lat: stops[index].lat, lng: stops[index].lng });
-      setShowNameInput(true);
+    window.__editStop = (i) => {
+      const s = stopsRef.current[i];
+      setEditIdx(i); 
+      setTempName(s.name); 
+      setTempLL({ lat: s.lat, lng: s.lng }); 
+      setShowModal(true);
     };
-    
-    window.deleteStop = (index) => {
-      const updatedStops = stops.filter((_, i) => i !== index);
-      setStops(updatedStops);
-      setMessage({ type: 'success', text: 'Stop removed!' });
-      setTimeout(() => setMessage({ type: '', text: '' }), 2000);
+    window.__delStop = (i) => {
+      setStops(p => p.filter((_, idx) => idx !== i));
+      msg('success', 'Stop removed', 2000);
     };
-    
-    return () => {
-      delete window.editStop;
-      delete window.deleteStop;
+    return () => { 
+      delete window.__editStop; 
+      delete window.__delStop; 
     };
-  }, [stops]);
+  }, []);
 
-  const addStop = () => {
-    if (!tempName.trim()) {
-      setMessage({ type: 'error', text: 'Please enter stop name' });
-      return;
+  /* crosshair cursor for picker */
+  useEffect(() => {
+    if (!mapEl.current) return;
+    mapEl.current.style.cursor = campusPickerMode ? 'crosshair' : '';
+  }, [campusPickerMode]);
+
+  /* ─────────────────── STOP CRUD ─────────────────── */
+  const commitStop = () => {
+    if (!tempName.trim()) { 
+      msg('error', 'Enter a stop name'); 
+      return; 
     }
-    
-    const newStop = {
-      name: tempName.trim(),
-      lat: parseFloat(tempLatLng.lat),
-      lng: parseFloat(tempLatLng.lng),
-      is_major: false,
-      estimated_time: null,
-      landmark: ''
+    const stop = { 
+      name: tempName.trim(), 
+      lat: parseFloat(tempLL.lat), 
+      lng: parseFloat(tempLL.lng), 
+      is_major: false, 
+      estimated_time: null, 
+      landmark: '' 
     };
-    
-    if (editingIndex !== null) {
-      const updatedStops = [...stops];
-      updatedStops[editingIndex] = newStop;
-      setStops(updatedStops);
-      setMessage({ type: 'success', text: 'Stop updated!' });
+    if (editIdx !== null) {
+      setStops(p => p.map((s, i) => i === editIdx ? stop : s));
+      msg('success', 'Stop updated', 2000);
     } else {
-      setStops([...stops, newStop]);
-      setMessage({ type: 'success', text: `Stop "${tempName.trim()}" added!` });
+      setStops(p => [...p, stop]);
+      msg('success', `"${stop.name}" added`, 2000);
     }
-    
-    setShowNameInput(false);
-    setTempName('');
-    setTempLatLng(null);
-    setEditingIndex(null);
-    setTimeout(() => setMessage({ type: '', text: '' }), 2000);
+    setShowModal(false); 
+    setTempName(''); 
+    setTempLL(null); 
+    setEditIdx(null);
   };
 
-  const removeStop = (index) => {
-    const updatedStops = stops.filter((_, i) => i !== index);
-    setStops(updatedStops);
-    setMessage({ type: 'success', text: 'Stop removed!' });
-    setTimeout(() => setMessage({ type: '', text: '' }), 2000);
+  const removeStop = (i) => { 
+    setStops(p => p.filter((_, idx) => idx !== i)); 
+    msg('success', 'Removed', 1800); 
   };
 
-  const moveStopUp = (index) => {
-    if (index === 0) return;
-    const updatedStops = [...stops];
-    [updatedStops[index - 1], updatedStops[index]] = [updatedStops[index], updatedStops[index - 1]];
-    setStops(updatedStops);
+  const moveStop = (i, d) => setStops(p => {
+    const a = [...p]; 
+    const t2 = i + d;
+    if (t2 < 0 || t2 >= a.length) return a;
+    [a[i], a[t2]] = [a[t2], a[i]]; 
+    return a;
+  });
+
+  const handleDrop = (i) => {
+    if (dragIdx === null) return;
+    setStops(p => { 
+      const a = [...p]; 
+      const [item] = a.splice(dragIdx, 1); 
+      a.splice(i, 0, item); 
+      return a; 
+    });
+    setDragIdx(null);
   };
 
-  const moveStopDown = (index) => {
-    if (index === stops.length - 1) return;
-    const updatedStops = [...stops];
-    [updatedStops[index], updatedStops[index + 1]] = [updatedStops[index + 1], updatedStops[index]];
-    setStops(updatedStops);
+  /* ─────────────────── LOAD EXISTING STOPS ─────────────────── */
+  const loadStops = async () => {
+    if (!selectedBus) { 
+      msg('error', 'Select a bus first'); 
+      return; 
+    }
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('bus_stops')
+      .select('*')
+      .eq('institution_id', instId)
+      .eq('bus_id', parseInt(selectedBus))
+      .eq('direction', direction)
+      .order('sequence', { ascending: true });
+    setLoading(false);
+    if (!error && data?.length) {
+      setStops(data.map(s => ({ 
+        id: s.id, 
+        name: s.stop_name, 
+        lat: s.latitude, 
+        lng: s.longitude, 
+        sequence: s.sequence, 
+        landmark: s.landmark, 
+        estimated_time: s.estimated_time, 
+        is_major: s.is_major 
+      })));
+      msg('success', `Loaded ${data.length} stops`);
+    } else {
+      setStops([]);
+      msg('info', 'No stops found for this bus/direction', 4000);
+    }
   };
 
-  const handleDragStart = (index) => {
-    setDraggedIndex(index);
-  };
-
-  const handleDragOver = (e) => {
-    e.preventDefault();
-  };
-
-  const handleDrop = (index) => {
-    if (draggedIndex === null) return;
-    const updatedStops = [...stops];
-    const [draggedItem] = updatedStops.splice(draggedIndex, 1);
-    updatedStops.splice(index, 0, draggedItem);
-    setStops(updatedStops);
-    setDraggedIndex(null);
-  };
-
+  /* ─────────────────── SAVE ROUTE ─────────────────── */
   const saveRoute = async () => {
-    if (!selectedBus) {
-      setMessage({ type: 'error', text: 'Please select a bus' });
-      return;
-    }
-    if (stops.length === 0) {
-      setMessage({ type: 'error', text: 'Please add at least one stop' });
-      return;
-    }
-    if (!institutionId) {
-      setMessage({ type: 'error', text: 'Institution not loaded' });
-      return;
-    }
+    if (!selectedBus)  { msg('error', 'Select a bus');           return; }
+    if (!stops.length) { msg('error', 'Add at least one stop');  return; }
+    if (!instId)       { msg('error', 'Institution not loaded'); return; }
 
     setSaving(true);
-    
     try {
-      const { error: deleteError } = await supabase
-        .from('bus_stops')
-        .delete()
-        .eq('institution_id', institutionId)
+      await supabase.from('bus_stops').delete()
+        .eq('institution_id', instId)
         .eq('bus_id', parseInt(selectedBus))
         .eq('direction', direction);
-      
-      if (deleteError) throw deleteError;
-      
-      const stopsToInsert = stops.map((stop, index) => ({
-        bus_id: parseInt(selectedBus),
-        stop_name: stop.name,
-        sequence: index + 1,
-        latitude: stop.lat,
-        longitude: stop.lng,
-        institution_id: institutionId,
-        direction: direction,
-        estimated_time: stop.estimated_time || null,
-        is_major: stop.is_major || false,
-        landmark: stop.landmark || null
-      }));
-      
-      const { error: insertError } = await supabase
-        .from('bus_stops')
-        .insert(stopsToInsert);
-      
-      if (insertError) throw insertError;
-      
-      setMessage({ type: 'success', text: `Route saved successfully! ${stops.length} stops added.` });
-      setTimeout(() => {
-        router.push('/bus-stops');
-      }, 2000);
-      
-    } catch (error) {
-      console.error('Error saving route:', error);
-      setMessage({ type: 'error', text: 'Error saving route: ' + error.message });
+
+      const { error } = await supabase.from('bus_stops').insert(
+        stops.map((s, i) => ({
+          bus_id: parseInt(selectedBus),
+          institution_id: instId,
+          stop_name: s.name,
+          sequence: i + 1,
+          latitude: s.lat,
+          longitude: s.lng,
+          direction,
+          estimated_time: s.estimated_time || null,
+          is_major: s.is_major || false,
+          landmark: s.landmark || null,
+        }))
+      );
+      if (error) throw error;
+      msg('success', `Route saved — ${stops.length} stops`);
+      setTimeout(() => router.push('/bus-stops'), 1800);
+    } catch (e) {
+      msg('error', 'Save failed: ' + e.message);
     } finally {
       setSaving(false);
     }
   };
 
-  const clearAllStops = () => {
-    if (confirm('Are you sure you want to clear all stops?')) {
-      clearAllMarkersAndLines();
-      setStops([]);
-      setMessage({ type: 'success', text: 'All stops cleared!' });
-      setTimeout(() => setMessage({ type: '', text: '' }), 2000);
+  /* ─────────────────── BUS / DIRECTION CHANGE ─────────────────── */
+  const changeBus = (id) => {
+    if (stopsRef.current.length && !confirm('Changing bus clears unsaved stops. Continue?')) return;
+    setSelectedBus(id);
+    setStops([]);
+    markersRef.current.forEach(m => mapRef.current?.removeLayer(m));
+    markersRef.current = [];
+    if (lineRef.current) { 
+      mapRef.current?.removeLayer(lineRef.current); 
+      lineRef.current = null; 
     }
   };
 
-  const resetForm = () => {
-    setSelectedBus('');
-    setSelectedBusNumber('');
-    setDirection('morning');
+  const changeDir = (d) => {
+    if (stopsRef.current.length && !confirm('Changing direction clears unsaved stops. Continue?')) return;
+    setDirection(d);
     setStops([]);
-    setExistingStops([]);
-    setAvailableStops([]);
-    setMessage({ type: '', text: '' });
-    clearAllMarkersAndLines();
   };
 
-  const handleBusChange = (busId) => {
-    setSelectedBus(busId);
-    const bus = buses.find(b => b.id === parseInt(busId));
-    setSelectedBusNumber(bus?.bus_number || '');
-    clearAllMarkersAndLines();
+  const clearAll = () => {
+    if (!confirm('Clear all stops?')) return;
     setStops([]);
-    setExistingStops([]);
-    setAvailableStops([]);
+    msg('success', 'Cleared', 1800);
   };
 
-  const getBusName = () => {
-    const bus = buses.find(b => b.id === parseInt(selectedBus));
-    return bus ? `${bus.bus_number} - ${bus.route_name || 'No Route'}` : '';
+  const centerCampus = () => {
+    if (mapRef.current) mapRef.current.setView([instLoc.lat, instLoc.lng], 15);
   };
 
-  const fitMapToStops = () => {
-    if (mapInstanceRef.current && stops.length > 0) {
-      const bounds = stops.map(s => [s.lat, s.lng]);
-      mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50] });
+  const fitStops = () => {
+    if (mapRef.current && stops.length) {
+      mapRef.current.fitBounds(stops.map(s => [s.lat, s.lng]), { padding: [60, 60] });
     }
   };
 
-  if (!institutionId) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto mb-4"></div>
-          <p className="text-gray-400">Loading institution data...</p>
-        </div>
-      </div>
-    );
-  }
+  const getBusLabel = () => {
+    const b = buses.find(b => b.id === parseInt(selectedBus));
+    return b ? `${b.bus_number} — ${b.route_name || 'No Route'}` : '';
+  };
 
+  /* ─────────────────── LOADING SCREEN ─────────────────── */
+  if (!instId) return (
+    <div style={{ minHeight: '100vh', background: T.bg, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14 }}>
+      <div style={{ width: 42, height: 42, border: `3px solid ${T.faint}`, borderTopColor: T.blue, borderRadius: '50%', animation: 'sp .8s linear infinite' }} />
+      <p style={{ color: T.muted, fontSize: 14, fontFamily: 'system-ui' }}>Loading institution data...</p>
+      <style>{`@keyframes sp{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
+
+  /* ─────────────────── TOAST STYLES ─────────────────── */
+  const toastBg = { success: '#059669', error: '#e11d48', info: '#2563eb' }[toast.type] || '#2563eb';
+  const ToastIcon = () => toast.type === 'success' ? <CheckCircle size={14}/> : toast.type === 'error' ? <AlertCircle size={14}/> : <Info size={14}/>;
+
+  /* ════════════════════════════════════════════════════
+     RENDER
+  ════════════════════════════════════════════════════ */
   return (
-    <div style={{ 
-      minHeight: '100vh', 
-      background: 'radial-gradient(circle at 50% 50%, #1a1a2e, #0a0a0f)',
-      position: 'relative'
-    }}>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: T.bg, fontFamily: "'DM Sans', system-ui, sans-serif", color: T.text }}>
+
+      {/* ── Global styles ── */}
       <style>{`
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateX(20px); }
-          to { opacity: 1; transform: translateX(0); }
-        }
-        
-        @keyframes pulse {
-          0%, 100% { transform: scale(1); }
-          50% { transform: scale(1.05); }
-        }
-        
-        .action-button {
-          background: rgba(255,255,255,0.05);
-          border: 1px solid rgba(255,255,255,0.08);
-          border-radius: 40px;
-          padding: 8px 16px;
-          font-size: 13px;
-          font-weight: 500;
-          color: #a0a0c0;
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-        
-        .action-button:hover {
-          background: rgba(255,255,255,0.1);
-          border-color: #3b82f6;
-          color: #3b82f6;
-          transform: translateY(-1px);
-        }
-        
-        .action-button.primary {
-          background: linear-gradient(135deg, #3b82f6, #06b6d4);
-          color: white;
-          border: none;
-        }
-        
-        .action-button.primary:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 10px 25px -5px #3b82f6;
-        }
-        
-        .action-button.danger {
-          background: rgba(239,68,68,0.1);
-          border-color: rgba(239,68,68,0.3);
-          color: #ef4444;
-        }
-        
-        .action-button.danger:hover {
-          background: rgba(239,68,68,0.2);
-          border-color: #ef4444;
-        }
-        
-        .college-picker-active {
-          background: rgba(139,92,246,0.2);
-          border-color: #8b5cf6;
-          color: #8b5cf6;
-        }
-        
-        .input-field {
-          width: 100%;
-          padding: 12px 16px;
-          background: #0a0a0f;
-          border: 1px solid rgba(255,255,255,0.08);
-          border-radius: 12px;
-          font-size: 14px;
-          color: white;
-          outline: none;
-          transition: all 0.2s ease;
-        }
-        
-        .input-field:focus {
-          border-color: #3b82f6;
-          box-shadow: 0 0 0 3px rgba(59,130,246,0.2);
-        }
-        
-        .input-field::placeholder {
-          color: #6b6b8b;
-        }
-        
-        select.input-field {
-          cursor: pointer;
-        }
-        
-        option {
-          background: #16162a;
-        }
-        
-        .leaflet-container {
-          background: #1a1a2e;
-        }
-        
-        .leaflet-control-zoom a {
-          background: rgba(22,22,42,0.95) !important;
-          color: white !important;
-          border: 1px solid rgba(255,255,255,0.1) !important;
-          border-radius: 8px !important;
-          margin: 4px !important;
-          width: 36px !important;
-          height: 36px !important;
-          line-height: 36px !important;
-        }
-        
-        .leaflet-control-zoom a:hover {
-          background: #3b82f6 !important;
-        }
-        
-        .leaflet-control-attribution {
-          background: rgba(0,0,0,0.7) !important;
-          color: #a0a0c0 !important;
-          font-size: 10px !important;
-          padding: 4px 8px !important;
-          border-radius: 8px !important;
-        }
-        
-        .leaflet-control-attribution a {
-          color: #3b82f6 !important;
-        }
-        
-        .stop-marker {
-          transition: transform 0.2s;
-        }
-        
-        .stop-marker:hover {
-          transform: scale(1.1);
-        }
-        
-        .college-marker {
-          transition: transform 0.2s;
-        }
-        
-        .college-marker:hover {
-          transform: scale(1.1);
-        }
+        *{box-sizing:border-box;margin:0;padding:0;}
+        ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:${T.faint};border-radius:4px}
+        .btn{display:inline-flex;align-items:center;gap:5px;padding:7px 13px;border-radius:8px;border:1px solid ${T.border};background:rgba(255,255,255,.04);color:${T.muted};font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;white-space:nowrap;font-family:inherit}
+        .btn:hover:not(:disabled){background:rgba(255,255,255,.09);border-color:rgba(255,255,255,.15);color:${T.text}}
+        .btn:active:not(:disabled){transform:scale(.97)}
+        .btn:disabled{opacity:.38;cursor:not-allowed}
+        .btn-primary{background:linear-gradient(135deg,${T.blue},${T.cyan}) !important;border:none !important;color:#fff !important;font-weight:600 !important}
+        .btn-primary:hover:not(:disabled){opacity:.88 !important;box-shadow:0 6px 18px rgba(91,141,239,.4) !important}
+        .btn-danger{background:rgba(244,63,94,.08) !important;border-color:rgba(244,63,94,.3) !important;color:${T.red} !important}
+        .btn-danger:hover:not(:disabled){background:rgba(244,63,94,.16) !important;border-color:${T.red} !important}
+        .btn-purple{background:rgba(167,139,250,.1) !important;border-color:rgba(167,139,250,.3) !important;color:${T.purple} !important}
+        .btn-purple:hover:not(:disabled){background:rgba(167,139,250,.18) !important;border-color:${T.purple} !important}
+        .inp{width:100%;padding:10px 14px;background:${T.bg};border:1px solid ${T.border};border-radius:10px;font-size:13px;color:${T.text};outline:none;font-family:inherit;transition:border-color .2s,box-shadow .2s;-webkit-appearance:none}
+        .inp:focus{border-color:${T.blue};box-shadow:0 0 0 3px rgba(91,141,239,.15)}
+        .inp::placeholder{color:${T.faint}}
+        option{background:#16162a}
+        .stop-card{background:${T.card};border:1px solid ${T.border};border-radius:12px;transition:border-color .15s,background .15s;cursor:grab}
+        .stop-card:hover{border-color:rgba(255,255,255,.14);background:#1d1d30}
+        @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes toastIn{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:translateX(0)}}
+        @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+        .pulse{animation:pulse 1.5s ease infinite}
+        /* Leaflet overrides */
+        .leaflet-container{background:#111120 !important}
+        .leaflet-control-zoom{border:none !important}
+        .leaflet-control-zoom a{background:rgba(17,17,32,.95) !important;color:${T.muted} !important;border:1px solid ${T.border} !important;border-radius:8px !important;margin:3px !important;width:34px !important;height:34px !important;line-height:34px !important}
+        .leaflet-control-zoom a:hover{background:${T.blue} !important;color:#fff !important;border-color:${T.blue} !important}
+        .leaflet-control-attribution{background:rgba(0,0,0,.55) !important;color:${T.faint} !important;font-size:9px !important}
+        .leaflet-control-attribution a{color:${T.blue} !important}
+        .leaflet-popup-content-wrapper{background:${T.card} !important;border:1px solid ${T.border} !important;border-radius:12px !important;color:${T.text} !important;box-shadow:0 16px 40px rgba(0,0,0,.6) !important;padding:0 !important}
+        .leaflet-popup-tip-container{display:none}
       `}</style>
 
-      {/* Header */}
-      <div style={{
-        position: 'sticky',
-        top: 0,
-        zIndex: 20,
-        background: 'rgba(22, 22, 42, 0.95)',
-        backdropFilter: 'blur(12px)',
-        borderBottom: '1px solid rgba(255,255,255,0.08)',
-        padding: '12px 20px'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <button
-              onClick={() => router.back()}
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 12,
-                background: 'rgba(255,255,255,0.05)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer'
-              }}
-            >
-              <ChevronLeft size={20} color="#a0a0c0" />
-            </button>
-            <div>
-              <h1 style={{ fontSize: 20, fontWeight: 700, color: 'white' }}>Bus Route Mapper</h1>
-              <p style={{ fontSize: 12, color: '#6b6b8b' }}>Double-click on map to add stops • Drag markers to reposition</p>
-            </div>
+      {/* ── Header ── */}
+      <header style={{ position:'sticky',top:0,zIndex:50,background:'rgba(11,11,20,.97)',backdropFilter:'blur(16px)',borderBottom:`1px solid ${T.border}`,padding:'0 18px',height:60,display:'flex',alignItems:'center',justifyContent:'space-between',gap:10 }}>
+        <div style={{ display:'flex',alignItems:'center',gap:10 }}>
+          <button onClick={() => router.back()} className="btn" style={{ padding:'6px 9px' }}>
+            <ChevronLeft size={16}/>
+          </button>
+          <div style={{ width:32,height:32,background:`linear-gradient(135deg,${T.blue},${T.cyan})`,borderRadius:9,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0 }}>
+            <Route size={16} color="#fff"/>
           </div>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', gap: 4, background: 'rgba(0,0,0,0.3)', borderRadius: 40, padding: 4 }}>
-              <button
-                onClick={() => changeMapStyle('streets')}
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: 30,
-                  background: mapStyle === 'streets' ? '#3b82f6' : 'transparent',
-                  border: 'none',
-                  color: mapStyle === 'streets' ? 'white' : '#a0a0c0',
-                  cursor: 'pointer',
-                  fontSize: 11,
-                  fontWeight: 500,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4
-                }}
-              >
-                <MapIcon size={12} />
-                Streets
-              </button>
-              <button
-                onClick={() => changeMapStyle('satellite')}
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: 30,
-                  background: mapStyle === 'satellite' ? '#3b82f6' : 'transparent',
-                  border: 'none',
-                  color: mapStyle === 'satellite' ? 'white' : '#a0a0c0',
-                  cursor: 'pointer',
-                  fontSize: 11,
-                  fontWeight: 500,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4
-                }}
-              >
-                <Layers size={12} />
-                Satellite
-              </button>
+          <div>
+            <div style={{ fontSize:15,fontWeight:700,color:T.text }}>Bus Route Mapper</div>
+            <div style={{ fontSize:10,color:T.faint,marginTop:1 }}>
+              {campusPickerMode
+                ? '📍 Campus picker active — double-click map to set new campus location'
+                : selectedBus
+                  ? '✅ Bus selected — double-click map to add stops'
+                  : 'Select a bus, then double-click map to add stops'}
             </div>
-            <button
-              onClick={centerMapOnCollege}
-              className="action-button"
-              title="Center on College"
-            >
-              <Home size={16} />
-              <span>Center College</span>
-            </button>
-            <button
-              onClick={enableCollegePicker}
-              disabled={isUpdatingLocation}
-              className={`action-button ${showCollegePicker ? 'college-picker-active' : ''}`}
-              title="Set College Location"
-              style={{
-                background: showCollegePicker ? 'rgba(139,92,246,0.2)' : '',
-                borderColor: showCollegePicker ? '#8b5cf6' : '',
-                color: showCollegePicker ? '#8b5cf6' : ''
-              }}
-            >
-              <MapPin size={16} />
-              <span>{showCollegePicker ? 'Picker Active...' : 'Set College Location'}</span>
-            </button>
-            {showCollegePicker && (
-              <button
-                onClick={cancelCollegePicker}
-                className="action-button danger"
-              >
-                <X size={16} />
-                <span>Cancel</span>
-              </button>
-            )}
-            <button
-              onClick={loadExistingStops}
-              disabled={!selectedBus || loading}
-              className="action-button"
-              style={{ background: loading ? 'rgba(255,255,255,0.02)' : 'rgba(59,130,246,0.1)', borderColor: '#3b82f6', color: '#3b82f6' }}
-            >
-              <Eye size={16} />
-              <span>{loading ? 'Loading...' : 'Show Stops'}</span>
-            </button>
-            <button
-              onClick={fitMapToStops}
-              disabled={stops.length === 0}
-              className="action-button"
-            >
-              <MapIcon size={16} />
-              <span>Fit Map</span>
-            </button>
-            <button
-              onClick={clearAllStops}
-              className="action-button danger"
-            >
-              <Trash2 size={16} />
-              <span>Clear All</span>
-            </button>
-            <button
-              onClick={resetForm}
-              className="action-button"
-            >
-              <RefreshCw size={16} />
-              <span>Reset</span>
-            </button>
-            <button
-              onClick={saveRoute}
-              disabled={saving || !selectedBus || stops.length === 0}
-              className="action-button primary"
-            >
-              <Save size={16} />
-              <span>{saving ? 'Saving...' : 'Save Route'}</span>
-            </button>
           </div>
         </div>
-      </div>
 
-      {/* Message */}
-      {message.text && (
-        <div style={{
-          position: 'fixed',
-          top: 80,
-          right: 20,
-          zIndex: 30,
-          padding: '12px 20px',
-          borderRadius: 12,
-          background: message.type === 'error' ? 'rgba(239,68,68,0.95)' : 
-                     message.type === 'success' ? 'rgba(16,185,129,0.95)' :
-                     message.type === 'info' ? 'rgba(59,130,246,0.95)' :
-                     'rgba(16,185,129,0.95)',
-          color: 'white',
-          fontSize: 14,
-          backdropFilter: 'blur(8px)',
-          animation: 'fadeIn 0.3s ease',
-          boxShadow: '0 10px 25px -5px rgba(0,0,0,0.2)'
-        }}>
-          {message.type === 'success' ? '✅ ' : message.type === 'error' ? '❌ ' : 'ℹ️ '}
-          {message.text}
+        <div style={{ display:'flex',gap:6,alignItems:'center',flexWrap:'wrap' }}>
+          {/* Map style */}
+          <div style={{ display:'flex',background:T.surface,border:`1px solid ${T.border}`,borderRadius:9,padding:3,gap:2 }}>
+            {[['streets','Streets',<MapIcon size={11}/>],['satellite','Satellite',<Layers size={11}/>]].map(([k,label,icon])=>(
+              <button key={k} onClick={()=>switchStyle(k)} style={{ padding:'5px 11px',borderRadius:7,border:'none',cursor:'pointer',background:mapStyle===k?T.blue:'transparent',color:mapStyle===k?'#fff':T.muted,fontSize:11,fontWeight:500,display:'flex',alignItems:'center',gap:4,transition:'all .15s',fontFamily:'inherit' }}>
+                {icon}{label}
+              </button>
+            ))}
+          </div>
+
+          {/* Campus button */}
+          <button
+            onClick={() => { if (campusPickerMode) { setCampusPickerMode(false); msg('info','Campus picker cancelled',2000); } else { centerCampus(); } }}
+            onDoubleClick={() => { setCampusPickerMode(true); msg('info','Campus picker active — double-click map',5000); }}
+            className={`btn ${campusPickerMode ? 'btn-purple' : ''}`}
+            title="Click: center campus | Double-click: change campus location"
+          >
+            <MapPin size={13}/>
+            {campusPickerMode ? 'Cancel Picker' : 'Campus'}
+          </button>
+
+          <button onClick={loadStops} disabled={!selectedBus || loading} className="btn" style={{ color:T.blue,borderColor:'rgba(91,141,239,.3)',background:'rgba(91,141,239,.07)' }}>
+            <Eye size={13}/>{loading ? 'Loading…' : 'Load Stops'}
+          </button>
+
+          <button onClick={fitStops} disabled={!stops.length} className="btn">
+            <Navigation size={13}/>Fit
+          </button>
+
+          <button onClick={clearAll} className="btn btn-danger">
+            <Trash2 size={13}/>Clear
+          </button>
+
+          <button onClick={()=>{setSelectedBus('');setStops([]);setDirection('morning');}} className="btn">
+            <RefreshCw size={13}/>Reset
+          </button>
+
+          <button onClick={saveRoute} disabled={saving||!selectedBus||!stops.length} className="btn btn-primary" style={{ paddingLeft:16,paddingRight:16 }}>
+            <Save size={13}/>{saving?'Saving…':'Save Route'}
+          </button>
+        </div>
+      </header>
+
+      {/* ── Toast ── */}
+      {toast.text && (
+        <div style={{ position:'fixed',top:68,right:18,zIndex:999,padding:'10px 16px',background:toastBg,color:'#fff',borderRadius:10,fontSize:12,fontWeight:500,display:'flex',alignItems:'center',gap:7,boxShadow:'0 8px 24px rgba(0,0,0,.4)',animation:'toastIn .2s ease',maxWidth:320 }}>
+          <ToastIcon/>{toast.text}
         </div>
       )}
 
-      {/* College Picker Mode Overlay */}
-      {showCollegePicker && (
-        <div style={{
-          position: 'fixed',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          background: 'linear-gradient(135deg, #8b5cf6, #6366f1)',
-          padding: '16px 32px',
-          borderRadius: 50,
-          color: 'white',
-          fontWeight: 'bold',
-          fontSize: 16,
-          zIndex: 100,
-          boxShadow: '0 10px 40px rgba(139,92,246,0.5)',
-          pointerEvents: 'none',
-          animation: 'pulse 1s infinite',
-          whiteSpace: 'nowrap'
-        }}>
-          📍 College Location Picker Active - Double-click on map to set location
+      {/* ── Campus picker pill ── */}
+      {campusPickerMode && (
+        <div className="pulse" style={{ position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',background:'linear-gradient(135deg,#6366f1,#a78bfa)',padding:'13px 28px',borderRadius:50,color:'#fff',fontWeight:700,fontSize:14,zIndex:100,pointerEvents:'none',whiteSpace:'nowrap',boxShadow:'0 8px 30px rgba(99,102,241,.55)' }}>
+          📍 Campus Picker Active — Double-click to set new location
         </div>
       )}
 
-      {/* Main Content */}
-      <div style={{ 
-        display: 'grid', 
-        gridTemplateColumns: '1fr 360px',
-        gap: 0,
-        height: 'calc(100vh - 70px)'
-      }}>
-        {/* Map Section */}
-        <div style={{ position: 'relative', background: '#1a1a2e' }}>
-          <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
-          
-          <div style={{
-            position: 'absolute',
-            bottom: 20,
-            left: 20,
-            background: 'rgba(0,0,0,0.8)',
-            backdropFilter: 'blur(8px)',
-            padding: '10px 18px',
-            borderRadius: 30,
-            fontSize: 12,
-            color: '#a0a0c0',
-            pointerEvents: 'none',
-            zIndex: 10,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8
-          }}>
-            <div style={{ width: 8, height: 8, background: '#10b981', borderRadius: '50%', animation: 'pulse 2s infinite' }}></div>
-            <MapPin size={14} />
-            <span>Double-click to add stop</span>
-            <span style={{ width: 1, height: 12, background: '#4b4b6b', margin: '0 4px' }}></span>
-            <span>🖱️ Drag markers to reposition</span>
+      {/* ── Main layout ── */}
+      <div style={{ flex:1,display:'grid',gridTemplateColumns:'1fr 355px',height:'calc(100vh - 60px)',overflow:'hidden' }}>
+
+        {/* MAP */}
+        <div style={{ position:'relative',overflow:'hidden' }}>
+          <div ref={mapEl} style={{ width:'100%',height:'100%' }}/>
+
+          {/* hint */}
+          <div style={{ position:'absolute',bottom:36,left:16,zIndex:10,background:'rgba(0,0,0,.72)',backdropFilter:'blur(8px)',padding:'7px 15px',borderRadius:28,fontSize:11,color:T.muted,display:'flex',alignItems:'center',gap:8,pointerEvents:'none',border:`1px solid ${T.border}` }}>
+            <span className="pulse" style={{ width:7,height:7,background:T.green,borderRadius:'50%',flexShrink:0 }}/>
+            {campusPickerMode ? 'Double-click to set campus location' : selectedBus ? 'Double-click to add stop • Drag to reposition' : 'Select a bus first'}
           </div>
-          
+
+          {/* route badge */}
           {stops.length > 0 && (
-            <div style={{
-              position: 'absolute',
-              top: 20,
-              right: 20,
-              background: 'rgba(0,0,0,0.8)',
-              backdropFilter: 'blur(8px)',
-              padding: '8px 16px',
-              borderRadius: 20,
-              fontSize: 12,
-              color: 'white',
-              pointerEvents: 'none',
-              zIndex: 10,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8
-            }}>
-              <Route size={14} color="#3b82f6" />
-              <span><strong style={{ color: '#3b82f6' }}>{stops.length}</strong> stops in route</span>
-              <span style={{ width: 1, height: 12, background: '#4b4b6b' }}></span>
-              <span>🚏 {stops[0]?.name} → {stops[stops.length - 1]?.name}</span>
+            <div style={{ position:'absolute',top:14,left:'50%',transform:'translateX(-50%)',zIndex:10,background:'rgba(0,0,0,.75)',backdropFilter:'blur(8px)',padding:'7px 16px',borderRadius:30,fontSize:11,color:T.text,display:'flex',alignItems:'center',gap:8,pointerEvents:'none',border:`1px solid ${T.border}`,whiteSpace:'nowrap' }}>
+              <Route size={12} color={T.blue}/>
+              <span style={{ color:T.blue,fontWeight:700 }}>{stops.length}</span> stops
+              <span style={{ width:1,height:11,background:T.faint }}/>
+              <span style={{ color:T.green }}>{stops[0]?.name}</span>
+              <span style={{ color:T.faint }}>→</span>
+              <span style={{ color:T.red }}>{stops[stops.length-1]?.name}</span>
             </div>
           )}
         </div>
 
-        {/* Stops List Section */}
-        <div style={{
-          background: 'rgba(22, 22, 42, 0.98)',
-          borderLeft: '1px solid rgba(255,255,255,0.08)',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden'
-        }}>
+        {/* SIDEBAR */}
+        <aside style={{ background:T.surface,borderLeft:`1px solid ${T.border}`,display:'flex',flexDirection:'column',overflow:'hidden' }}>
+
           {/* Controls */}
-          <div style={{ padding: 20, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: '#6b6b8b', marginBottom: 6, display: 'block' }}>
-                Select Bus
-              </label>
-              <select
-                value={selectedBus}
-                onChange={(e) => handleBusChange(e.target.value)}
-                className="input-field"
-                style={{ width: '100%' }}
-              >
-                <option value="">-- Select a bus --</option>
-                {buses.map(bus => (
-                  <option key={bus.id} value={bus.id}>
-                    {bus.bus_number} - {bus.route_name || 'No Route'}
-                  </option>
-                ))}
-              </select>
-              {buses.length === 0 && (
-                <p style={{ fontSize: 11, color: '#ef4444', marginTop: 6 }}>
-                  No buses found. Please add buses first.
-                </p>
-              )}
+          <div style={{ padding:'16px 14px 12px',borderBottom:`1px solid ${T.border}`,display:'flex',flexDirection:'column',gap:12 }}>
+
+            {/* Bus select */}
+            <div>
+              <label style={{ display:'block',fontSize:10,fontWeight:700,color:T.muted,marginBottom:5,letterSpacing:'.06em',textTransform:'uppercase' }}>Select Bus</label>
+              <div style={{ position:'relative' }}>
+                <Bus size={13} style={{ position:'absolute',left:11,top:'50%',transform:'translateY(-50%)',color:T.faint,pointerEvents:'none' }}/>
+                <select value={selectedBus} onChange={e=>changeBus(e.target.value)} className="inp" style={{ paddingLeft:32 }}>
+                  <option value="">— Pick a bus —</option>
+                  {buses.map(b=><option key={b.id} value={b.id}>{b.bus_number} — {b.route_name||'No Route'}</option>)}
+                </select>
+              </div>
+              {!buses.length && <p style={{ fontSize:11,color:T.red,marginTop:4 }}>No buses found. Add buses first.</p>}
             </div>
 
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: '#6b6b8b', marginBottom: 6, display: 'block' }}>
-                Direction
-              </label>
-              <div style={{ display: 'flex', gap: 12 }}>
-                <button
-                  onClick={() => setDirection('morning')}
-                  style={{
-                    flex: 1,
-                    padding: '10px',
-                    borderRadius: 10,
-                    background: direction === 'morning' ? 'rgba(245,158,11,0.2)' : 'rgba(255,255,255,0.03)',
-                    border: direction === 'morning' ? '1px solid #f59e0b' : '1px solid rgba(255,255,255,0.08)',
-                    color: direction === 'morning' ? '#f59e0b' : '#a0a0c0',
-                    cursor: 'pointer',
-                    fontSize: 13,
-                    fontWeight: 500,
-                    transition: 'all 0.2s'
-                  }}
-                >
-                  <Sun size={14} style={{ display: 'inline', marginRight: 6 }} />
-                  Morning
-                </button>
-                <button
-                  onClick={() => setDirection('evening')}
-                  style={{
-                    flex: 1,
-                    padding: '10px',
-                    borderRadius: 10,
-                    background: direction === 'evening' ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.03)',
-                    border: direction === 'evening' ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.08)',
-                    color: direction === 'evening' ? '#3b82f6' : '#a0a0c0',
-                    cursor: 'pointer',
-                    fontSize: 13,
-                    fontWeight: 500,
-                    transition: 'all 0.2s'
-                  }}
-                >
-                  <Moon size={14} style={{ display: 'inline', marginRight: 6 }} />
-                  Evening
-                </button>
+            {/* Direction */}
+            <div>
+              <label style={{ display:'block',fontSize:10,fontWeight:700,color:T.muted,marginBottom:5,letterSpacing:'.06em',textTransform:'uppercase' }}>Direction</label>
+              <div style={{ display:'flex',gap:8 }}>
+                {[['morning','Morning',<Sun size={12}/>,T.amber],['evening','Evening',<Moon size={12}/>,T.blue]].map(([v,lbl,ic,col])=>(
+                  <button key={v} onClick={()=>changeDir(v)} style={{ flex:1,padding:'8px',borderRadius:9,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6,fontSize:12,fontWeight:500,background:direction===v?`rgba(${v==='morning'?'245,158,11':'91,141,239'},.14)`:'rgba(255,255,255,.03)',border:direction===v?`1px solid ${col}`:`1px solid ${T.border}`,color:direction===v?col:T.muted,transition:'all .15s',fontFamily:'inherit' }}>
+                    {ic}{lbl}
+                  </button>
+                ))}
               </div>
             </div>
 
+            {/* Active bus pill */}
             {selectedBus && (
-              <div style={{
-                background: 'linear-gradient(135deg, rgba(59,130,246,0.15), rgba(6,182,212,0.1))',
-                borderRadius: 12,
-                padding: '12px',
-                border: '1px solid rgba(59,130,246,0.3)'
-              }}>
-                <Bus size={14} style={{ display: 'inline', marginRight: 8, color: '#3b82f6' }} />
-                <span style={{ fontSize: 13, color: '#3b82f6', fontWeight: 500 }}>{getBusName()}</span>
+              <div style={{ background:'rgba(91,141,239,.08)',border:'1px solid rgba(91,141,239,.25)',borderRadius:8,padding:'8px 12px',display:'flex',alignItems:'center',gap:7 }}>
+                <Bus size={12} color={T.blue}/>
+                <span style={{ fontSize:12,color:T.blue,fontWeight:600 }}>{getBusLabel()}</span>
               </div>
             )}
           </div>
 
-          {/* Stops List */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h3 style={{ fontSize: 14, fontWeight: 600, color: 'white', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <MapPin size={16} color="#3b82f6" />
-                Route Stops ({stops.length})
-              </h3>
-              {stops.length > 0 && (
-                <button
-                  onClick={fitMapToStops}
-                  className="action-button"
-                  style={{ padding: '4px 12px', fontSize: 11 }}
-                >
-                  <MapIcon size={12} />
-                  <span>Fit Map</span>
+          {/* Stops list */}
+          <div style={{ flex:1,overflowY:'auto',padding:'14px 14px 10px' }}>
+            <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12 }}>
+              <div style={{ display:'flex',alignItems:'center',gap:7 }}>
+                <MapPin size={14} color={T.blue}/>
+                <span style={{ fontSize:13,fontWeight:700,color:T.text }}>Route Stops</span>
+                <span style={{ background:'rgba(91,141,239,.15)',color:T.blue,borderRadius:20,padding:'1px 8px',fontSize:11,fontWeight:700 }}>{stops.length}</span>
+              </div>
+              {stops.length>0 && (
+                <button onClick={fitStops} className="btn" style={{ padding:'3px 9px',fontSize:10 }}>
+                  <Navigation size={10}/>Fit
                 </button>
               )}
             </div>
 
             {stops.length === 0 ? (
-              <div style={{
-                textAlign: 'center',
-                padding: 40,
-                background: 'rgba(255,255,255,0.02)',
-                borderRadius: 16,
-                border: '1px dashed rgba(255,255,255,0.08)'
-              }}>
-                <MapPin size={40} color="#6b6b8b" style={{ marginBottom: 12 }} />
-                <p style={{ color: '#6b6b8b', fontSize: 13 }}>No stops added yet</p>
-                <p style={{ color: '#4b4b6b', fontSize: 11, marginTop: 6 }}>Double-click on the map to add stops</p>
+              <div style={{ textAlign:'center',padding:'36px 16px',background:'rgba(255,255,255,.02)',borderRadius:13,border:`1px dashed ${T.faint}` }}>
+                <MapPin size={32} color={T.faint} style={{ marginBottom:10 }}/>
+                <p style={{ color:T.muted,fontSize:13,fontWeight:500 }}>No stops added yet</p>
+                <p style={{ color:T.faint,fontSize:11,marginTop:4 }}>{selectedBus ? 'Double-click on the map to add stops' : 'Select a bus first'}</p>
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {stops.map((stop, index) => (
-                  <div
-                    key={index}
-                    draggable
-                    onDragStart={() => handleDragStart(index)}
-                    onDragOver={handleDragOver}
-                    onDrop={() => handleDrop(index)}
-                    style={{
-                      background: 'rgba(255,255,255,0.03)',
-                      borderRadius: 12,
-                      border: '1px solid rgba(255,255,255,0.06)',
-                      cursor: 'grab',
-                      transition: 'all 0.2s ease'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', padding: '12px' }}>
-                      <div style={{
-                        width: 32,
-                        height: 32,
-                        background: index === 0 ? 'linear-gradient(135deg, #10b981, #34d399)' : 
-                                   index === stops.length - 1 ? 'linear-gradient(135deg, #ef4444, #f87171)' :
-                                   'linear-gradient(135deg, #3b82f6, #06b6d4)',
-                        borderRadius: '50%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: 12,
-                        fontWeight: 'bold',
-                        color: 'white',
-                        marginRight: 12,
-                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-                      }}>
-                        {index + 1}
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600, color: 'white', fontSize: 13 }}>{stop.name}</div>
-                        <div style={{ fontSize: 10, color: '#6b6b8b', fontFamily: 'monospace', marginTop: 2 }}>
-                          {stop.lat.toFixed(6)}°, {stop.lng.toFixed(6)}°
+              <div style={{ display:'flex',flexDirection:'column',gap:6 }}>
+                {stops.map((stop, i) => {
+                  const c = stopCol(i, stops.length);
+                  return (
+                    <div key={i} className="stop-card" draggable onDragStart={()=>setDragIdx(i)} onDragOver={e=>e.preventDefault()} onDrop={()=>handleDrop(i)} style={{ animation:'fadeUp .2s ease' }}>
+                      <div style={{ display:'flex',alignItems:'center',padding:'9px 11px',gap:9 }}>
+                        {/* badge */}
+                        <div style={{ width:30,height:30,flexShrink:0,background:`linear-gradient(135deg,${c.a},${c.b})`,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:800,color:'#fff',boxShadow:`0 0 0 2px ${c.a}33` }}>{i+1}</div>
+
+                        {/* info */}
+                        <div style={{ flex:1,minWidth:0 }}>
+                          <div style={{ fontSize:12,fontWeight:700,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis' }}>{stop.name}</div>
+                          <div style={{ fontSize:9,color:T.faint,fontFamily:'monospace',marginTop:1 }}>{Number(stop.lat).toFixed(5)}, {Number(stop.lng).toFixed(5)}</div>
+                        </div>
+
+                        {/* actions */}
+                        <div style={{ display:'flex',gap:3,flexShrink:0 }}>
+                          <button onClick={()=>moveStop(i,-1)} disabled={i===0} className="btn" style={{ padding:'3px 6px',fontSize:12,opacity:i===0?.28:1 }}>↑</button>
+                          <button onClick={()=>moveStop(i, 1)} disabled={i===stops.length-1} className="btn" style={{ padding:'3px 6px',fontSize:12,opacity:i===stops.length-1?.28:1 }}>↓</button>
+                          <button onClick={()=>{ setEditIdx(i);setTempName(stop.name);setTempLL({lat:stop.lat,lng:stop.lng});setShowModal(true); }} className="btn" style={{ padding:'3px 6px' }}><Edit2 size={11}/></button>
+                          <button onClick={()=>removeStop(i)} className="btn btn-danger" style={{ padding:'3px 6px' }}><Trash2 size={11}/></button>
                         </div>
                       </div>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button
-                          onClick={() => moveStopUp(index)}
-                          disabled={index === 0}
-                          style={{
-                            width: 30,
-                            height: 30,
-                            borderRadius: 8,
-                            background: 'rgba(255,255,255,0.05)',
-                            border: 'none',
-                            color: index === 0 ? '#4b4b6b' : '#a0a0c0',
-                            cursor: index === 0 ? 'not-allowed' : 'pointer',
-                            fontSize: 14,
-                            transition: 'all 0.2s'
-                          }}
-                        >
-                          ↑
-                        </button>
-                        <button
-                          onClick={() => moveStopDown(index)}
-                          disabled={index === stops.length - 1}
-                          style={{
-                            width: 30,
-                            height: 30,
-                            borderRadius: 8,
-                            background: 'rgba(255,255,255,0.05)',
-                            border: 'none',
-                            color: index === stops.length - 1 ? '#4b4b6b' : '#a0a0c0',
-                            cursor: index === stops.length - 1 ? 'not-allowed' : 'pointer',
-                            fontSize: 14,
-                            transition: 'all 0.2s'
-                          }}
-                        >
-                          ↓
-                        </button>
-                        <button
-                          onClick={() => removeStop(index)}
-                          style={{
-                            width: 30,
-                            height: 30,
-                            borderRadius: 8,
-                            background: 'rgba(239,68,68,0.15)',
-                            border: 'none',
-                            color: '#ef4444',
-                            cursor: 'pointer',
-                            transition: 'all 0.2s'
-                          }}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
 
-          {/* Summary */}
+          {/* Footer summary */}
           {stops.length > 0 && (
-            <div style={{
-              padding: 16,
-              borderTop: '1px solid rgba(255,255,255,0.08)',
-              background: 'rgba(0,0,0,0.3)'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ fontSize: 12, color: '#6b6b8b' }}>Total Stops</span>
-                <span style={{ fontSize: 16, fontWeight: 700, color: '#3b82f6' }}>{stops.length}</span>
+            <div style={{ padding:'12px 14px',borderTop:`1px solid ${T.border}`,background:'rgba(0,0,0,.18)' }}>
+              <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6 }}>
+                <span style={{ fontSize:11,color:T.muted }}>Total Stops</span>
+                <span style={{ fontSize:18,fontWeight:800,color:T.blue }}>{stops.length}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 12, color: '#6b6b8b' }}>Route Sequence</span>
-                <span style={{ fontSize: 12, color: '#a0a0c0' }}>
-                  <span style={{ color: '#10b981' }}>Start</span> → <span style={{ color: '#ef4444' }}>End</span>
-                </span>
+              <div style={{ display:'flex',justifyContent:'space-between',marginBottom:4 }}>
+                <span style={{ fontSize:10,color:T.faint }}>Start</span>
+                <span style={{ fontSize:10,color:T.green,fontWeight:600,maxWidth:'65%',textAlign:'right',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{stops[0]?.name}</span>
               </div>
-              <div style={{ marginTop: 12, height: 4, background: 'rgba(255,255,255,0.05)', borderRadius: 2, overflow: 'hidden' }}>
-                <div style={{
-                  width: '100%',
-                  height: '100%',
-                  background: 'linear-gradient(90deg, #10b981, #3b82f6, #ef4444)',
-                  borderRadius: 2
-                }}></div>
+              <div style={{ display:'flex',justifyContent:'space-between',marginBottom:10 }}>
+                <span style={{ fontSize:10,color:T.faint }}>End</span>
+                <span style={{ fontSize:10,color:T.red,fontWeight:600,maxWidth:'65%',textAlign:'right',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{stops[stops.length-1]?.name}</span>
+              </div>
+              <div style={{ height:4,background:T.faint,borderRadius:4,overflow:'hidden' }}>
+                <div style={{ width:'100%',height:'100%',background:`linear-gradient(90deg,${T.green},${T.blue},${T.red})`,borderRadius:4 }}/>
               </div>
             </div>
           )}
-        </div>
+        </aside>
       </div>
 
-      {/* Add/Edit Stop Modal */}
-      {showNameInput && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(0,0,0,0.85)',
-          backdropFilter: 'blur(8px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000,
-          animation: 'fadeIn 0.2s ease'
-        }}>
-          <div style={{
-            background: 'linear-gradient(135deg, #16162a, #1a1a35)',
-            borderRadius: 28,
-            maxWidth: 420,
-            width: '90%',
-            padding: 28,
-            border: '1px solid rgba(255,255,255,0.1)',
-            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-              <div style={{
-                width: 48,
-                height: 48,
-                background: 'linear-gradient(135deg, #3b82f6, #06b6d4)',
-                borderRadius: 24,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}>
-                <MapPin size={24} color="white" />
+      {/* ── Add/Edit Modal ── */}
+      {showModal && (
+        <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,.82)',backdropFilter:'blur(10px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000 }}>
+          <div style={{ background:T.card,borderRadius:20,width:400,maxWidth:'92vw',padding:26,border:`1px solid ${T.border}`,boxShadow:'0 30px 60px rgba(0,0,0,.65)',animation:'fadeUp .2s ease' }}>
+            <div style={{ display:'flex',alignItems:'center',gap:12,marginBottom:22 }}>
+              <div style={{ width:44,height:44,flexShrink:0,background:`linear-gradient(135deg,${T.blue},${T.cyan})`,borderRadius:13,display:'flex',alignItems:'center',justifyContent:'center' }}>
+                <MapPin size={21} color="#fff"/>
               </div>
               <div>
-                <h3 style={{ fontSize: 20, fontWeight: 700, color: 'white', margin: 0 }}>
-                  {editingIndex !== null ? 'Edit Stop' : `Add Stop #${stops.length + 1}`}
-                </h3>
-                <p style={{ fontSize: 12, color: '#6b6b8b', marginTop: 4 }}>
-                  {editingIndex !== null ? 'Modify stop details' : 'Enter a name for this location'}
-                </p>
+                <h3 style={{ fontSize:16,fontWeight:700,color:T.text }}>{editIdx!==null ? 'Edit Stop' : `Add Stop #${stops.length+1}`}</h3>
+                <p style={{ fontSize:11,color:T.muted,marginTop:2 }}>{editIdx!==null ? 'Update details below' : 'Name this map location'}</p>
               </div>
             </div>
-            
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: '#6b6b8b', marginBottom: 8, display: 'block' }}>
-                Stop Name
-              </label>
-              <input
-                type="text"
-                value={tempName}
-                onChange={(e) => setTempName(e.target.value)}
-                placeholder="e.g., SGI College Main Gate"
-                autoFocus
-                className="input-field"
-                style={{ width: '100%' }}
-                onKeyPress={(e) => e.key === 'Enter' && addStop()}
-              />
+
+            <label style={{ display:'block',fontSize:10,fontWeight:700,color:T.muted,marginBottom:5,textTransform:'uppercase',letterSpacing:'.06em' }}>Stop Name</label>
+            <input type="text" value={tempName} onChange={e=>setTempName(e.target.value)} placeholder="e.g., SGI College Main Gate" autoFocus className="inp" onKeyDown={e=>e.key==='Enter'&&commitStop()} style={{ marginBottom:14 }}/>
+
+            <label style={{ display:'block',fontSize:10,fontWeight:700,color:T.muted,marginBottom:5,textTransform:'uppercase',letterSpacing:'.06em' }}>Coordinates</label>
+            <div style={{ background:T.bg,border:`1px solid ${T.border}`,borderRadius:9,padding:'9px 13px',marginBottom:20,display:'flex',alignItems:'center',gap:7 }}>
+              <MapPin size={11} color={T.faint}/>
+              <code style={{ fontSize:11,color:T.muted,fontFamily:'monospace' }}>{tempLL?.lat}, {tempLL?.lng}</code>
             </div>
-            
-            <div style={{ marginBottom: 24 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: '#6b6b8b', marginBottom: 8, display: 'block' }}>
-                Location Coordinates
-              </label>
-              <div style={{ 
-                background: 'rgba(0,0,0,0.4)', 
-                padding: '10px 14px', 
-                borderRadius: 12,
-                border: '1px solid rgba(255,255,255,0.05)'
-              }}>
-                <code style={{ fontSize: 12, color: '#a0a0c0', display: 'block', textAlign: 'center' }}>
-                  📍 {tempLatLng?.lat}, {tempLatLng?.lng}
-                </code>
-              </div>
-            </div>
-            
-            {!editingIndex && (
-              <div style={{ 
-                marginBottom: 24, 
-                padding: '10px 14px', 
-                background: 'rgba(59,130,246,0.1)', 
-                borderRadius: 12,
-                border: '1px solid rgba(59,130,246,0.3)'
-              }}>
-                <code style={{ fontSize: 12, color: '#3b82f6', display: 'block', textAlign: 'center' }}>
-                  🔢 This will be Stop #{stops.length + 1} in the route sequence
-                </code>
-              </div>
-            )}
-            
-            <div style={{ display: 'flex', gap: 12 }}>
-              <button
-                onClick={() => {
-                  setShowNameInput(false);
-                  setTempName('');
-                  setTempLatLng(null);
-                  setEditingIndex(null);
-                }}
-                className="action-button"
-                style={{ flex: 1, justifyContent: 'center', padding: '12px' }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={addStop}
-                className="action-button primary"
-                style={{ flex: 1, justifyContent: 'center', padding: '12px' }}
-              >
-                {editingIndex !== null ? 'Update Stop' : `Add Stop #${stops.length + 1}`}
-              </button>
+
+            <div style={{ display:'flex',gap:9 }}>
+              <button onClick={()=>{setShowModal(false);setTempName('');setTempLL(null);setEditIdx(null);}} className="btn" style={{ flex:1,justifyContent:'center',padding:'10px' }}><X size={13}/>Cancel</button>
+              <button onClick={commitStop} className="btn btn-primary" style={{ flex:2,justifyContent:'center',padding:'10px' }}><Save size={13}/>{editIdx!==null?'Update Stop':`Add Stop #${stops.length+1}`}</button>
             </div>
           </div>
         </div>
@@ -1608,4 +896,4 @@ function BusRouteMapper() {
   );
 }
 
-export default BusRouteMapper;
+export default withAuth(BusRouteMapper);

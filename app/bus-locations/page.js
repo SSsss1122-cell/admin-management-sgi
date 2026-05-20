@@ -6,13 +6,12 @@ import {
   MapPin, Navigation, Plus, Edit, Trash2, Users, Phone, 
   AlertTriangle, Menu, X, ArrowLeft, Bus, Wifi, WifiOff,
   Clock, ChevronRight, Search, Filter, RefreshCw, Gauge,
-  User, Shield, Calendar, Car, Speed
+  User, Shield, Calendar, Car, Speed, Layers, Map as MapIcon
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import withAuth from '../../components/withAuth';
 import dynamic from 'next/dynamic';
 import { getAdminInstitution } from '../lib/getInstitution';
-
 
 // Dynamically import Leaflet components (to avoid SSR issues)
 const MapContainer = dynamic(() => import('react-leaflet').then(mod => mod.MapContainer), { ssr: false });
@@ -32,6 +31,9 @@ function BusManagement() {
   const [mapReady, setMapReady] = useState(false);
   const [leafletLoaded, setLeafletLoaded] = useState(false);
   const [busIcons, setBusIcons] = useState({});
+  const [mapStyle, setMapStyle] = useState('satellite'); // Default to satellite
+  const [mapCenter, setMapCenter] = useState([17.3616, 78.4747]);
+  const [mapZoom, setMapZoom] = useState(12);
   const mapRef = useRef(null);
   const markersRef = useRef({});
   
@@ -39,6 +41,25 @@ function BusManagement() {
   const [mounted, setMounted] = useState(false);
   const [institutionId, setInstitutionId] = useState(null);
   const router = useRouter();
+
+  // Tile layer configurations
+  const tileLayers = {
+    satellite: {
+      url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      attribution: '&copy; <a href="https://www.esri.com">Esri</a> | &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      name: 'Satellite'
+    },
+    streets: {
+      url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      name: 'Street Map'
+    },
+    hybrid: {
+      url: 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+      attribution: '&copy; <a href="https://maps.google.com">Google Maps</a>',
+      name: 'Hybrid'
+    }
+  };
 
   // Load Leaflet CSS and icons
   useEffect(() => {
@@ -64,7 +85,7 @@ function BusManagement() {
       const activeIcon = L.divIcon({
         className: 'custom-bus-icon',
         html: `<div style="
-          background: #10b981;
+          background: linear-gradient(135deg, #10b981, #34d399);
           width: 32px;
           height: 32px;
           border-radius: 50%;
@@ -72,16 +93,22 @@ function BusManagement() {
           align-items: center;
           justify-content: center;
           border: 3px solid white;
-          box-shadow: 0 0 20px #10b981;
+          box-shadow: 0 0 20px rgba(16,185,129,0.8);
           animation: pulse 1.5s infinite;
         ">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
             <rect x="4" y="6" width="16" height="12" rx="2" />
             <circle cx="8" cy="18" r="2" />
             <circle cx="16" cy="18" r="2" />
             <path d="M8 6V4M16 6V4" />
           </svg>
-        </div>`,
+        </div>
+        <style>
+          @keyframes pulse {
+            0%,100% { transform: scale(1); box-shadow: 0 0 20px rgba(16,185,129,0.8); }
+            50% { transform: scale(1.1); box-shadow: 0 0 30px rgba(16,185,129,1); }
+          }
+        </style>`,
         iconSize: [32, 32],
         iconAnchor: [16, 16],
         popupAnchor: [0, -16]
@@ -90,7 +117,7 @@ function BusManagement() {
       const offlineIcon = L.divIcon({
         className: 'custom-bus-icon',
         html: `<div style="
-          background: #6b7280;
+          background: linear-gradient(135deg, #6b7280, #9ca3af);
           width: 28px;
           height: 28px;
           border-radius: 50%;
@@ -100,7 +127,7 @@ function BusManagement() {
           border: 2px solid white;
           opacity: 0.7;
         ">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
             <rect x="4" y="6" width="16" height="12" rx="2" />
             <circle cx="8" cy="18" r="2" />
             <circle cx="16" cy="18" r="2" />
@@ -136,10 +163,10 @@ function BusManagement() {
   }, []);
 
   useEffect(() => {
-  if (mounted) {
-    loadInstitutionData();
-  }
-}, [mounted]);
+    if (mounted) {
+      loadInstitutionData();
+    }
+  }, [mounted]);
 
   // Update map markers when locations change
   useEffect(() => {
@@ -163,11 +190,23 @@ function BusManagement() {
         const marker = L.marker([location.latitude, location.longitude], { icon })
           .addTo(map)
           .bindPopup(`
-            <div style="font-family: Inter, sans-serif; padding: 8px;">
-              <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">Bus ${bus.bus_number}</div>
-              <div style="font-size: 12px; color: #666;">Route: ${bus.route_name || 'Not set'}</div>
-              <div style="font-size: 12px; color: #666;">Speed: ${location.speed?.toFixed(1) || 0} km/h</div>
-              <div style="font-size: 12px; color: #666;">Last: ${formatTimeAgo(location.updated_at)}</div>
+            <div style="font-family: Inter, sans-serif; padding: 12px; min-width: 200px;">
+              <div style="font-weight: 700; font-size: 16px; margin-bottom: 8px; color: #3b82f6;">Bus ${bus.bus_number}</div>
+              <div style="font-size: 12px; margin-bottom: 4px;">
+                <span style="color: #666;">Route:</span> 
+                <span style="color: #fff;">${bus.route_name || 'Not set'}</span>
+              </div>
+              <div style="font-size: 12px; margin-bottom: 4px;">
+                <span style="color: #666;">Speed:</span> 
+                <span style="color: #10b981;">${location.speed?.toFixed(1) || 0} km/h</span>
+              </div>
+              <div style="font-size: 12px; margin-bottom: 8px;">
+                <span style="color: #666;">Last Update:</span> 
+                <span style="color: #fff;">${formatTimeAgo(location.updated_at)}</span>
+              </div>
+              <button onclick="window.viewBusDetails(${bus.id})" style="width: 100%; padding: 6px; background: #3b82f6; border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 11px; font-weight: 600;">
+                View Details →
+              </button>
             </div>
           `);
 
@@ -178,112 +217,122 @@ function BusManagement() {
         markersRef.current[bus.id] = marker;
       });
 
-      // Fit bounds to show all markers
-      if (busLocations.length > 0) {
+      // Fit bounds to show all markers if there are any
+      if (busLocations.length > 0 && busLocations.length === Object.keys(markersRef.current).length) {
         const bounds = L.latLngBounds(busLocations.map(loc => [loc.latitude, loc.longitude]));
-        map.fitBounds(bounds, { padding: [50, 50] });
+        if (bounds.isValid()) {
+          map.fitBounds(bounds, { padding: [50, 50] });
+        }
       }
     });
-  }, [busLocations, leafletLoaded, busIcons]);
+  }, [busLocations, leafletLoaded, busIcons, buses]);
+
+  // Expose function for popup buttons
+  useEffect(() => {
+    window.viewBusDetails = (busId) => {
+      const bus = buses.find(b => b.id === busId);
+      if (bus) setSelectedBus(bus);
+    };
+    return () => { delete window.viewBusDetails; };
+  }, [buses]);
 
   const loadInstitutionData = async () => {
-  try {
-    const adminData = await getAdminInstitution();
+    try {
+      const adminData = await getAdminInstitution();
+      console.log('ADMIN DATA:', adminData);
 
-    console.log('ADMIN DATA:', adminData);
+      if (!adminData?.institution_id) {
+        setLoading(false);
+        return;
+      }
 
-    if (!adminData?.institution_id) {
+      setInstitutionId(adminData.institution_id);
+
+      await Promise.all([
+        fetchBuses(adminData.institution_id),
+        fetchDrivers(adminData.institution_id),
+        fetchBusLocations(adminData.institution_id)
+      ]);
+
+      // Auto refresh every 5 sec
+      const interval = setInterval(() => {
+        fetchBusLocations(adminData.institution_id);
+      }, 5000);
+
+      return () => clearInterval(interval);
+
+    } catch (error) {
+      console.error('Error loading institution data:', error);
       setLoading(false);
-      return;
     }
-
-    setInstitutionId(adminData.institution_id);
-
-    await Promise.all([
-      fetchBuses(adminData.institution_id),
-      fetchDrivers(adminData.institution_id),
-      fetchBusLocations(adminData.institution_id)
-    ]);
-
-    // Auto refresh every 5 sec
-    const interval = setInterval(() => {
-      fetchBusLocations(adminData.institution_id);
-    }, 5000);
-
-    return () => clearInterval(interval);
-
-  } catch (error) {
-    console.error('Error loading institution data:', error);
-    setLoading(false);
-  }
-};
+  };
 
   const fetchBuses = async (instId) => {
-  try {
-    const { data, error } = await supabase
-      .from('buses')
-      .select('*')
-      .eq('institution_id', instId)
-      .order('bus_number');
+    try {
+      const { data, error } = await supabase
+        .from('buses')
+        .select('*')
+        .eq('institution_id', instId)
+        .order('bus_number');
 
-    if (error) throw error;
+      if (error) throw error;
 
-    setBuses(data || []);
-  } catch (error) {
-    console.error('Error fetching buses:', error);
-  }
-};
+      setBuses(data || []);
+    } catch (error) {
+      console.error('Error fetching buses:', error);
+    }
+  };
 
   const fetchDrivers = async (instId) => {
-  try {
-    const { data, error } = await supabase
-      .from('drivers_new')
-      .select('id, name, contact, license_no')
-      .eq('institution_id', instId)
-      .order('name');
+    try {
+      const { data, error } = await supabase
+        .from('drivers_new')
+        .select('id, name, contact, license_no')
+        .eq('institution_id', instId)
+        .order('name');
 
-    if (error) throw error;
+      if (error) throw error;
 
-    setDrivers(data || []);
-  } catch (error) {
-    console.error('Error fetching drivers:', error);
-  }
-};
+      setDrivers(data || []);
+    } catch (error) {
+      console.error('Error fetching drivers:', error);
+    }
+  };
 
   const fetchBusLocations = async (instId) => {
-  try {
-    const thirtySecondsAgo = new Date(Date.now() - 30000).toISOString();
+    try {
+      const thirtySecondsAgo = new Date(Date.now() - 30000).toISOString();
 
-    const { data, error } = await supabase
-      .from('bus_locations')
-      .select('*')
-      .eq('institution_id', instId)
-      .gte('updated_at', thirtySecondsAgo)
-      .order('updated_at', { ascending: false });
+      const { data, error } = await supabase
+        .from('bus_locations')
+        .select('*')
+        .eq('institution_id', instId)
+        .gte('updated_at', thirtySecondsAgo)
+        .order('updated_at', { ascending: false });
 
-    if (error) throw error;
+      if (error) throw error;
 
-    // Latest location per bus
-    const latestLocations = {};
+      // Latest location per bus
+      const latestLocations = {};
 
-    data?.forEach(location => {
-      if (
-        !latestLocations[location.bus_id] ||
-        new Date(location.updated_at) >
-          new Date(latestLocations[location.bus_id].updated_at)
-      ) {
-        latestLocations[location.bus_id] = location;
-      }
-    });
+      data?.forEach(location => {
+        if (
+          !latestLocations[location.bus_id] ||
+          new Date(location.updated_at) >
+            new Date(latestLocations[location.bus_id].updated_at)
+        ) {
+          latestLocations[location.bus_id] = location;
+        }
+      });
 
-    setBusLocations(Object.values(latestLocations));
+      setBusLocations(Object.values(latestLocations));
 
-  } catch (error) {
-    console.error('Error fetching bus locations:', error);
-  } finally {
-    setLoading(false);
-  }
-};
+    } catch (error) {
+      console.error('Error fetching bus locations:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const getDriverById = (driverId) => {
     return drivers.find(d => d.id === driverId);
@@ -302,7 +351,7 @@ function BusManagement() {
       if (error) throw error;
 
       alert('Bus deleted successfully!');
-      fetchBuses();
+      await fetchBuses(institutionId);
     } catch (error) {
       console.error('Error deleting bus:', error);
       alert('Error deleting bus: ' + error.message);
@@ -347,6 +396,17 @@ function BusManagement() {
 
   const handleBack = () => {
     router.back();
+  };
+
+  const centerMap = () => {
+    if (mapRef.current && busLocations.length > 0) {
+      import('leaflet').then(L => {
+        const bounds = L.latLngBounds(busLocations.map(loc => [loc.latitude, loc.longitude]));
+        if (bounds.isValid()) {
+          mapRef.current.fitBounds(bounds, { padding: [50, 50] });
+        }
+      });
+    }
   };
 
   // Filter buses based on search and status
@@ -647,11 +707,6 @@ function BusManagement() {
           background: var(--bg-card) !important;
         }
 
-        @keyframes pulse {
-          0%,100% { transform: scale(1); opacity: 1; }
-          50% { transform: scale(1.1); opacity: 0.8; }
-        }
-
         .custom-bus-icon {
           background: transparent;
           border: none;
@@ -791,6 +846,36 @@ function BusManagement() {
             <button className="action-button primary" style={{ padding: '10px 20px' }}>
               <Plus size={18} />
               <span>Add Bus</span>
+            </button>
+          </div>
+
+          {/* Map Style Selector */}
+          <div style={{ 
+            display: 'flex', 
+            gap: 8, 
+            marginBottom: 16,
+            justifyContent: 'flex-end'
+          }}>
+            {Object.entries(tileLayers).map(([key, layer]) => (
+              <button
+                key={key}
+                onClick={() => setMapStyle(key)}
+                className={`action-button ${mapStyle === key ? 'primary' : ''}`}
+                style={{ padding: '6px 12px', fontSize: '11px' }}
+              >
+                {key === 'satellite' && <Layers size={12} />}
+                {key === 'streets' && <MapIcon size={12} />}
+                {key === 'hybrid' && <MapIcon size={12} />}
+                {layer.name}
+              </button>
+            ))}
+            <button
+              onClick={centerMap}
+              className="action-button"
+              style={{ padding: '6px 12px' }}
+            >
+              <Navigation size={12} />
+              Center Map
             </button>
           </div>
 
@@ -958,7 +1043,7 @@ function BusManagement() {
                 borderRadius: 20,
                 border: '1px solid var(--border)',
                 overflow: 'hidden',
-                height: 400
+                height: 450
               }}>
                 <div style={{ padding: '16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
@@ -976,11 +1061,11 @@ function BusManagement() {
                     </span>
                   </div>
                 </div>
-                <div style={{ height: 332, width: '100%' }}>
+                <div style={{ height: 382, width: '100%' }}>
                   {mapReady && leafletLoaded && (
                     <MapContainer
-                      center={[17.3616, 78.4747]}
-                      zoom={12}
+                      center={mapCenter}
+                      zoom={mapZoom}
                       style={{ height: '100%', width: '100%' }}
                       whenCreated={(map) => {
                         mapRef.current = map;
@@ -989,8 +1074,9 @@ function BusManagement() {
                       attributionControl={true}
                     >
                       <TileLayer
-                        url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                        key={mapStyle}
+                        url={tileLayers[mapStyle].url}
+                        attribution={tileLayers[mapStyle].attribution}
                       />
                       {/* Markers are added programmatically via useEffect */}
                     </MapContainer>
@@ -1251,4 +1337,5 @@ function BusManagement() {
     </>
   );
 }
+
 export default withAuth(BusManagement);
