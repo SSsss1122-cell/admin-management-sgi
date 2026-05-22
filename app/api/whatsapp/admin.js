@@ -133,39 +133,39 @@ function getMainMenu() {
 ─────────────────────────
  1️⃣  BUS LIST           
  3️⃣  BUS STOPS          
- 4️⃣  BUS DETAILS        
+ 4️⃣  BUS DETAILS 
+ ─────────────────────────       
 
 
-┌─────────────────────────┐
-│  💰 *FEES MENU*         │
-├─────────────────────────┤
-│ 5️⃣  FEE CHECK          │
-│ 6️⃣  FEE DUE            │
-│ 7️⃣  FEE SUMMARY        │
-└─────────────────────────┘
+  💰 *FEES MENU*         
+─────────────────────────
+ 5️⃣  FEE CHECK          
+ 6️⃣  FEE DUE            
+ 7️⃣  FEE SUMMARY        
+─────────────────────────
 
-┌─────────────────────────┐
-│  📚 *STUDENT MENU*      │
-├─────────────────────────┤
-│ 8️⃣  STUDENT LIST       │
-│ 9️⃣  SEARCH STUDENT     │
-│ 🔟  STUDENT COUNT      │
-└─────────────────────────┘
 
-┌─────────────────────────┐
-│  📢 *ANNOUNCEMENTS*     │
-├─────────────────────────┤
-│ 📢 ANNOUNCE <msg>       │
-│ 📜 HISTORY              │
-└─────────────────────────┘
+  📚 *STUDENT MENU*      
+─────────────────────────
+ 8️⃣  STUDENT LIST       
+ 9️⃣  SEARCH STUDENT     
+ 🔟  STUDENT COUNT      
+─────────────────────────
 
-┌─────────────────────────┐
-│  📋 *OTHER*             │
-├─────────────────────────┤
-│ 11️⃣  COMPLAINT         │
-│ 12️⃣  NOTICES           │
-│ 13️⃣  DRIVERS           │
-└─────────────────────────┘
+
+  📢 *ANNOUNCEMENTS*     
+─────────────────────────
+ 📢 ANNOUNCE <msg>       
+ 📜 HISTORY              
+─────────────────────────
+
+
+  📋 *OTHER*             
+─────────────────────────
+ 11️⃣  COMPLAINT         
+ 12️⃣  NOTICES           
+ 13️⃣  DRIVERS           
+─────────────────────────
 
 💡 *Commands:* 
 • FEE <USN/Name/Phone>
