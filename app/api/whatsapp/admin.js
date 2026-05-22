@@ -123,9 +123,9 @@ else if (upperMsg === 'PENDING' || upperMsg === 'VIEW' || upperMsg === 'LIST') {
 // ============================================
 
 function getMainMenu() {
-  return `╔════════════════════════════╗
-║   🤖 *SGI BUS BOT*       ║
-║      Admin Panel          ║
+  return `
+║   🤖 *SGI ADMIN PANEL*       ║
+║               ║
 ╚════════════════════════════╝
 
 ┌─────────────────────────┐
