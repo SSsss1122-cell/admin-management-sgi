@@ -10,7 +10,7 @@ export async function handleAdminCommands(userMessage, cleanNumber) {
   let replyMessage = '';
   
   // ============ MAIN MENU ============
-  if (['BUS', 'MENU', 'START', 'HELP'].includes(upperMsg)) {
+  if (['BUS ADMIN', 'admin','bus admin', 'MENU', 'START', 'HELP'].includes(upperMsg)) {
     replyMessage = getMainMenu();
   }
   
@@ -112,7 +112,7 @@ else if (upperMsg === 'PENDING' || upperMsg === 'VIEW' || upperMsg === 'LIST') {
   
   // ============ DEFAULT ============
   else if (userMessage && userMessage !== '') {
-    replyMessage = `❌ *Unknown Command*\n\n${getMainMenu()}`;
+    replyMessage = ` *WELCOME ADMIN*\n\n${getMainMenu()}`;
   }
   
   return replyMessage;
@@ -297,7 +297,7 @@ async function getStudentCountWithBranch() {
       branchCount[branch] = (branchCount[branch] || 0) + 1;
     });
     
-    let message = `📊 *STUDENT COUNT BY BRANCH*\n`;
+    let message = `📊 *STUDENT COUNT  BRANCH*\n`;
     message += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
     
     for (const [branch, count] of Object.entries(branchCount).sort()) {
