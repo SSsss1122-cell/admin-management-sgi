@@ -44,21 +44,28 @@ function Notices() {
   // ================= LOAD INITIAL DATA =================
 
   useEffect(() => {
-  const institutionId = localStorage.getItem('institutionId');
+    const institutionId = localStorage.getItem('institutionId');
 
-  if (!institutionId) {
-    router.push('/login');
-    return;
-  }
+    if (!institutionId) {
+      router.push('/login');
+      return;
+    }
 
-  fetchStudents(institutionId);
-  fetchRecentNotices(institutionId);
-}, []);
+    setInstitutionId(institutionId);
+    fetchStudents(institutionId);
+    fetchRecentNotices(institutionId);
+  }, []);
+
   // ================= CLOCK =================
+
+  useEffect(() => {
+    updateClock();
+    const timer = setInterval(updateClock, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   const updateClock = () => {
     const now = new Date();
-
     setCurrentTime(
       now.toLocaleTimeString('en-US', {
         hour: '2-digit',
@@ -209,7 +216,6 @@ function Notices() {
       );
 
       // RESET FORM
-
       setTitle('');
       setDescription('');
       setPdfUrl('');
@@ -219,7 +225,6 @@ function Notices() {
       setSendToAll(false);
 
       // REFRESH NOTICES
-
       fetchRecentNotices(institutionId);
     } catch (error) {
       console.error('Send Notice Error:', error);
@@ -290,759 +295,280 @@ function Notices() {
     day: 'numeric',
   });
 
-  // ================= RETURN UI BELOW =================
+  // ================= RETURN UI =================
 
   return (
-    <>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-        
-        * { 
-          box-sizing: border-box; 
-          margin: 0; 
-          padding: 0; 
-        }
-        
-        :root {
-          --bg-primary: #0a0a0f;
-          --bg-secondary: #11111f;
-          --bg-card: #16162a;
-          --bg-card-hover: #1c1c34;
-          --border: rgba(255,255,255,0.08);
-          --border-hover: rgba(255,255,255,0.15);
-          --text-primary: #ffffff;
-          --text-secondary: #a0a0c0;
-          --text-muted: #6b6b8b;
-          --accent-blue: #3b82f6;
-          --accent-cyan: #06b6d4;
-          --accent-purple: #8b5cf6;
-        }
-        
-        body { 
-          font-family: 'Inter', sans-serif; 
-          background: var(--bg-primary);
-          color: var(--text-primary);
-        }
-        
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        
-        @keyframes slideIn {
-          from { transform: translateX(20px); opacity: 0; }
-          to { transform: translateX(0); opacity: 1; }
-        }
-        
-        @keyframes scaleIn {
-          from { transform: scale(0.95); opacity: 0; }
-          to { transform: scale(1); opacity: 1; }
-        }
-        
-        @keyframes float {
-          0%,100% { transform: translateY(0px); }
-          50% { transform: translateY(-5px); }
-        }
-        
-        @keyframes glow {
-          0%,100% { filter: blur(60px) opacity(0.5); }
-          50% { filter: blur(80px) opacity(0.8); }
-        }
-        
-        @keyframes shimmer {
-          0% { background-position: -200% center; }
-          100% { background-position: 200% center; }
-        }
-        
-        .animate-fade-in { animation: fadeIn 0.3s ease forwards; }
-        .animate-float { animation: float 3s ease-in-out infinite; }
-        
-        .glass-effect {
-          background: rgba(22, 22, 42, 0.8);
-          backdrop-filter: blur(12px);
-          border: 1px solid rgba(255, 255, 255, 0.08);
-        }
-        
-        .gradient-text {
-          background: linear-gradient(135deg, #3b82f6, #06b6d4);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-        }
-        
-        .stat-card {
-          background: var(--bg-card);
-          border: 1px solid var(--border);
-          border-radius: 20px;
-          padding: 20px;
-          transition: all 0.3s ease;
-          position: relative;
-          overflow: hidden;
-        }
-        
-        .stat-card::before {
-          content: '';
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          height: 3px;
-          background: linear-gradient(90deg, #3b82f6, #06b6d4);
-          opacity: 0;
-          transition: opacity 0.3s ease;
-        }
-        
-        .stat-card:hover {
-          transform: translateY(-4px);
-          background: var(--bg-card-hover);
-          border-color: var(--border-hover);
-        }
-        
-        .stat-card:hover::before {
-          opacity: 1;
-        }
-        
-        .notice-card {
-          background: var(--bg-card);
-          border: 1px solid var(--border);
-          border-radius: 16px;
-          padding: 16px;
-          transition: all 0.3s ease;
-        }
-        
-        .notice-card:hover {
-          background: var(--bg-card-hover);
-          border-color: #3b82f6;
-          transform: translateY(-2px);
-        }
-        
-        .action-button {
-          background: var(--bg-card);
-          border: 1px solid var(--border);
-          border-radius: 40px;
-          padding: 8px 16px;
-          font-size: 13px;
-          font-weight: 500;
-          color: var(--text-secondary);
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-        
-        .action-button:hover {
-          background: var(--bg-card-hover);
-          border-color: #3b82f6;
-          color: #3b82f6;
-        }
-        
-        .action-button.primary {
-          background: linear-gradient(135deg, #3b82f6, #06b6d4);
-          color: white;
-          border: none;
-        }
-        
-        .action-button.primary:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 10px 25px -5px #3b82f6;
-        }
-        
-        .info-chip {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          padding: 4px 10px;
-          background: rgba(255,255,255,0.02);
-          border: 1px solid var(--border);
-          border-radius: 30px;
-          font-size: 11px;
-          color: var(--text-secondary);
-        }
-        
-        .radio-card {
-          background: rgba(255,255,255,0.02);
-          border: 1px solid var(--border);
-          border-radius: 16px;
-          padding: 12px 16px;
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-        
-        .radio-card:hover {
-          background: rgba(59,130,246,0.05);
-          border-color: #3b82f6;
-        }
-        
-        .radio-card.selected {
-          background: rgba(59,130,246,0.1);
-          border-color: #3b82f6;
-        }
-        
-        .input-field {
-          width: 100%;
-          padding: 12px 16px;
-          background: var(--bg-primary);
-          border: 1px solid var(--border);
-          border-radius: 12px;
-          font-size: 14px;
-          color: var(--text-primary);
-          outline: none;
-          transition: all 0.2s ease;
-        }
-        
-        .input-field:focus {
-          border-color: #3b82f6;
-          box-shadow: 0 0 0 3px rgba(59,130,246,0.2);
-        }
-        
-        .input-field::placeholder {
-          color: var(--text-muted);
-        }
-        
-        .tip-item {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 8px 12px;
-          background: rgba(59,130,246,0.05);
-          border: 1px solid rgba(59,130,246,0.2);
-          border-radius: 10px;
-          font-size: 12px;
-          color: var(--text-secondary);
-        }
-        
-        @media (max-width: 768px) {
-          .stat-card { padding: 16px; }
-        }
-      `}</style>
+    <div className="min-h-screen bg-slate-900">
+      {/* Header */}
+      <div className="bg-slate-800/50 border-b border-slate-700 sticky top-0 z-40 p-3">
+        <div className="flex items-center justify-between max-w-7xl mx-auto">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleBack}
+              className="p-2 text-slate-400 hover:text-blue-400 transition-all rounded-xl hover:bg-slate-800 border border-slate-700"
+            >
+              <ArrowLeft size={18} />
+            </button>
+            <div>
+              <h1 className="text-lg font-bold text-white sm:text-xl">Student Notices</h1>
+              <p className="text-xs text-slate-400">{currentTime}</p>
+            </div>
+          </div>
+        </div>
+      </div>
 
-      <div style={{ 
-        minHeight: '100vh', 
-        background: 'radial-gradient(circle at 50% 50%, #1a1a2e, #0a0a0f)',
-        position: 'relative',
-        overflow: 'hidden'
-      }}>
-        {/* Background Orbs */}
-        <div style={{
-          position: 'fixed',
-          width: 600,
-          height: 600,
-          borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(59,130,246,0.15) 0%, transparent 70%)',
-          top: -200,
-          left: -200,
-          filter: 'blur(80px)',
-          pointerEvents: 'none',
-          zIndex: 0,
-          animation: 'glow 8s ease-in-out infinite'
-        }}></div>
-        <div style={{
-          position: 'fixed',
-          width: 500,
-          height: 500,
-          borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(6,182,212,0.1) 0%, transparent 70%)',
-          bottom: -150,
-          right: -150,
-          filter: 'blur(80px)',
-          pointerEvents: 'none',
-          zIndex: 0,
-          animation: 'glow 10s ease-in-out infinite reverse'
-        }}></div>
-
-        {/* Mobile Header */}
-        <div className="glass-effect" style={{
-          position: 'sticky',
-          top: 0,
-          zIndex: 40,
-          padding: '12px 16px',
-          borderBottom: '1px solid var(--border)',
-          display: 'block'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <button
-                onClick={handleBack}
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 12,
-                  background: 'var(--bg-card)',
-                  border: '1px solid var(--border)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  color: 'var(--text-secondary)'
-                }}
-              >
-                <ArrowLeft size={18} />
-              </button>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 gap-3 mb-5">
+          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-4">
+            <div className="flex justify-between items-start">
               <div>
-                <h1 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>Notices</h1>
-                <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>{currentTime}</p>
+                <p className="text-xs text-slate-400">Total Students</p>
+                <p className="text-2xl font-bold text-blue-400 mt-1">{students.length}</p>
+              </div>
+              <div className="p-2 bg-blue-600 rounded-xl">
+                <Users size={18} className="text-white" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-4">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-xs text-slate-400">Recent Notices</p>
+                <p className="text-2xl font-bold text-cyan-400 mt-1">{recentNotices.length}</p>
+              </div>
+              <div className="p-2 bg-cyan-600 rounded-xl">
+                <FileText size={18} className="text-white" />
               </div>
             </div>
           </div>
         </div>
 
-        <div style={{ position: 'relative', zIndex: 10, maxWidth: 1400, margin: '0 auto', padding: '16px' }}>
-          {/* Desktop Header */}
-          <div style={{ 
-            display: 'none',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: 24,
-            background: 'var(--bg-card)',
-            borderRadius: 20,
-            padding: 20,
-            border: '1px solid var(--border)'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <button
-                onClick={handleBack}
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 12,
-                  background: 'var(--bg-primary)',
-                  border: '1px solid var(--border)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  color: 'var(--text-secondary)'
-                }}
-              >
-                <ArrowLeft size={20} />
-              </button>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ 
-                  width: 48, 
-                  height: 48, 
-                  borderRadius: 14, 
-                  background: 'rgba(59,130,246,0.1)', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center',
-                  border: '1px solid rgba(59,130,246,0.2)',
-                  animation: 'float 3s ease-in-out infinite'
-                }}>
-                  <Bell size={24} color="#3b82f6" />
-                </div>
-                <div>
-                  <h1 style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)' }}>Student Notices</h1>
-                  <p style={{ fontSize: 14, color: 'var(--text-muted)', marginTop: 4 }}>
-                    {dateStr} • {currentTime}
-                  </p>
-                </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {/* Send Notice Form */}
+          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="p-2 bg-blue-600 rounded-xl">
+                <Send size={20} className="text-white" />
               </div>
-            </div>
-          </div>
-
-          {/* Stats Cards */}
-          <div style={{ 
-            display: 'grid', 
-            gridTemplateColumns: 'repeat(2, 1fr)',
-            gap: 12,
-            marginBottom: 20
-          }}>
-            <div className="stat-card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Total Students</p>
-                  <p style={{ fontSize: 28, fontWeight: 700, color: '#3b82f6', marginTop: 4 }}>{students.length}</p>
-                </div>
-                <div style={{ 
-                  width: 40, 
-                  height: 40, 
-                  borderRadius: 12, 
-                  background: 'rgba(59,130,246,0.1)', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center'
-                }}>
-                  <Users size={20} color="#3b82f6" />
-                </div>
+              <div>
+                <h2 className="text-lg font-semibold text-white">Send New Notice</h2>
+                <p className="text-xs text-slate-400">Create and send important announcements</p>
               </div>
             </div>
 
-            <div className="stat-card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Recent Notices</p>
-                  <p style={{ fontSize: 28, fontWeight: 700, color: '#06b6d4', marginTop: 4 }}>{recentNotices.length}</p>
-                </div>
-                <div style={{ 
-                  width: 40, 
-                  height: 40, 
-                  borderRadius: 12, 
-                  background: 'rgba(6,182,212,0.1)', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center'
-                }}>
-                  <FileText size={20} color="#06b6d4" />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div style={{ 
-            display: 'grid', 
-            gridTemplateColumns: '1fr',
-            gap: 20
-          }}>
-            {/* Send Notice Form */}
-            <div style={{ 
-              background: 'var(--bg-card)',
-              borderRadius: 24,
-              border: '1px solid var(--border)',
-              padding: 24
-            }}>
-              <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: 12,
-                marginBottom: 24
-              }}>
-                <div style={{ 
-                  width: 48, 
-                  height: 48, 
-                  borderRadius: 14, 
-                  background: 'rgba(59,130,246,0.1)', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center',
-                  border: '1px solid rgba(59,130,246,0.2)'
-                }}>
-                  <Send size={22} color="#3b82f6" />
-                </div>
-                <div>
-                  <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)' }}>
-                    Send New Notice
-                  </h2>
-                  <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-                    Create and send important announcements
-                  </p>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-                {/* Send To Options */}
-                <div>
-                  <label style={{ 
-                    display: 'block', 
-                    fontSize: 13, 
-                    fontWeight: 600, 
-                    color: 'var(--text-primary)',
-                    marginBottom: 12 
-                  }}>
-                    Send To
-                  </label>
-                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                    <div 
-                      className={`radio-card ${sendToAll ? 'selected' : ''}`}
-                      onClick={() => setSendToAll(true)}
-                      style={{ flex: 1 }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div style={{
-                          width: 18,
-                          height: 18,
-                          borderRadius: '50%',
-                          border: '2px solid',
-                          borderColor: sendToAll ? '#3b82f6' : 'var(--border)',
-                          background: sendToAll ? '#3b82f6' : 'transparent',
-                          transition: 'all 0.2s ease'
-                        }} />
-                        <Users size={18} color={sendToAll ? '#3b82f6' : 'var(--text-muted)'} />
-                        <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>
-                          All Students ({students.length})
-                        </span>
-                      </div>
+            <div className="space-y-4">
+              {/* Send To Options */}
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">Send To</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div 
+                    className={`p-3 rounded-xl border cursor-pointer transition-all ${
+                      sendToAll 
+                        ? 'bg-blue-600/10 border-blue-500' 
+                        : 'bg-slate-900 border-slate-700 hover:border-slate-600'
+                    }`}
+                    onClick={() => setSendToAll(true)}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className={`w-4 h-4 rounded-full border-2 ${sendToAll ? 'border-blue-500 bg-blue-500' : 'border-slate-500'}`} />
+                      <Users size={16} className={sendToAll ? 'text-blue-400' : 'text-slate-400'} />
+                      <span className="text-sm text-white">All Students ({students.length})</span>
                     </div>
+                  </div>
 
-                    <div 
-                      className={`radio-card ${!sendToAll ? 'selected' : ''}`}
-                      onClick={() => setSendToAll(false)}
-                      style={{ flex: 1 }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div style={{
-                          width: 18,
-                          height: 18,
-                          borderRadius: '50%',
-                          border: '2px solid',
-                          borderColor: !sendToAll ? '#3b82f6' : 'var(--border)',
-                          background: !sendToAll ? '#3b82f6' : 'transparent',
-                          transition: 'all 0.2s ease'
-                        }} />
-                        <Target size={18} color={!sendToAll ? '#3b82f6' : 'var(--text-muted)'} />
-                        <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>
-                          Specific Student
-                        </span>
-                      </div>
+                  <div 
+                    className={`p-3 rounded-xl border cursor-pointer transition-all ${
+                      !sendToAll 
+                        ? 'bg-blue-600/10 border-blue-500' 
+                        : 'bg-slate-900 border-slate-700 hover:border-slate-600'
+                    }`}
+                    onClick={() => setSendToAll(false)}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className={`w-4 h-4 rounded-full border-2 ${!sendToAll ? 'border-blue-500 bg-blue-500' : 'border-slate-500'}`} />
+                      <Target size={16} className={!sendToAll ? 'text-blue-400' : 'text-slate-400'} />
+                      <span className="text-sm text-white">Specific Student</span>
                     </div>
                   </div>
                 </div>
+              </div>
 
-                {/* Student Selection */}
-                {!sendToAll && (
-                  <div>
-                    <label style={{ 
-                      display: 'block', 
-                      fontSize: 13, 
-                      fontWeight: 600, 
-                      color: 'var(--text-primary)',
-                      marginBottom: 8 
-                    }}>
-                      Select Student
-                    </label>
-                    <input
-  type="text"
-  value={searchTerm}
-  onChange={(e) => setSearchTerm(e.target.value)}
-  placeholder="Search student by name or USN..."
-  className="input-field"
-  style={{ marginBottom: 10 }}
-/>
-                    <select
-  value={selectedBranch}
-  onChange={(e) => setSelectedBranch(e.target.value)}
-  className="input-field"
-  style={{ marginBottom: 10 }}
->
-  <option value="">All Branches</option>
-
-  {[...new Set(students.map((s) => s.branch))].map((branch) => (
-    <option key={branch} value={branch}>
-      {branch}
-    </option>
-  ))}
-</select>
-
-                    <select
-                      value={selectedStudent}
-                      onChange={(e) => setSelectedStudent(e.target.value)}
-                      className="input-field"
-                      style={{ appearance: 'none' }}
-                    >
-                      <option value="">-- Choose a student --</option>
-                      {filteredStudents.map((student) => (
-                        <option key={student.id} value={student.id}>
-                          {student.full_name} ({student.usn}) - {student.branch}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                {/* Notice Title */}
-                <div>
-                  <label style={{ 
-                    display: 'block', 
-                    fontSize: 13, 
-                    fontWeight: 600, 
-                    color: 'var(--text-primary)',
-                    marginBottom: 8 
-                  }}>
-                    Notice Title <span style={{ color: '#3b82f6' }}>*</span>
-                  </label>
+              {/* Student Selection */}
+              {!sendToAll && (
+                <div className="space-y-3">
                   <input
                     type="text"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="Enter notice title..."
-                    className="input-field"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search student by name or USN..."
+                    className="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 text-sm"
+                  />
+                  
+                  <select
+                    value={selectedBranch}
+                    onChange={(e) => setSelectedBranch(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 text-sm"
+                  >
+                    <option value="">All Branches</option>
+                    {[...new Set(students.map((s) => s.branch))].map((branch) => (
+                      <option key={branch} value={branch}>{branch}</option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={selectedStudent}
+                    onChange={(e) => setSelectedStudent(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 text-sm"
+                  >
+                    <option value="">-- Choose a student --</option>
+                    {filteredStudents.map((student) => (
+                      <option key={student.id} value={student.id}>
+                        {student.full_name} ({student.usn}) - {student.branch}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Notice Title */}
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Notice Title <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Enter notice title..."
+                  className="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 text-sm"
+                />
+              </div>
+
+              {/* Notice Description */}
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">Description</label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Enter notice description..."
+                  rows={4}
+                  className="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 text-sm resize-vertical"
+                />
+              </div>
+
+              {/* PDF URL */}
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">PDF URL (Optional)</label>
+                <div className="relative">
+                  <LinkIcon size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500" />
+                  <input
+                    type="url"
+                    value={pdfUrl}
+                    onChange={(e) => setPdfUrl(e.target.value)}
+                    placeholder="https://example.com/notice.pdf"
+                    className="w-full pl-10 pr-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 text-sm"
                   />
                 </div>
+              </div>
 
-                {/* Notice Description */}
-                <div>
-                  <label style={{ 
-                    display: 'block', 
-                    fontSize: 13, 
-                    fontWeight: 600, 
-                    color: 'var(--text-primary)',
-                    marginBottom: 8 
-                  }}>
-                    Description
-                  </label>
-                  <textarea
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Enter notice description..."
-                    rows={4}
-                    className="input-field"
-                    style={{ resize: 'vertical', minHeight: 100 }}
-                  />
-                </div>
-
-                {/* PDF URL */}
-                <div>
-                  <label style={{ 
-                    display: 'block', 
-                    fontSize: 13, 
-                    fontWeight: 600, 
-                    color: 'var(--text-primary)',
-                    marginBottom: 8 
-                  }}>
-                    PDF URL (Optional)
-                  </label>
-                  <div style={{ position: 'relative' }}>
-                    <LinkIcon size={16} color="var(--text-muted)" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }} />
-                    <input
-                      type="url"
-                      value={pdfUrl}
-                      onChange={(e) => setPdfUrl(e.target.value)}
-                      placeholder="https://example.com/notice.pdf"
-                      className="input-field"
-                      style={{ paddingLeft: 36 }}
-                    />
+              {/* Preview */}
+              {(title || description) && (
+                <div className="bg-blue-950/30 rounded-xl border border-blue-800 p-4">
+                  <h3 className="text-sm font-semibold text-blue-400 mb-2">Preview</h3>
+                  <div className="bg-slate-900 rounded-lg p-3">
+                    <p className="font-medium text-white text-sm mb-1">{title || 'No title'}</p>
+                    <p className="text-slate-400 text-sm whitespace-pre-wrap mb-2">{description || 'No description'}</p>
+                    <div className="inline-flex items-center gap-1 px-2 py-1 bg-slate-800 rounded-full text-xs text-slate-400">
+                      <User size={10} />
+                      <span>To: {getSelectedStudentName() || 'Not selected'}</span>
+                    </div>
                   </div>
                 </div>
+              )}
 
-                {/* Preview */}
-                {(title || description) && (
-                  <div style={{ 
-                    background: 'rgba(59,130,246,0.05)',
-                    border: '1px solid rgba(59,130,246,0.2)',
-                    borderRadius: 16,
-                    padding: 16
-                  }}>
-                    <h3 style={{ fontSize: 13, fontWeight: 600, color: '#3b82f6', marginBottom: 8 }}>
-                      Preview
-                    </h3>
-                    <div style={{ 
-                      fontSize: 14, 
-                      color: 'var(--text-secondary)',
-                      background: 'var(--bg-primary)',
-                      borderRadius: 12,
-                      padding: 12
-                    }}>
-                      <p style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
-                        {title || 'No title'}
-                      </p>
-                      <p style={{ whiteSpace: 'pre-wrap', marginBottom: 8 }}>
-                        {description || 'No description'}
-                      </p>
-                      <div className="info-chip" style={{ display: 'inline-flex' }}>
-                        <User size={10} />
-                        <span>To: {getSelectedStudentName() || 'Not selected'}</span>
+              {/* Send Button */}
+              <button
+                onClick={sendNotice}
+                disabled={loading}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>Sending...</span>
+                  </>
+                ) : (
+                  <>
+                    <Send size={16} />
+                    <span>{sendToAll ? 'Send to All Students' : 'Send Notice'}</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Right Column */}
+          <div className="space-y-5">
+            {/* Recent Notices */}
+            <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
+              <h3 className="font-semibold text-white mb-4">Recent Notices</h3>
+              <div className="space-y-3">
+                {recentNotices.length > 0 ? (
+                  recentNotices.map((notice) => (
+                    <div key={notice.id} className="bg-slate-800 rounded-xl border border-slate-700 p-3 hover:border-blue-500/30 transition-all">
+                      <div className="flex justify-between items-start mb-2">
+                        <h4 className="font-medium text-white text-sm">{notice.title}</h4>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-700 rounded-full text-xs text-slate-300">
+                          <Clock size={8} />
+                          {formatTimeAgo(notice.created_at)}
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-400 mb-2">
+                        To: {notice.students?.full_name} ({notice.students?.usn})
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        {formatDate(notice.created_at)}
                       </div>
                     </div>
+                  ))
+                ) : (
+                  <div className="text-center py-8 text-slate-500">
+                    <Bell size={32} className="mx-auto mb-2 opacity-30" />
+                    <p className="text-sm">No notices sent yet</p>
                   </div>
                 )}
-
-                {/* Send Button */}
-                <button
-                  onClick={sendNotice}
-                  disabled={loading}
-                  className="action-button primary"
-                  style={{ 
-                    padding: '14px', 
-                    fontSize: 14,
-                    justifyContent: 'center',
-                    marginTop: 8
-                  }}
-                >
-                  {loading ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div className="animate-spin" style={{ width: 16, height: 16, border: '2px solid white', borderTopColor: 'transparent', borderRadius: '50%' }}></div>
-                      <span>Sending...</span>
-                    </div>
-                  ) : (
-                    <>
-                      <Send size={16} />
-                      <span>{sendToAll ? `Send to All Students` : 'Send Notice'}</span>
-                    </>
-                  )}
-                </button>
               </div>
             </div>
 
-            {/* Right Column */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-              {/* Recent Notices */}
-              <div style={{ 
-                background: 'var(--bg-card)',
-                borderRadius: 24,
-                border: '1px solid var(--border)',
-                padding: 20
-              }}>
-                <h3 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 16 }}>
-                  Recent Notices
-                </h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  {recentNotices.length > 0 ? (
-                    recentNotices.map((notice) => (
-                      <div key={notice.id} className="notice-card">
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                          <h4 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
-                            {notice.title}
-                          </h4>
-                          <span className="info-chip" style={{ fontSize: 10 }}>
-                            <Clock size={8} />
-                            {formatTimeAgo(notice.created_at)}
-                          </span>
-                        </div>
-                        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
-                          To: {notice.students?.full_name} ({notice.students?.usn})
-                        </div>
-                        <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
-                          {formatDate(notice.created_at)}
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div style={{ 
-                      textAlign: 'center', 
-                      padding: 32,
-                      color: 'var(--text-muted)',
-                      fontSize: 13
-                    }}>
-                      <Bell size={32} style={{ marginBottom: 8, opacity: 0.3 }} />
-                      <p>No notices sent yet</p>
-                    </div>
-                  )}
+            {/* Quick Tips */}
+            <div className="bg-blue-950/30 rounded-2xl border border-blue-800 p-5">
+              <h3 className="font-semibold text-blue-400 mb-3">Tips</h3>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 p-2 bg-slate-800 rounded-lg text-xs text-slate-300">
+                  <Bell size={12} className="text-blue-400" />
+                  <span>Use clear and concise titles</span>
                 </div>
-              </div>
-
-              {/* Quick Tips */}
-              <div style={{ 
-                background: 'rgba(59,130,246,0.05)',
-                borderRadius: 24,
-                border: '1px solid rgba(59,130,246,0.2)',
-                padding: 20
-              }}>
-                <h3 style={{ fontSize: 16, fontWeight: 600, color: '#3b82f6', marginBottom: 16 }}>
-                  Tips
-                </h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <div className="tip-item">
-                    <Bell size={14} color="#3b82f6" />
-                    <span>Use clear and concise titles</span>
-                  </div>
-                  <div className="tip-item">
-                    <Target size={14} color="#3b82f6" />
-                    <span>Select specific students for targeted communication</span>
-                  </div>
-                  <div className="tip-item">
-                    <FileText size={14} color="#3b82f6" />
-                    <span>Attach PDFs for detailed information</span>
-                  </div>
-                  <div className="tip-item">
-                    <CheckCircle size={14} color="#3b82f6" />
-                    <span>Preview before sending to check formatting</span>
-                  </div>
+                <div className="flex items-center gap-2 p-2 bg-slate-800 rounded-lg text-xs text-slate-300">
+                  <Target size={12} className="text-blue-400" />
+                  <span>Select specific students for targeted communication</span>
+                </div>
+                <div className="flex items-center gap-2 p-2 bg-slate-800 rounded-lg text-xs text-slate-300">
+                  <FileText size={12} className="text-blue-400" />
+                  <span>Attach PDFs for detailed information</span>
+                </div>
+                <div className="flex items-center gap-2 p-2 bg-slate-800 rounded-lg text-xs text-slate-300">
+                  <CheckCircle size={12} className="text-blue-400" />
+                  <span>Preview before sending to check formatting</span>
                 </div>
               </div>
             </div>
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }
+
 export default withAuth(Notices);

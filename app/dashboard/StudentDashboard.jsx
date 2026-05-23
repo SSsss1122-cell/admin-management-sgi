@@ -6,7 +6,8 @@ import {
   ArrowLeft, Menu, LogOut, User, Key, Bus, CheckCircle, AlertCircle, 
   Phone, GraduationCap, Filter, Download, RefreshCw, ChevronDown,
   Eye, EyeOff, BookOpen, Route, Hash, Mail, Calendar, CreditCard,
-  TrendingUp, Shield, Zap, Settings, Bell, Star, Award, Activity
+  TrendingUp, Shield, Zap, Settings, Bell, Star, Award, Activity,
+  Home, School
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { getAdminInstitution } from '../lib/getInstitution';
@@ -50,48 +51,44 @@ export default function StudentDashboard() {
     semester: ''
   });
 
-  // Predefined routes with vibrant dark mode colors
+  // Predefined routes
   const routes = [
     { id: 'route1', name: 'Route 1 - Amritsar Mandir', color: '#f97316', glow: 'rgba(249,115,22,0.3)', stops: 12 },
     { id: 'route2', name: 'Route 2 - City Center', color: '#06b6d4', glow: 'rgba(6,182,212,0.3)', stops: 15 }
   ];
 
- useEffect(() => {
-  // Get admin name from localStorage
-  const storedAdminName = localStorage.getItem('adminName');
-  if (storedAdminName) {
-    setAdminName(storedAdminName);
-  }
+  useEffect(() => {
+    const storedAdminName = localStorage.getItem('adminName');
+    if (storedAdminName) {
+      setAdminName(storedAdminName);
+    }
 
-  // Update current time
-  const updateTime = () => {
-    const now = new Date();
-    setCurrentTime(
-      now.toLocaleTimeString('en-US', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-      })
-    );
-  };
+    const updateTime = () => {
+      const now = new Date();
+      setCurrentTime(
+        now.toLocaleTimeString('en-US', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        })
+      );
+    };
 
-  updateTime();
-  const timer = setInterval(updateTime, 1000);
-  return () => clearInterval(timer);
-}, []);
+    updateTime();
+    const timer = setInterval(updateTime, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
-// ADD THIS NEW useEffect for fetching students when institutionId is available
-useEffect(() => {
-  if (institutionId) {
-    fetchStudents();
-  }
-}, [institutionId]);
+  useEffect(() => {
+    if (institutionId) {
+      fetchStudents();
+    }
+  }, [institutionId]);
 
   useEffect(() => {
     filterStudents();
   }, [students, searchTerm, branchFilter, routeFilter]);
 
-  // Auto-hide toast after 3 seconds
   useEffect(() => {
     if (toast.show) {
       const timer = setTimeout(() => {
@@ -101,28 +98,26 @@ useEffect(() => {
     }
   }, [toast.show]);
 
+  const fetchStudents = async () => {
+    if (!institutionId) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('students')
+        .select('id, full_name, usn, branch, phone, routes, email, semester, created_at, updated_at')
+        .eq('institution_id', institutionId)
+        .order('usn');
 
- 
-const fetchStudents = async () => {
-  if (!institutionId) return;
-  
-  try {
-    const { data, error } = await supabase
-      .from('students')
-      .select('id, full_name, usn, branch, phone, routes, email, semester, created_at, updated_at')
-      .eq('institution_id', institutionId)
-      .order('usn');
-
-    if (error) throw error;
-    setStudents(data || []);
-    updateStats(data || []);
-  } catch (error) {
-    console.error('Error fetching students:', error);
-    showToast('Error fetching students', 'error');
-  } finally {
-    setLoading(false);
-  }
-};
+      if (error) throw error;
+      setStudents(data || []);
+      updateStats(data || []);
+    } catch (error) {
+      console.error('Error fetching students:', error);
+      showToast('Error fetching students', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const showToast = (message, type = 'success') => {
     setToast({ show: true, message, type });
@@ -147,7 +142,6 @@ const fetchStudents = async () => {
   const filterStudents = () => {
     let filtered = students;
 
-    // Apply search filter
     if (searchTerm) {
       filtered = filtered.filter(student =>
         student.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -157,12 +151,10 @@ const fetchStudents = async () => {
       );
     }
 
-    // Apply branch filter
     if (branchFilter !== 'all') {
       filtered = filtered.filter(student => student.branch === branchFilter);
     }
 
-    // Apply route filter
     if (routeFilter !== 'all') {
       if (routeFilter === 'unassigned') {
         filtered = filtered.filter(student => !student.routes);
@@ -175,81 +167,67 @@ const fetchStudents = async () => {
   };
 
   const handleAddStudent = async (e) => {
-  e.preventDefault();
-  try {
-    // Check if USN already exists
-    const { data: existingStudent } = await supabase
-      .from('students')
-      .select('usn')
-      .eq('usn', newStudent.usn.toUpperCase())
-      .maybeSingle();
+    e.preventDefault();
+    try {
+      const { data: existingStudent } = await supabase
+        .from('students')
+        .select('usn')
+        .eq('usn', newStudent.usn.toUpperCase())
+        .maybeSingle();
 
-    if (existingStudent) {
-      showToast('USN already exists. Please use a different USN.', 'error');
-      return;
+      if (existingStudent) {
+        showToast('USN already exists. Please use a different USN.', 'error');
+        return;
+      }
+
+      const { data: adminData } = await supabase
+        .from('admins')
+        .select('id')
+        .eq('mobile_number', localStorage.getItem('adminMobile'))
+        .single();
+
+      const studentData = {
+        institution_id: institutionId,
+        user_id: adminData?.id,
+        full_name: newStudent.full_name,
+        usn: newStudent.usn.toUpperCase(),
+        branch: newStudent.branch || null,
+        phone: newStudent.phone || null,
+        password: newStudent.password || null,
+        routes: newStudent.routes || null,
+        email: newStudent.email || null,
+        semester: newStudent.semester || null
+      };
+
+      const { error } = await supabase
+        .from('students')
+        .insert([studentData]);
+
+      if (error) throw error;
+
+      showToast('Student added successfully!', 'success');
+
+      setNewStudent({
+        full_name: '',
+        usn: '',
+        branch: '',
+        phone: '',
+        password: '',
+        routes: '',
+        email: '',
+        semester: ''
+      });
+      setShowAddForm(false);
+      fetchStudents();
+    } catch (error) {
+      console.error('Error adding student:', error);
+      showToast('Error adding student: ' + error.message, 'error');
     }
-
-    // Get current admin user info
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    // Get admin record to get institution_id and user_id
-    const { data: adminData } = await supabase
-      .from('admins')
-      .select('id, institution_id')
-      .eq('mobile_number', localStorage.getItem('adminMobile'))
-      .single();
-
-    const studentData = {
-      institution_id: institutionId, // or adminData?.institution_id
-      user_id: adminData?.id, // IMPORTANT: Add the admin's user_id
-      full_name: newStudent.full_name,
-      usn: newStudent.usn.toUpperCase(),
-      branch: newStudent.branch || null,
-      phone: newStudent.phone || null,
-      password: newStudent.password || null,
-      routes: newStudent.routes || null,
-      email: newStudent.email || null,
-      semester: newStudent.semester || null
-    };
-
-    const { data, error } = await supabase
-      .from('students')
-      .insert([studentData])
-      .select();
-
-    if (error) {
-      console.log('Full error object:', JSON.stringify(error, null, 2));
-      console.log('Error code:', error.code);
-      console.log('Error message:', error.message);
-      console.log('Error details:', error.details);
-      console.log('Error hint:', error.hint);
-      throw error;
-    }
-
-    showToast('Student added successfully!', 'success');
-
-    setNewStudent({
-      full_name: '',
-      usn: '',
-      branch: '',
-      phone: '',
-      password: '',
-      routes: '',
-      email: '',
-      semester: ''
-    });
-    setShowAddForm(false);
-    fetchStudents();
-  } catch (error) {
-    console.error('Error adding student:', error);
-    showToast('Error adding student: ' + error.message, 'error');
-  }
-};
+  };
 
   const handleEditStudent = async (e) => {
     e.preventDefault();
     try {
-      // Check if USN is being changed and if it's already taken
       if (newStudent.usn.toUpperCase() !== editingStudent.usn) {
         const { data: existingStudent } = await supabase
           .from('students')
@@ -274,7 +252,6 @@ const fetchStudents = async () => {
         semester: newStudent.semester || null
       };
 
-      // Only update password if it's provided (not empty)
       if (newStudent.password) {
         updateData.password = newStudent.password;
       }
@@ -357,7 +334,7 @@ const fetchStudents = async () => {
       usn: student.usn || '',
       branch: student.branch || '',
       phone: student.phone || '',
-      password: '', // Don't pre-fill password for security
+      password: '',
       routes: student.routes || '',
       email: student.email || '',
       semester: student.semester || ''
@@ -372,11 +349,6 @@ const fetchStudents = async () => {
   const getRouteName = (routeId) => {
     const route = routes.find(r => r.id === routeId);
     return route ? route.name : 'Not Assigned';
-  };
-
-  const getRouteColor = (routeId) => {
-    const route = routes.find(r => r.id === routeId);
-    return route ? route.color : '#6b7280';
   };
 
   const handleBack = () => {
@@ -433,26 +405,15 @@ const fetchStudents = async () => {
     showToast('Students exported successfully!', 'success');
   };
 
-if (loading || institutionLoading) {
+  if (loading || institutionLoading) {
     return (
-      <div style={{ 
-        minHeight: '100vh', 
-        background: '#0a0a0f',
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'center', 
-        flexDirection: 'column', 
-        gap: '24px' 
-      }}>
-        <style>{`
-          @keyframes spin { to { transform: rotate(360deg); } }
-          @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
-        `}</style>
-        <div style={{ position: 'relative' }}>
-          <div style={{ width: 80, height: 80, border: '4px solid #1e1e2e', borderTop: '4px solid #6366f1', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
-          <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: 40, height: 40, background: '#6366f1', borderRadius: '50%', animation: 'pulse 1.5s ease infinite' }}></div>
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="relative">
+          <div className="animate-spin rounded-full h-16 w-16 border-4 border-slate-700 border-t-blue-600"></div>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="h-8 w-8 bg-blue-600 rounded-full animate-pulse"></div>
+          </div>
         </div>
-        <p style={{ color: '#6366f1', fontFamily: 'system-ui', fontWeight: 600, letterSpacing: '0.1em', fontSize: 14, textTransform: 'uppercase' }}>Loading Student Dashboard</p>
       </div>
     );
   }
@@ -461,562 +422,135 @@ if (loading || institutionLoading) {
   const dateStr = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
   return (
-    <>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
-        
-        * { 
-          box-sizing: border-box; 
-          margin: 0; 
-          padding: 0; 
-        }
-        
-        :root {
-          --bg-primary: #0a0a0f;
-          --bg-secondary: #11111f;
-          --bg-card: #16162a;
-          --bg-card-hover: #1c1c34;
-          --bg-gradient: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 100%);
-          --border: rgba(255,255,255,0.08);
-          --border-hover: rgba(255,255,255,0.15);
-          --text-primary: #ffffff;
-          --text-secondary: #a0a0c0;
-          --text-muted: #6b6b8b;
-          --accent-primary: #6366f1;
-          --accent-secondary: #8b5cf6;
-          --accent-tertiary: #ec4899;
-          --shadow-sm: 0 4px 6px -1px rgba(0,0,0,0.3), 0 2px 4px -1px rgba(0,0,0,0.2);
-          --shadow-md: 0 10px 15px -3px rgba(0,0,0,0.4), 0 4px 6px -2px rgba(0,0,0,0.3);
-          --shadow-lg: 0 20px 25px -5px rgba(0,0,0,0.5), 0 10px 10px -5px rgba(0,0,0,0.4);
-        }
-        
-        body { 
-          font-family: 'Inter', sans-serif; 
-          background: var(--bg-primary);
-          color: var(--text-primary);
-        }
-        
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        
-        @keyframes slideIn {
-          from { transform: translateX(20px); opacity: 0; }
-          to { transform: translateX(0); opacity: 1; }
-        }
-        
-        @keyframes scaleIn {
-          from { transform: scale(0.95); opacity: 0; }
-          to { transform: scale(1); opacity: 1; }
-        }
-        
-        @keyframes float {
-          0%,100% { transform: translateY(0px); }
-          50% { transform: translateY(-5px); }
-        }
-        
-        @keyframes glow {
-          0%,100% { filter: blur(60px) opacity(0.5); }
-          50% { filter: blur(80px) opacity(0.8); }
-        }
-        
-        @keyframes shimmer {
-          0% { background-position: -200% center; }
-          100% { background-position: 200% center; }
-        }
-        
-        .animate-fade-in { animation: fadeIn 0.3s ease forwards; }
-        .animate-slide-in { animation: slideIn 0.3s ease forwards; }
-        .animate-scale-in { animation: scaleIn 0.2s ease forwards; }
-        .animate-float { animation: float 3s ease-in-out infinite; }
-        
-        .gradient-bg {
-          background: linear-gradient(135deg, #6366f1, #8b5cf6, #ec4899);
-          background-size: 200% auto;
-          animation: shimmer 4s linear infinite;
-        }
-        
-        .glass-effect {
-          background: rgba(22, 22, 42, 0.8);
-          backdrop-filter: blur(12px);
-          border: 1px solid rgba(255, 255, 255, 0.08);
-        }
-        
-        .gradient-text {
-          background: linear-gradient(135deg, #6366f1, #8b5cf6);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-        }
-        
-        .stat-card {
-          background: var(--bg-card);
-          border: 1px solid var(--border);
-          border-radius: 24px;
-          padding: 24px;
-          transition: all 0.3s ease;
-          position: relative;
-          overflow: hidden;
-        }
-        
-        .stat-card::before {
-          content: '';
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          height: 4px;
-          background: linear-gradient(90deg, #6366f1, #8b5cf6, #ec4899);
-          opacity: 0;
-          transition: opacity 0.3s ease;
-        }
-        
-        .stat-card:hover {
-          transform: translateY(-4px);
-          background: var(--bg-card-hover);
-          border-color: var(--border-hover);
-          box-shadow: var(--shadow-lg);
-        }
-        
-        .stat-card:hover::before {
-          opacity: 1;
-        }
-        
-        .search-bar {
-          background: var(--bg-card);
-          border: 1px solid var(--border);
-          border-radius: 40px;
-          padding: 8px 20px;
-          transition: all 0.3s ease;
-        }
-        
-        .search-bar:focus-within {
-          border-color: #6366f1;
-          box-shadow: 0 0 0 3px rgba(99,102,241,0.2);
-        }
-        
-        .filter-chip {
-          background: var(--bg-card);
-          border: 1px solid var(--border);
-          border-radius: 30px;
-          padding: 8px 16px;
-          font-size: 13px;
-          font-weight: 500;
-          color: var(--text-secondary);
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-        
-        .filter-chip:hover {
-          border-color: #6366f1;
-          color: #6366f1;
-        }
-        
-        .filter-chip.active {
-          background: #6366f1;
-          color: white;
-          border-color: #6366f1;
-        }
-        
-        .student-card {
-          background: var(--bg-card);
-          border: 1px solid var(--border);
-          border-radius: 24px;
-          padding: 24px;
-          transition: all 0.3s ease;
-        }
-        
-        .student-card:hover {
-          transform: translateY(-5px);
-          background: var(--bg-card-hover);
-          border-color: var(--border-hover);
-          box-shadow: var(--shadow-lg);
-        }
-        
-        .modal-backdrop {
-          position: fixed;
-          inset: 0;
-          background: rgba(0,0,0,0.8);
-          backdrop-filter: blur(8px);
-          z-index: 50;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-        
-        .modal-content {
-          background: var(--bg-secondary);
-          border: 1px solid var(--border);
-          border-radius: 32px;
-          box-shadow: var(--shadow-lg);
-          max-width: 600px;
-          width: 90%;
-          max-height: 90vh;
-          overflow-y: auto;
-          animation: scaleIn 0.2s ease;
-        }
-        
-        .toast-success {
-          background: #10b981;
-          color: white;
-        }
-        
-        .toast-error {
-          background: #ef4444;
-          color: white;
-        }
-        
-        .table-header {
-          background: rgba(22, 22, 42, 0.95);
-          border-bottom: 1px solid var(--border);
-        }
-        
-        .table-row {
-          transition: all 0.2s ease;
-        }
-        
-        .table-row:hover {
-          background: rgba(28, 28, 52, 0.8);
-        }
-        
-        .table-row.selected {
-          background: rgba(99,102,241,0.15);
-        }
-        
-        .action-button {
-          background: var(--bg-card);
-          border: 1px solid var(--border);
-          border-radius: 40px;
-          padding: 8px 16px;
-          font-size: 13px;
-          font-weight: 500;
-          color: var(--text-secondary);
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-        
-        .action-button:hover {
-          background: var(--bg-card-hover);
-          border-color: #6366f1;
-          color: #6366f1;
-        }
-        
-        .action-button.primary {
-          background: linear-gradient(135deg, #6366f1, #8b5cf6);
-          color: white;
-          border: none;
-        }
-        
-        .action-button.primary:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 10px 25px -5px rgba(99,102,241,0.5);
-        }
-        
-        .action-button.danger {
-          background: rgba(239,68,68,0.1);
-          color: #ef4444;
-          border: 1px solid rgba(239,68,68,0.2);
-        }
-        
-        .action-button.danger:hover {
-          background: rgba(239,68,68,0.2);
-          border-color: rgba(239,68,68,0.4);
-        }
-        
-        @media (max-width: 768px) {
-          .stat-card { padding: 16px; }
-          .student-card { padding: 16px; }
-          .modal-content { width: 95%; }
-        }
-      `}</style>
-
-      <div style={{ 
-        minHeight: '100vh', 
-        background: 'radial-gradient(circle at 50% 50%, #1a1a2e, #0a0a0f)',
-        padding: '20px'
-      }}>
-        {/* Background Orbs */}
-        <div style={{
-          position: 'fixed',
-          width: 600,
-          height: 600,
-          borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(99,102,241,0.15) 0%, transparent 70%)',
-          top: -200,
-          left: -200,
-          filter: 'blur(80px)',
-          pointerEvents: 'none',
-          zIndex: 0,
-          animation: 'glow 8s ease-in-out infinite'
-        }}></div>
-        <div style={{
-          position: 'fixed',
-          width: 500,
-          height: 500,
-          borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(236,72,153,0.1) 0%, transparent 70%)',
-          bottom: -150,
-          right: -150,
-          filter: 'blur(80px)',
-          pointerEvents: 'none',
-          zIndex: 0,
-          animation: 'glow 10s ease-in-out infinite reverse'
-        }}></div>
-
-        <div style={{ position: 'relative', zIndex: 10, maxWidth: 1400, margin: '0 auto' }}>
-          {/* Header with Glass Effect */}
-          <div className="glass-effect" style={{ 
-            borderRadius: 24,
-            padding: 20,
-            marginBottom: 24,
-            animation: 'fadeIn 0.3s ease'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+    <div className="min-h-screen bg-slate-900">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
+        <div className="space-y-6 lg:space-y-8">
+          {/* Header */}
+          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5 lg:p-6">
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+              <div className="flex items-center gap-4">
                 <button
                   onClick={handleBack}
-                  style={{
-                    width: 48,
-                    height: 48,
-                    borderRadius: 16,
-                    background: 'var(--bg-card)',
-                    border: '1px solid var(--border)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease',
-                    color: 'var(--text-secondary)'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'var(--bg-card-hover)';
-                    e.currentTarget.style.borderColor = '#6366f1';
-                    e.currentTarget.style.color = '#6366f1';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'var(--bg-card)';
-                    e.currentTarget.style.borderColor = 'var(--border)';
-                    e.currentTarget.style.color = 'var(--text-secondary)';
-                  }}
+                  className="p-2 text-slate-400 hover:text-blue-400 transition-all rounded-xl hover:bg-slate-800 border border-slate-700"
                 >
                   <ArrowLeft size={20} />
                 </button>
                 <div>
-                  <h1 style={{ fontSize: 28, fontWeight: 700, background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', margin: 0 }}>
-                    Student Dashboard
-                  </h1>
-                  <p style={{ fontSize: 14, color: 'var(--text-muted)', marginTop: 4 }}>
-                    {dateStr} • {currentTime}
-                  </p>
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 bg-blue-600 rounded-2xl shadow-lg shadow-blue-600/20">
+                      <GraduationCap className="text-white" size={24} />
+                    </div>
+                    <div>
+                      <h1 className="text-2xl lg:text-3xl font-bold text-white">
+                        Student Dashboard
+                      </h1>
+                      <p className="text-slate-400 text-sm mt-1">
+                        Manage student profiles and route assignments
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                {/* Admin Profile */}
-                <div style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: 12, 
-                  background: 'var(--bg-card)', 
-                  padding: '6px 20px 6px 12px', 
-                  borderRadius: 40,
-                  border: '1px solid var(--border)'
-                }}>
-                  <div style={{ 
-                    width: 40, 
-                    height: 40, 
-                    borderRadius: 20, 
-                    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'center', 
-                    color: 'white', 
-                    fontWeight: 600,
-                    fontSize: 16
-                  }}>
-                    {(adminName || 'A')[0].toUpperCase()}
+              <div className="flex items-center gap-3">
+                <div className="hidden sm:flex items-center gap-3 bg-slate-800 rounded-xl px-4 py-2 border border-slate-700">
+                  <div className="text-right">
+                    <p className="text-xs text-slate-400">{dateStr}</p>
+                    <p className="text-xs text-blue-400 font-mono">{currentTime}</p>
                   </div>
-                  <div>
-                    <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{adminName || 'Admin'}</p>
-                    <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>Administrator</p>
+                  <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+                    <User className="text-white" size={14} />
                   </div>
+                  <span className="text-sm font-medium text-white">{adminName || 'Admin'}</span>
                 </div>
 
                 <button
                   onClick={handleLogout}
-                  className="action-button danger"
-                  style={{ padding: '10px 20px' }}
+                  className="flex items-center text-sm bg-red-600 text-white px-4 py-2 rounded-xl hover:bg-red-700 transition-all"
                 >
-                  <LogOut size={16} />
-                  <span>Logout</span>
+                  <LogOut size={16} className="mr-2" />
+                  <span className="hidden sm:inline">Logout</span>
                 </button>
               </div>
             </div>
           </div>
 
           {/* Stats Cards */}
-          <div style={{ 
-            display: 'grid', 
-            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', 
-            gap: 20, 
-            marginBottom: 24 
-          }}>
-            <div className="stat-card animate-fade-in" style={{ animationDelay: '0.1s' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>Total Students</p>
-                  <p style={{ fontSize: 40, fontWeight: 700, color: '#6366f1' }}>{stats.totalStudents}</p>
-                  <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
-                    <TrendingUp size={12} style={{ display: 'inline', marginRight: 4 }} />
-                    +12% from last month
-                  </p>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2 bg-blue-600 rounded-xl">
+                  <Users className="text-white" size={18} />
                 </div>
-                <div style={{ 
-                  width: 56, 
-                  height: 56, 
-                  borderRadius: 18, 
-                  background: 'rgba(99,102,241,0.1)', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center',
-                  animation: 'float 3s ease-in-out infinite'
-                }}>
-                  <Users size={28} color="#6366f1" />
-                </div>
+                <span className="text-xs font-medium text-blue-400 bg-blue-950/50 px-2 py-0.5 rounded-full border border-blue-800">Total</span>
               </div>
+              <h3 className="text-2xl font-bold text-white">{stats.totalStudents}</h3>
+              <p className="text-xs text-slate-400">Total Students</p>
             </div>
 
-            <div className="stat-card animate-fade-in" style={{ animationDelay: '0.2s' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>Branches</p>
-                  <p style={{ fontSize: 40, fontWeight: 700, color: '#8b5cf6' }}>{stats.totalBranches}</p>
-                  <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>Different programs</p>
+            <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2 bg-cyan-600 rounded-xl">
+                  <BookOpen className="text-white" size={18} />
                 </div>
-                <div style={{ 
-                  width: 56, 
-                  height: 56, 
-                  borderRadius: 18, 
-                  background: 'rgba(139,92,246,0.1)', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center',
-                  animation: 'float 3s ease-in-out infinite'
-                }}>
-                  <BookOpen size={28} color="#8b5cf6" />
-                </div>
+                <span className="text-xs font-medium text-cyan-400 bg-cyan-950/50 px-2 py-0.5 rounded-full border border-cyan-800">Branches</span>
               </div>
+              <h3 className="text-2xl font-bold text-white">{stats.totalBranches}</h3>
+              <p className="text-xs text-slate-400">Different Programs</p>
             </div>
 
-            <div className="stat-card animate-fade-in" style={{ animationDelay: '0.3s' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>Route 1 Students</p>
-                  <p style={{ fontSize: 40, fontWeight: 700, color: '#f97316' }}>{stats.route1Count}</p>
-                  <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>Amritsar Mandir route</p>
+            <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2 bg-orange-600 rounded-xl">
+                  <Bus className="text-white" size={18} />
                 </div>
-                <div style={{ 
-                  width: 56, 
-                  height: 56, 
-                  borderRadius: 18, 
-                  background: 'rgba(249,115,22,0.1)', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center',
-                  animation: 'float 3s ease-in-out infinite'
-                }}>
-                  <Bus size={28} color="#f97316" />
-                </div>
+                <span className="text-xs font-medium text-orange-400 bg-orange-950/50 px-2 py-0.5 rounded-full border border-orange-800">Route 1</span>
               </div>
+              <h3 className="text-2xl font-bold text-white">{stats.route1Count}</h3>
+              <p className="text-xs text-slate-400">Amritsar Mandir Route</p>
             </div>
 
-            <div className="stat-card animate-fade-in" style={{ animationDelay: '0.4s' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>Route 2 Students</p>
-                  <p style={{ fontSize: 40, fontWeight: 700, color: '#06b6d4' }}>{stats.route2Count}</p>
-                  <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>City Center route</p>
+            <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2 bg-teal-600 rounded-xl">
+                  <Bus className="text-white" size={18} />
                 </div>
-                <div style={{ 
-                  width: 56, 
-                  height: 56, 
-                  borderRadius: 18, 
-                  background: 'rgba(6,182,212,0.1)', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center',
-                  animation: 'float 3s ease-in-out infinite'
-                }}>
-                  <Bus size={28} color="#06b6d4" />
-                </div>
+                <span className="text-xs font-medium text-teal-400 bg-teal-950/50 px-2 py-0.5 rounded-full border border-teal-800">Route 2</span>
               </div>
+              <h3 className="text-2xl font-bold text-white">{stats.route2Count}</h3>
+              <p className="text-xs text-slate-400">City Center Route</p>
             </div>
           </div>
 
           {/* Search and Filters */}
-          <div style={{ 
-            background: 'var(--bg-card)',
-            borderRadius: 24,
-            padding: 24,
-            marginBottom: 24,
-            border: '1px solid var(--border)'
-          }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
+            <div className="space-y-4">
               {/* Search Bar */}
-              <div className="search-bar" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <Search size={20} color="var(--text-muted)" />
+              <div className="flex items-center gap-3 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 focus-within:border-blue-500 transition-all">
+                <Search size={18} className="text-slate-500" />
                 <input
                   type="text"
                   placeholder="Search by name, USN, phone, or email..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  style={{
-                    flex: 1,
-                    border: 'none',
-                    outline: 'none',
-                    fontSize: 14,
-                    background: 'transparent',
-                    color: 'var(--text-primary)'
-                  }}
+                  className="flex-1 bg-transparent border-none outline-none text-slate-200 placeholder-slate-500 text-sm"
                 />
                 {searchTerm && (
-                  <button 
-                    onClick={() => setSearchTerm('')} 
-                    style={{ 
-                      border: 'none', 
-                      background: 'none', 
-                      cursor: 'pointer',
-                      color: 'var(--text-muted)'
-                    }}
-                  >
+                  <button onClick={() => setSearchTerm('')} className="text-slate-500 hover:text-slate-400">
                     <X size={16} />
                   </button>
                 )}
               </div>
 
               {/* Filter Row */}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
-                <span style={{ fontSize: 13, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <Filter size={14} />
-                  Filters:
-                </span>
+              <div className="flex flex-wrap gap-3 items-center">
+                <Filter size={14} className="text-slate-500" />
+                <span className="text-xs text-slate-500">Filters:</span>
                 
                 <select
                   value={branchFilter}
                   onChange={(e) => setBranchFilter(e.target.value)}
-                  style={{
-                    padding: '8px 16px',
-                    borderRadius: 30,
-                    border: '1px solid var(--border)',
-                    background: 'var(--bg-primary)',
-                    fontSize: 13,
-                    color: 'var(--text-primary)',
-                    outline: 'none',
-                    cursor: 'pointer'
-                  }}
+                  className="px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-300 focus:border-blue-500 outline-none"
                 >
                   <option value="all">All Branches</option>
                   {getBranches().map(branch => (
@@ -1027,16 +561,7 @@ if (loading || institutionLoading) {
                 <select
                   value={routeFilter}
                   onChange={(e) => setRouteFilter(e.target.value)}
-                  style={{
-                    padding: '8px 16px',
-                    borderRadius: 30,
-                    border: '1px solid var(--border)',
-                    background: 'var(--bg-primary)',
-                    fontSize: 13,
-                    color: 'var(--text-primary)',
-                    outline: 'none',
-                    cursor: 'pointer'
-                  }}
+                  className="px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-300 focus:border-blue-500 outline-none"
                 >
                   <option value="all">All Routes</option>
                   <option value="route1">Route 1 - Amritsar Mandir</option>
@@ -1045,16 +570,24 @@ if (loading || institutionLoading) {
                 </select>
 
                 {/* View Toggle */}
-                <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+                <div className="flex gap-2 ml-auto">
                   <button
                     onClick={() => setViewMode('table')}
-                    className={`action-button ${viewMode === 'table' ? 'primary' : ''}`}
+                    className={`px-3 py-1.5 rounded-lg text-sm transition-all ${
+                      viewMode === 'table' 
+                        ? 'bg-blue-600 text-white' 
+                        : 'bg-slate-900 text-slate-400 hover:text-slate-300'
+                    }`}
                   >
                     Table View
                   </button>
                   <button
                     onClick={() => setViewMode('grid')}
-                    className={`action-button ${viewMode === 'grid' ? 'primary' : ''}`}
+                    className={`px-3 py-1.5 rounded-lg text-sm transition-all ${
+                      viewMode === 'grid' 
+                        ? 'bg-blue-600 text-white' 
+                        : 'bg-slate-900 text-slate-400 hover:text-slate-300'
+                    }`}
                   >
                     Grid View
                   </button>
@@ -1062,10 +595,10 @@ if (loading || institutionLoading) {
               </div>
 
               {/* Action Buttons */}
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+              <div className="flex flex-wrap gap-3 pt-3 border-t border-slate-700">
                 <button
                   onClick={() => setShowAddForm(true)}
-                  className="action-button primary"
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all text-sm"
                 >
                   <UserPlus size={16} />
                   Add New Student
@@ -1073,7 +606,7 @@ if (loading || institutionLoading) {
 
                 <button
                   onClick={exportToCSV}
-                  className="action-button"
+                  className="flex items-center gap-2 px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-300 hover:text-blue-400 hover:border-blue-500 transition-all text-sm"
                 >
                   <Download size={16} />
                   Export CSV
@@ -1081,7 +614,7 @@ if (loading || institutionLoading) {
 
                 <button
                   onClick={fetchStudents}
-                  className="action-button"
+                  className="flex items-center gap-2 px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-300 hover:text-blue-400 hover:border-blue-500 transition-all text-sm"
                 >
                   <RefreshCw size={16} />
                   Refresh
@@ -1090,10 +623,10 @@ if (loading || institutionLoading) {
                 {selectedStudents.length > 0 && (
                   <button
                     onClick={deleteSelectedStudents}
-                    className="action-button danger"
+                    className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all text-sm"
                   >
                     <Trash2 size={16} />
-                    Delete Selected ({selectedStudents.length})
+                    Delete ({selectedStudents.length})
                   </button>
                 )}
               </div>
@@ -1101,189 +634,120 @@ if (loading || institutionLoading) {
           </div>
 
           {/* Results Count */}
-          <div style={{ 
-            marginBottom: 16, 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            alignItems: 'center',
-            background: 'var(--bg-card)',
-            padding: '12px 20px',
-            borderRadius: 16,
-            border: '1px solid var(--border)'
-          }}>
-            <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>
-              Showing <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{filteredStudents.length}</span> of{' '}
-              <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{students.length}</span> students
+          <div className="bg-slate-800/50 rounded-xl border border-slate-700 px-5 py-3 flex justify-between items-center">
+            <p className="text-sm text-slate-400">
+              Showing <span className="font-semibold text-white">{filteredStudents.length}</span> of{' '}
+              <span className="font-semibold text-white">{students.length}</span> students
             </p>
-            {viewMode === 'table' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {viewMode === 'table' && filteredStudents.length > 0 && (
+              <label className="flex items-center gap-2 text-sm text-slate-400 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={selectedStudents.length === filteredStudents.length && filteredStudents.length > 0}
                   onChange={toggleSelectAll}
-                  style={{ width: 18, height: 18, cursor: 'pointer' }}
+                  className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-0"
                 />
-                <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Select All</span>
-              </div>
+                Select All
+              </label>
             )}
           </div>
 
-          {/* Students Display - Table View */}
+          {/* Table View */}
           {viewMode === 'table' && (
-            <div style={{ 
-              background: 'var(--bg-card)',
-              borderRadius: 24,
-              overflow: 'hidden',
-              border: '1px solid var(--border)'
-            }}>
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1000 }}>
-                  <thead className="table-header">
+            <div className="bg-slate-800/50 rounded-2xl border border-slate-700 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-slate-900 border-b border-slate-700">
                     <tr>
-                      <th style={{ padding: 16, textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider w-12">
                         <input
                           type="checkbox"
                           checked={selectedStudents.length === filteredStudents.length && filteredStudents.length > 0}
                           onChange={toggleSelectAll}
-                          style={{ width: 18, height: 18, cursor: 'pointer' }}
+                          className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-0"
                         />
                       </th>
-                      <th style={{ padding: 16, textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>USN</th>
-                      <th style={{ padding: 16, textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Name</th>
-                      <th style={{ padding: 16, textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Branch</th>
-                      <th style={{ padding: 16, textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Route</th>
-                      <th style={{ padding: 16, textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Contact</th>
-                      <th style={{ padding: 16, textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Semester</th>
-                      <th style={{ padding: 16, textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Password</th>
-                      <th style={{ padding: 16, textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Actions</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">USN</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Name</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Branch</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Route</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Contact</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Semester</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    {filteredStudents.map((student, index) => (
-                      <tr 
-                        key={student.id} 
-                        className={`table-row ${selectedStudents.includes(student.id) ? 'selected' : ''}`}
-                        style={{ animation: `fadeIn 0.3s ease ${index * 0.05}s both` }}
-                      >
-                        <td style={{ padding: 16, borderBottom: '1px solid var(--border)' }}>
+                  <tbody className="divide-y divide-slate-700">
+                    {filteredStudents.map((student) => (
+                      <tr key={student.id} className="hover:bg-slate-700/30 transition-colors">
+                        <td className="px-5 py-3">
                           <input
                             type="checkbox"
                             checked={selectedStudents.includes(student.id)}
                             onChange={() => toggleSelectStudent(student.id)}
-                            style={{ width: 18, height: 18, cursor: 'pointer' }}
+                            className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-0"
                           />
                         </td>
-                        <td style={{ padding: 16, borderBottom: '1px solid var(--border)' }}>
-                          <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{student.usn}</span>
+                        <td className="px-5 py-3">
+                          <span className="text-sm font-mono text-slate-300">{student.usn}</span>
                         </td>
-                        <td style={{ padding: 16, borderBottom: '1px solid var(--border)' }}>
+                        <td className="px-5 py-3">
                           <div>
-                            <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{student.full_name}</div>
-                            {student.email && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{student.email}</div>}
+                            <p className="text-sm font-medium text-white">{student.full_name}</p>
+                            {student.email && <p className="text-xs text-slate-500">{student.email}</p>}
                           </div>
                         </td>
-                        <td style={{ padding: 16, borderBottom: '1px solid var(--border)' }}>
+                        <td className="px-5 py-3">
                           {student.branch ? (
-                            <span style={{ 
-                              background: 'rgba(99,102,241,0.1)', 
-                              color: '#6366f1', 
-                              padding: '4px 10px', 
-                              borderRadius: 20, 
-                              fontSize: 11, 
-                              fontWeight: 500 
-                            }}>
+                            <span className="inline-flex px-2 py-1 rounded-full text-xs font-medium bg-blue-950/50 text-blue-400 border border-blue-800">
                               {student.branch}
                             </span>
                           ) : (
-                            <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>
+                            <span className="text-xs text-slate-500">—</span>
                           )}
                         </td>
-                        <td style={{ padding: 16, borderBottom: '1px solid var(--border)' }}>
+                        <td className="px-5 py-3">
                           {student.routes ? (
-                            <div style={{
-                              background: student.routes === 'route1' ? 'rgba(249,115,22,0.1)' : 'rgba(6,182,212,0.1)',
-                              color: student.routes === 'route1' ? '#f97316' : '#06b6d4',
-                              padding: '4px 12px',
-                              borderRadius: 20,
-                              fontSize: 11,
-                              fontWeight: 500,
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: 4
-                            }}>
-                              <Bus size={12} />
+                            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                              student.routes === 'route1' 
+                                ? 'bg-orange-950/50 text-orange-400 border border-orange-800' 
+                                : 'bg-teal-950/50 text-teal-400 border border-teal-800'
+                            }`}>
+                              <Bus size={10} />
                               {student.routes === 'route1' ? 'Route 1' : 'Route 2'}
-                            </div>
+                            </span>
                           ) : (
-                            <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>Not Assigned</span>
+                            <span className="text-xs text-slate-500">Not Assigned</span>
                           )}
                         </td>
-                        <td style={{ padding: 16, borderBottom: '1px solid var(--border)' }}>
+                        <td className="px-5 py-3">
                           {student.phone ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                              <Phone size={12} color="var(--text-muted)" />
-                              <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>{student.phone}</span>
-                            </div>
+                            <span className="text-sm text-slate-300">{student.phone}</span>
                           ) : (
-                            <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>
+                            <span className="text-xs text-slate-500">—</span>
                           )}
                         </td>
-                        <td style={{ padding: 16, borderBottom: '1px solid var(--border)' }}>
+                        <td className="px-5 py-3">
                           {student.semester ? (
-                            <span style={{ 
-                              background: 'rgba(139,92,246,0.1)', 
-                              color: '#8b5cf6', 
-                              padding: '4px 10px', 
-                              borderRadius: 20, 
-                              fontSize: 11, 
-                              fontWeight: 500 
-                            }}>
+                            <span className="inline-flex px-2 py-1 rounded-full text-xs font-medium bg-indigo-950/50 text-indigo-400 border border-indigo-800">
                               Sem {student.semester}
                             </span>
                           ) : (
-                            <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>
+                            <span className="text-xs text-slate-500">—</span>
                           )}
                         </td>
-                        <td style={{ padding: 16, borderBottom: '1px solid var(--border)' }}>
-                          <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>
-                        </td>
-                        <td style={{ padding: 16, borderBottom: '1px solid var(--border)' }}>
-                          <div style={{ display: 'flex', gap: 8 }}>
+                        <td className="px-5 py-3">
+                          <div className="flex gap-2">
                             <button
                               onClick={() => openEditForm(student)}
-                              style={{
-                                padding: 8,
-                                borderRadius: 10,
-                                border: 'none',
-                                background: 'rgba(99,102,241,0.1)',
-                                color: '#6366f1',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                transition: 'all 0.2s ease'
-                              }}
-                              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(99,102,241,0.2)'}
-                              onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(99,102,241,0.1)'}
+                              className="p-1.5 rounded-lg text-blue-400 hover:bg-blue-600/20 transition-colors"
+                              title="Edit"
                             >
                               <Edit size={14} />
                             </button>
                             <button
                               onClick={() => deleteStudent(student.id)}
-                              style={{
-                                padding: 8,
-                                borderRadius: 10,
-                                border: 'none',
-                                background: 'rgba(239,68,68,0.1)',
-                                color: '#ef4444',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                transition: 'all 0.2s ease'
-                              }}
-                              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(239,68,68,0.2)'}
-                              onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(239,68,68,0.1)'}
+                              className="p-1.5 rounded-lg text-red-400 hover:bg-red-600/20 transition-colors"
+                              title="Delete"
                             >
                               <Trash2 size={14} />
                             </button>
@@ -1296,154 +760,97 @@ if (loading || institutionLoading) {
               </div>
 
               {filteredStudents.length === 0 && (
-                <div style={{ textAlign: 'center', padding: 60 }}>
-                  <Users size={48} color="var(--text-muted)" style={{ marginBottom: 16 }} />
-                  <h3 style={{ fontSize: 18, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>No Students Found</h3>
-                  <p style={{ color: 'var(--text-muted)' }}>Try adjusting your search or filter criteria</p>
+                <div className="text-center py-12">
+                  <Users size={48} className="text-slate-600 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-white mb-2">No Students Found</h3>
+                  <p className="text-slate-400">Try adjusting your search or filter criteria</p>
                 </div>
               )}
             </div>
           )}
 
-          {/* Students Display - Grid View */}
+          {/* Grid View */}
           {viewMode === 'grid' && (
-            <div style={{ 
-              display: 'grid', 
-              gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', 
-              gap: 20 
-            }}>
-              {filteredStudents.map((student, index) => (
-                <div 
-                  key={student.id} 
-                  className="student-card"
-                  style={{ animation: `fadeIn 0.3s ease ${index * 0.05}s both` }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                      <div style={{
-                        width: 56,
-                        height: 56,
-                        borderRadius: 18,
-                        background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: 'white',
-                        fontSize: 24,
-                        fontWeight: 600,
-                        boxShadow: '0 4px 6px -1px rgba(99,102,241,0.3)'
-                      }}>
-                        {student.full_name?.charAt(0).toUpperCase()}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {filteredStudents.map((student) => (
+                <div key={student.id} className="bg-slate-800/50 rounded-2xl border border-slate-700 hover:border-blue-500/30 transition-all overflow-hidden">
+                  <div className={`h-1 ${student.routes === 'route1' ? 'bg-orange-500' : student.routes === 'route2' ? 'bg-teal-500' : 'bg-slate-600'}`}></div>
+                  <div className="p-5">
+                    <div className="flex justify-between items-start mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center">
+                          <User className="text-white" size={20} />
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-white">{student.full_name}</h3>
+                          <p className="text-xs text-slate-500 font-mono">{student.usn}</p>
+                        </div>
                       </div>
-                      <div>
-                        <h3 style={{ fontSize: 18, fontWeight: 600, color: 'var(--text-primary)' }}>{student.full_name}</h3>
-                        <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>{student.usn}</p>
+                      <div className="flex gap-1">
+                        <button 
+                          onClick={() => openEditForm(student)}
+                          className="p-1.5 text-blue-400 hover:bg-blue-600/20 rounded-lg transition-colors"
+                          title="Edit"
+                        >
+                          <Edit size={14} />
+                        </button>
+                        <button 
+                          onClick={() => deleteStudent(student.id)}
+                          className="p-1.5 text-red-400 hover:bg-red-600/20 rounded-lg transition-colors"
+                          title="Delete"
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </div>
                     </div>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <button
-                        onClick={() => openEditForm(student)}
-                        style={{
-                          padding: 8,
-                          borderRadius: 10,
-                          border: 'none',
-                          background: 'rgba(99,102,241,0.1)',
-                          color: '#6366f1',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        <Edit size={14} />
-                      </button>
-                      <button
-                        onClick={() => deleteStudent(student.id)}
-                        style={{
-                          padding: 8,
-                          borderRadius: 10,
-                          border: 'none',
-                          background: 'rgba(239,68,68,0.1)',
-                          color: '#ef4444',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </div>
 
-                  <div style={{ marginBottom: 16, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                    {student.branch && (
-                      <span style={{ 
-                        background: 'rgba(99,102,241,0.1)', 
-                        color: '#6366f1', 
-                        padding: '4px 12px', 
-                        borderRadius: 20, 
-                        fontSize: 11, 
-                        fontWeight: 500 
-                      }}>
-                        {student.branch}
-                      </span>
-                    )}
-                    {student.routes && (
-                      <span style={{
-                        background: student.routes === 'route1' ? 'rgba(249,115,22,0.1)' : 'rgba(6,182,212,0.1)',
-                        color: student.routes === 'route1' ? '#f97316' : '#06b6d4',
-                        padding: '4px 12px',
-                        borderRadius: 20,
-                        fontSize: 11,
-                        fontWeight: 500,
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 4
-                      }}>
-                        <Bus size={10} />
-                        {student.routes === 'route1' ? 'Route 1' : 'Route 2'}
-                      </span>
-                    )}
-                    {student.semester && (
-                      <span style={{ 
-                        background: 'rgba(139,92,246,0.1)', 
-                        color: '#8b5cf6', 
-                        padding: '4px 12px', 
-                        borderRadius: 20, 
-                        fontSize: 11, 
-                        fontWeight: 500 
-                      }}>
-                        Sem {student.semester}
-                      </span>
-                    )}
-                  </div>
+                    <div className="space-y-3 mb-4">
+                      <div className="flex flex-wrap gap-2">
+                        {student.branch && (
+                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-950/50 text-blue-400 border border-blue-800">
+                            {student.branch}
+                          </span>
+                        )}
+                        {student.routes && (
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${
+                            student.routes === 'route1' 
+                              ? 'bg-orange-950/50 text-orange-400 border border-orange-800' 
+                              : 'bg-teal-950/50 text-teal-400 border border-teal-800'
+                          }`}>
+                            <Bus size={10} />
+                            {student.routes === 'route1' ? 'Route 1' : 'Route 2'}
+                          </span>
+                        )}
+                        {student.semester && (
+                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-indigo-950/50 text-indigo-400 border border-indigo-800">
+                            Sem {student.semester}
+                          </span>
+                        )}
+                      </div>
 
-                  <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                       {student.phone && (
-                        <div>
-                          <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Phone</p>
-                          <p style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-primary)' }}>
-                            <Phone size={12} color="var(--text-muted)" />
-                            {student.phone}
-                          </p>
+                        <div className="flex items-center gap-2 text-sm">
+                          <Phone size={12} className="text-slate-500" />
+                          <span className="text-slate-300">{student.phone}</span>
                         </div>
                       )}
+
                       {student.email && (
-                        <div>
-                          <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Email</p>
-                          <p style={{ fontSize: 13, color: 'var(--text-primary)' }}>{student.email}</p>
+                        <div className="flex items-center gap-2 text-sm">
+                          <Mail size={12} className="text-slate-500" />
+                          <span className="text-slate-300 truncate">{student.email}</span>
                         </div>
                       )}
-                      <div>
-                        <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Password</p>
-                        <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>—</p>
-                      </div>
                     </div>
                   </div>
                 </div>
               ))}
 
               {filteredStudents.length === 0 && (
-                <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: 60, background: 'var(--bg-card)', borderRadius: 24, border: '1px solid var(--border)' }}>
-                  <Users size={48} color="var(--text-muted)" style={{ marginBottom: 16 }} />
-                  <h3 style={{ fontSize: 18, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>No Students Found</h3>
-                  <p style={{ color: 'var(--text-muted)' }}>Try adjusting your search or filter criteria</p>
+                <div className="col-span-full text-center py-12 bg-slate-800/50 rounded-2xl border border-slate-700">
+                  <Users size={48} className="text-slate-600 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-white mb-2">No Students Found</h3>
+                  <p className="text-slate-400">Try adjusting your search or filter criteria</p>
                 </div>
               )}
             </div>
@@ -1451,215 +858,74 @@ if (loading || institutionLoading) {
         </div>
       </div>
 
-      {/* Toast Notification */}
-      {toast.show && (
-        <div style={{
-          position: 'fixed',
-          top: 20,
-          right: 20,
-          zIndex: 1000,
-          animation: 'slideIn 0.3s ease'
-        }}>
-          <div style={{
-            background: toast.type === 'success' ? '#10b981' : '#ef4444',
-            color: 'white',
-            padding: '14px 24px',
-            borderRadius: 16,
-            boxShadow: '0 10px 25px rgba(0,0,0,0.3)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            minWidth: 320,
-            border: '1px solid rgba(255,255,255,0.1)'
-          }}>
-            {toast.type === 'success' ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
-            <span style={{ flex: 1, fontSize: 14, fontWeight: 500 }}>{toast.message}</span>
-            <button
-              onClick={() => setToast({ show: false, message: '', type: 'success' })}
-              style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer' }}
-            >
-              <X size={16} />
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Add/Edit Student Modal */}
       {(showAddForm || editingStudent) && (
-        <div className="modal-backdrop">
-          <div className="modal-content">
-            {/* Modal Header */}
-            <div style={{
-              padding: 24,
-              borderBottom: '1px solid var(--border)',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center'
-            }}>
-              <div>
-                <h3 style={{ fontSize: 24, fontWeight: 700, background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-slate-800 rounded-2xl border border-slate-700 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-slate-800 border-b border-slate-700 px-6 py-4 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-600 rounded-xl">
+                  {editingStudent ? <Edit className="text-white" size={20} /> : <UserPlus className="text-white" size={20} />}
+                </div>
+                <h3 className="text-xl font-bold text-white">
                   {editingStudent ? 'Edit Student' : 'Add New Student'}
                 </h3>
-                <p style={{ fontSize: 14, color: 'var(--text-muted)', marginTop: 4 }}>
-                  {editingStudent ? 'Update student information' : 'Enter details to add a new student'}
-                </p>
               </div>
-              <button
+              <button 
                 onClick={() => {
                   setShowAddForm(false);
                   setEditingStudent(null);
-                  setNewStudent({
-                    full_name: '',
-                    usn: '',
-                    branch: '',
-                    phone: '',
-                    password: '',
-                    routes: '',
-                    email: '',
-                    semester: ''
-                  });
                 }}
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 12,
-                  border: '1px solid var(--border)',
-                  background: 'var(--bg-card)',
-                  color: 'var(--text-muted)',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  transition: 'all 0.2s ease'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'var(--bg-card-hover)';
-                  e.currentTarget.style.color = '#ef4444';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'var(--bg-card)';
-                  e.currentTarget.style.color = 'var(--text-muted)';
-                }}
+                className="p-2 text-slate-400 hover:text-slate-300 hover:bg-slate-700 rounded-lg transition-all"
               >
-                <X size={18} />
+                <X size={20} />
               </button>
             </div>
 
-            <form onSubmit={editingStudent ? handleEditStudent : handleAddStudent} style={{ padding: 24 }}>
-              {/* Required Fields Notice */}
-              <div style={{
-                background: 'rgba(99,102,241,0.1)',
-                borderRadius: 16,
-                padding: 16,
-                marginBottom: 24,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                border: '1px solid rgba(99,102,241,0.2)'
-              }}>
-                <AlertCircle size={20} color="#6366f1" />
-                <p style={{ fontSize: 14, color: '#6366f1', fontWeight: 500 }}>
-                  Fields marked with <span style={{ color: '#ef4444' }}>*</span> are required
-                </p>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
-                {/* Full Name */}
-                <div style={{ gridColumn: 'span 2' }}>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>
-                    Full Name <span style={{ color: '#ef4444' }}>*</span>
-                  </label>
+            <form onSubmit={editingStudent ? handleEditStudent : handleAddStudent} className="p-6 space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Full Name *</label>
                   <input
                     type="text"
                     required
                     value={newStudent.full_name}
                     onChange={(e) => setNewStudent(prev => ({ ...prev, full_name: e.target.value }))}
-                    style={{
-                      width: '100%',
-                      padding: '12px 16px',
-                      border: '1px solid var(--border)',
-                      borderRadius: 16,
-                      fontSize: 14,
-                      outline: 'none',
-                      transition: 'all 0.2s ease',
-                      background: 'var(--bg-primary)',
-                      color: 'var(--text-primary)'
-                    }}
-                    onFocus={(e) => e.target.style.borderColor = '#6366f1'}
-                    onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 placeholder-slate-500"
                     placeholder="Enter student's full name"
                   />
                 </div>
 
-                {/* USN */}
-                <div style={{ gridColumn: 'span 2' }}>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>
-                    USN <span style={{ color: '#ef4444' }}>*</span>
-                  </label>
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-slate-300 mb-2">USN *</label>
                   <input
                     type="text"
                     required
                     value={newStudent.usn}
                     onChange={(e) => setNewStudent(prev => ({ ...prev, usn: e.target.value }))}
-                    style={{
-                      width: '100%',
-                      padding: '12px 16px',
-                      border: '1px solid var(--border)',
-                      borderRadius: 16,
-                      fontSize: 14,
-                      outline: 'none',
-                      transition: 'all 0.2s ease',
-                      background: 'var(--bg-primary)',
-                      color: 'var(--text-primary)'
-                    }}
-                    onFocus={(e) => e.target.style.borderColor = '#6366f1'}
-                    onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 placeholder-slate-500"
                     placeholder="e.g., 1SI21CS001"
                   />
-                  <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Must be unique</p>
+                  <p className="text-xs text-slate-500 mt-1">Must be unique</p>
                 </div>
 
-                {/* Branch */}
                 <div>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>Branch</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Branch</label>
                   <input
                     type="text"
                     value={newStudent.branch}
                     onChange={(e) => setNewStudent(prev => ({ ...prev, branch: e.target.value }))}
-                    style={{
-                      width: '100%',
-                      padding: '12px 16px',
-                      border: '1px solid var(--border)',
-                      borderRadius: 16,
-                      fontSize: 14,
-                      outline: 'none',
-                      transition: 'all 0.2s ease',
-                      background: 'var(--bg-primary)',
-                      color: 'var(--text-primary)'
-                    }}
-                    onFocus={(e) => e.target.style.borderColor = '#6366f1'}
-                    onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 placeholder-slate-500"
                     placeholder="e.g., Computer Science"
                   />
                 </div>
 
-                {/* Semester */}
                 <div>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>Semester</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Semester</label>
                   <select
                     value={newStudent.semester}
                     onChange={(e) => setNewStudent(prev => ({ ...prev, semester: e.target.value }))}
-                    style={{
-                      width: '100%',
-                      padding: '12px 16px',
-                      border: '1px solid var(--border)',
-                      borderRadius: 16,
-                      fontSize: 14,
-                      outline: 'none',
-                      transition: 'all 0.2s ease',
-                      background: 'var(--bg-primary)',
-                      color: 'var(--text-primary)'
-                    }}
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200"
                   >
                     <option value="">Select Semester</option>
                     <option value="1">1st Semester</option>
@@ -1673,71 +939,37 @@ if (loading || institutionLoading) {
                   </select>
                 </div>
 
-                {/* Email */}
-              <div style={{ gridColumn: 'span 2' }}>
-  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>Email</label>
-  <input
-    type="email"
-    value={newStudent.email}
-    onChange={(e) => setNewStudent(prev => ({ ...prev, email: e.target.value }))}
-    style={{
-      width: '100%',
-      padding: '12px 16px',
-      border: '1px solid var(--border)',
-      borderRadius: 16,
-      fontSize: 14,
-      outline: 'none',
-      transition: 'all 0.2s ease',
-      background: 'var(--bg-primary)',
-      color: 'var(--text-primary)'
-    }}
-    onFocus={(e) => e.target.style.borderColor = '#6366f1'}
-    onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
-    placeholder="student@example.com"
-  />
-</div>
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Email</label>
+                  <input
+                    type="email"
+                    value={newStudent.email}
+                    onChange={(e) => setNewStudent(prev => ({ ...prev, email: e.target.value }))}
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 placeholder-slate-500"
+                    placeholder="student@example.com"
+                  />
+                </div>
 
-                {/* Phone */}
                 <div>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>Phone Number</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Phone Number</label>
                   <input
                     type="tel"
                     value={newStudent.phone}
                     onChange={(e) => setNewStudent(prev => ({ ...prev, phone: e.target.value }))}
-                    style={{
-                      width: '100%',
-                      padding: '12px 16px',
-                      border: '1px solid var(--border)',
-                      borderRadius: 16,
-                      fontSize: 14,
-                      outline: 'none',
-                      transition: 'all 0.2s ease',
-                      background: 'var(--bg-primary)',
-                      color: 'var(--text-primary)'
-                    }}
-                    onFocus={(e) => e.target.style.borderColor = '#6366f1'}
-                    onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 placeholder-slate-500"
                     placeholder="Enter phone number"
                   />
                 </div>
 
-                {/* Route */}
-                <div style={{ gridColumn: 'span 2' }}>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>Bus Route</label>
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                    <Bus size={16} className="inline mr-1 text-blue-400" />
+                    Bus Route
+                  </label>
                   <select
                     value={newStudent.routes}
                     onChange={(e) => setNewStudent(prev => ({ ...prev, routes: e.target.value }))}
-                    style={{
-                      width: '100%',
-                      padding: '12px 16px',
-                      border: '1px solid var(--border)',
-                      borderRadius: 16,
-                      fontSize: 14,
-                      outline: 'none',
-                      transition: 'all 0.2s ease',
-                      background: 'var(--bg-primary)',
-                      color: 'var(--text-primary)'
-                    }}
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200"
                   >
                     <option value="">Not Assigned</option>
                     <option value="route1">Route 1 - Amritsar Mandir</option>
@@ -1745,71 +977,38 @@ if (loading || institutionLoading) {
                   </select>
                 </div>
 
-                {/* Password */}
-                <div style={{ gridColumn: 'span 2' }}>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 6 }}>
-                    Password {!editingStudent && <span style={{ color: '#ef4444' }}>*</span>}
-                    {editingStudent && <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 8 }}>(Leave blank to keep current)</span>}
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                    Password {!editingStudent && '*'}
+                    {editingStudent && <span className="text-xs text-slate-500 ml-2">(Leave blank to keep current)</span>}
                   </label>
                   <input
                     type="password"
                     required={!editingStudent}
                     value={newStudent.password}
                     onChange={(e) => setNewStudent(prev => ({ ...prev, password: e.target.value }))}
-                    style={{
-                      width: '100%',
-                      padding: '12px 16px',
-                      border: '1px solid var(--border)',
-                      borderRadius: 16,
-                      fontSize: 14,
-                      outline: 'none',
-                      transition: 'all 0.2s ease',
-                      background: 'var(--bg-primary)',
-                      color: 'var(--text-primary)'
-                    }}
-                    onFocus={(e) => e.target.style.borderColor = '#6366f1'}
-                    onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 placeholder-slate-500"
                     placeholder={editingStudent ? "Enter new password (optional)" : "Enter student password"}
                   />
                 </div>
               </div>
 
-              {/* Form Actions */}
-              <div style={{
-                marginTop: 24,
-                paddingTop: 20,
-                borderTop: '1px solid var(--border)',
-                display: 'flex',
-                justifyContent: 'flex-end',
-                gap: 12
-              }}>
+              <div className="flex justify-end gap-3 pt-6 border-t border-slate-700">
                 <button
                   type="button"
                   onClick={() => {
                     setShowAddForm(false);
                     setEditingStudent(null);
-                    setNewStudent({
-                      full_name: '',
-                      usn: '',
-                      branch: '',
-                      phone: '',
-                      password: '',
-                      routes: '',
-                      email: '',
-                      semester: ''
-                    });
                   }}
-                  className="action-button"
-                  style={{ padding: '12px 24px' }}
+                  className="px-6 py-3 text-slate-300 bg-slate-700 rounded-xl hover:bg-slate-600 transition-all font-medium"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="action-button primary"
-                  style={{ padding: '12px 24px' }}
+                  className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all font-medium"
                 >
-                  <Save size={16} style={{ marginRight: 6 }} />
+                  <Save size={16} className="inline mr-2" />
                   {editingStudent ? 'Update Student' : 'Add Student'}
                 </button>
               </div>
@@ -1818,44 +1017,56 @@ if (loading || institutionLoading) {
         </div>
       )}
 
+      {/* Toast Notification */}
+      {toast.show && (
+        <div className="fixed top-5 right-5 z-50 animate-slide-in">
+          <div className={`flex items-center gap-3 px-5 py-3 rounded-xl shadow-2xl border-l-4 backdrop-blur-sm ${
+            toast.type === 'success' 
+              ? 'bg-emerald-900/95 border-emerald-500 text-emerald-200' 
+              : 'bg-red-900/95 border-red-500 text-red-200'
+          }`}>
+            {toast.type === 'success' ? (
+              <CheckCircle className="text-emerald-400" size={20} />
+            ) : (
+              <AlertCircle className="text-red-400" size={20} />
+            )}
+            <span className="font-medium">{toast.message}</span>
+            <button
+              onClick={() => setToast({ show: false, message: '', type: 'success' })}
+              className="ml-2 opacity-70 hover:opacity-100 transition-opacity"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Floating Add Button for Mobile */}
-      <div style={{
-        position: 'fixed',
-        bottom: 24,
-        right: 24,
-        display: 'none',
-        zIndex: 40
-      }}>
+      <div className="fixed bottom-6 right-6 z-40 sm:hidden">
         <button
           onClick={() => setShowAddForm(true)}
-          style={{
-            width: 60,
-            height: 60,
-            borderRadius: 30,
-            background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-            color: 'white',
-            border: 'none',
-            boxShadow: '0 10px 25px rgba(99,102,241,0.4)',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            transition: 'all 0.2s ease'
-          }}
-          onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-          onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+          className="bg-blue-600 text-white p-4 rounded-full shadow-lg hover:bg-blue-700 transition-all"
+          title="Add Student"
         >
           <Plus size={24} />
         </button>
       </div>
 
       <style jsx>{`
-        @media (max-width: 768px) {
-          .floating-btn {
-            display: flex !important;
+        @keyframes slide-in {
+          from {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
           }
         }
+        .animate-slide-in {
+          animation: slide-in 0.3s ease-out;
+        }
       `}</style>
-    </>
+    </div>
   );
 }

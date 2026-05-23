@@ -68,25 +68,23 @@ function BusDetails() {
   const router = useRouter();
 
   useEffect(() => {
-  initializePage();
+    initializePage();
 
-  const updateTime = () => {
-    const now = new Date();
-    setCurrentTime(
-      now.toLocaleTimeString('en-US', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-      })
-    );
-  };
+    const updateTime = () => {
+      const now = new Date();
+      setCurrentTime(
+        now.toLocaleTimeString('en-US', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        })
+      );
+    };
 
-  updateTime();
-
-  const timer = setInterval(updateTime, 1000);
-
-  return () => clearInterval(timer);
-}, []);
+    updateTime();
+    const timer = setInterval(updateTime, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (toast.show) {
@@ -102,50 +100,49 @@ function BusDetails() {
   };
 
   const initializePage = async () => {
-  try {
-    const admin = await getAdminInstitution();
+    try {
+      const admin = await getAdminInstitution();
 
-    console.log('ADMIN DATA:', admin);
+      console.log('ADMIN DATA:', admin);
 
-    if (!admin) {
-      showToast('Admin institution not found', 'error');
+      if (!admin) {
+        showToast('Admin institution not found', 'error');
+        setLoading(false);
+        return;
+      }
+
+      setAdminData(admin);
+      fetchBuses(admin.institution_id);
+    } catch (error) {
+      console.error('Error initializing page:', error);
       setLoading(false);
-      return;
     }
-
-    setAdminData(admin);
-
-    fetchBuses(admin.institution_id);
-  } catch (error) {
-    console.error('Error initializing page:', error);
-    setLoading(false);
-  }
-};
-
+  };
 
   const fetchBuses = async (institutionId) => {
-  try {
-    setLoading(true);
-    setError(null);
+    try {
+      setLoading(true);
+      setError(null);
 
-    const { data, error } = await supabase
-      .from('buses')
-      .select('*')
-      .eq('institution_id', institutionId)
-      .order('bus_number');
+      const { data, error } = await supabase
+        .from('buses')
+        .select('*')
+        .eq('institution_id', institutionId)
+        .order('bus_number');
 
-    if (error) throw error;
+      if (error) throw error;
 
-    console.log('BUSES DATA:', data);
+      console.log('BUSES DATA:', data);
 
-    setBuses(data || []);
-  } catch (error) {
-    console.error('Error fetching buses:', error);
-    setError(error.message);
-  } finally {
-    setLoading(false);
-  }
-};
+      setBuses(data || []);
+    } catch (error) {
+      console.error('Error fetching buses:', error);
+      setError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleBack = () => {
     router.back();
   };
@@ -174,7 +171,7 @@ function BusDetails() {
         icon: '⚠️',
         daysText: '',
         days: null,
-        color: '#9ca3af'
+        color: '#64748b'
       };
     }
     
@@ -247,7 +244,7 @@ function BusDetails() {
         icon: '⚙️',
         daysText: '',
         kmText: '',
-        color: '#9ca3af'
+        color: '#64748b'
       };
     }
 
@@ -333,7 +330,6 @@ function BusDetails() {
         .from('buses')
         .delete()
         .eq('id', busId)
-        .eq('id', busId)
         .eq('institution_id', adminData.institution_id);
 
       if (error) throw error;
@@ -409,40 +405,15 @@ function BusDetails() {
 
   if (loading) {
     return (
-      <div style={{ 
-        minHeight: '100vh', 
-        background: '#0a0a0f',
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'center' 
-      }}>
-        <style>{`
-          @keyframes spin { to { transform: rotate(360deg); } }
-          @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
-        `}</style>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ position: 'relative', width: 80, height: 80, margin: '0 auto 20px' }}>
-            <div style={{ 
-              width: 80, 
-              height: 80, 
-              border: '4px solid #1e1e2e', 
-              borderTop: '4px solid #f97316', 
-              borderRadius: '50%', 
-              animation: 'spin 1s linear infinite' 
-            }}></div>
-            <div style={{ 
-              position: 'absolute', 
-              top: '50%', 
-              left: '50%', 
-              transform: 'translate(-50%, -50%)', 
-              width: 40, 
-              height: 40, 
-              background: '#f97316', 
-              borderRadius: '50%', 
-              animation: 'pulse 1.5s ease infinite' 
-            }}></div>
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="relative w-20 h-20 mx-auto mb-5">
+            <div className="absolute inset-0 border-4 border-slate-700 border-t-blue-600 rounded-full animate-spin"></div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-8 h-8 bg-blue-600 rounded-full animate-pulse"></div>
+            </div>
           </div>
-          <p style={{ color: '#f97316', fontWeight: 600 }}>Loading buses...</p>
+          <p className="text-blue-400 font-semibold">Loading buses...</p>
         </div>
       </div>
     );
@@ -450,35 +421,14 @@ function BusDetails() {
 
   if (error) {
     return (
-      <div style={{ 
-        minHeight: '100vh', 
-        background: '#0a0a0f',
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'center' 
-      }}>
-        <div style={{ textAlign: 'center', background: '#16162a', padding: 40, borderRadius: 24, border: '1px solid rgba(255,255,255,0.08)' }}>
-          <AlertTriangle size={48} color="#ef4444" style={{ marginBottom: 16 }} />
-          <h3 style={{ fontSize: 20, fontWeight: 600, color: 'white', marginBottom: 8 }}>Error Loading Buses</h3>
-          <p style={{ color: '#a0a0c0', marginBottom: 24 }}>{error}</p>
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="text-center bg-slate-800/50 rounded-2xl border border-slate-700 p-10 max-w-md">
+          <AlertTriangle size={48} className="mx-auto text-red-400 mb-4" />
+          <h3 className="text-xl font-semibold text-white mb-2">Error Loading Buses</h3>
+          <p className="text-slate-400 mb-6">{error}</p>
           <button
-            onClick={fetchBuses}
-            style={{
-              background: '#f97316',
-              color: 'white',
-              border: 'none',
-              padding: '12px 24px',
-              borderRadius: 12,
-              fontSize: 14,
-              fontWeight: 600,
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 8,
-              transition: 'all 0.2s ease'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#ea580c'}
-            onMouseLeave={(e) => e.currentTarget.style.background = '#f97316'}
+            onClick={() => fetchBuses(adminData?.institution_id)}
+            className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all mx-auto"
           >
             <RefreshCw size={16} />
             <span>Retry</span>
@@ -492,325 +442,24 @@ function BusDetails() {
   const dateStr = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
   return (
-    <>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-        
-        * { 
-          box-sizing: border-box; 
-          margin: 0; 
-          padding: 0; 
-        }
-        
-        :root {
-          --bg-primary: #0a0a0f;
-          --bg-secondary: #11111f;
-          --bg-card: #16162a;
-          --bg-card-hover: #1c1c34;
-          --border: rgba(255,255,255,0.08);
-          --border-hover: rgba(255,255,255,0.15);
-          --text-primary: #ffffff;
-          --text-secondary: #a0a0c0;
-          --text-muted: #6b6b8b;
-          --accent-orange: #f97316;
-          --accent-red: #ef4444;
-          --accent-green: #10b981;
-          --accent-yellow: #eab308;
-          --accent-blue: #3b82f6;
-          --accent-purple: #8b5cf6;
-        }
-        
-        body { 
-          font-family: 'Inter', sans-serif; 
-          background: var(--bg-primary);
-          color: var(--text-primary);
-        }
-        
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        
-        @keyframes slideIn {
-          from { transform: translateX(20px); opacity: 0; }
-          to { transform: translateX(0); opacity: 1; }
-        }
-        
-        @keyframes scaleIn {
-          from { transform: scale(0.95); opacity: 0; }
-          to { transform: scale(1); opacity: 1; }
-        }
-        
-        @keyframes float {
-          0%,100% { transform: translateY(0px); }
-          50% { transform: translateY(-5px); }
-        }
-        
-        @keyframes glow {
-          0%,100% { filter: blur(60px) opacity(0.5); }
-          50% { filter: blur(80px) opacity(0.8); }
-        }
-        
-        @keyframes shimmer {
-          0% { transform: translateX(-100%); }
-          100% { transform: translateX(100%); }
-        }
-        
-        .animate-fade-in { animation: fadeIn 0.3s ease forwards; }
-        .animate-slide-in { animation: slideIn 0.3s ease forwards; }
-        .animate-scale-in { animation: scaleIn 0.2s ease forwards; }
-        .animate-float { animation: float 3s ease-in-out infinite; }
-        
-        .glass-effect {
-          background: rgba(22, 22, 42, 0.8);
-          backdrop-filter: blur(12px);
-          border: 1px solid rgba(255, 255, 255, 0.08);
-        }
-        
-        /* Badge Styles */
-        .badge-valid {
-          background: rgba(16, 185, 129, 0.1);
-          color: #10b981;
-          border: 1px solid rgba(16, 185, 129, 0.2);
-        }
-        
-        .badge-warning {
-          background: rgba(234, 179, 8, 0.1);
-          color: #eab308;
-          border: 1px solid rgba(234, 179, 8, 0.2);
-        }
-        
-        .badge-critical {
-          background: rgba(249, 115, 22, 0.1);
-          color: #f97316;
-          border: 1px solid rgba(249, 115, 22, 0.2);
-        }
-        
-        .badge-expired {
-          background: rgba(239, 68, 68, 0.15);
-          color: #ef4444;
-          border: 1px solid rgba(239, 68, 68, 0.3);
-        }
-        
-        .badge-not-set {
-          background: rgba(107, 114, 128, 0.1);
-          color: #9ca3af;
-          border: 1px solid rgba(107, 114, 128, 0.2);
-        }
-        
-        .status-card {
-          background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-secondary) 100%);
-          border-radius: 20px;
-          padding: 20px;
-          position: relative;
-          overflow: hidden;
-          transition: all 0.3s ease;
-          border: 1px solid var(--border);
-        }
-        
-        .status-card::before {
-          content: '';
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          height: 3px;
-          background: linear-gradient(90deg, var(--accent-orange), var(--accent-yellow));
-          transform: scaleX(0);
-          transition: transform 0.3s ease;
-        }
-        
-        .status-card:hover::before {
-          transform: scaleX(1);
-        }
-        
-        .status-card:hover {
-          transform: translateY(-4px);
-          border-color: var(--border-hover);
-          box-shadow: 0 20px 40px -12px rgba(0,0,0,0.3);
-        }
-        
-        .search-bar {
-          background: var(--bg-card);
-          border: 1px solid var(--border);
-          border-radius: 40px;
-          padding: 8px 20px;
-          transition: all 0.3s ease;
-        }
-        
-        .search-bar:focus-within {
-          border-color: #f97316;
-          box-shadow: 0 0 0 3px rgba(249,115,22,0.2);
-        }
-        
-        .bus-card {
-          background: var(--bg-card);
-          border: 1px solid var(--border);
-          border-radius: 20px;
-          overflow: hidden;
-          transition: all 0.3s ease;
-        }
-        
-        .bus-card:hover {
-          border-color: #f97316;
-          box-shadow: 0 10px 30px -10px rgba(249,115,22,0.3);
-          transform: translateY(-2px);
-        }
-        
-        .bus-header {
-          background: linear-gradient(135deg, rgba(249,115,22,0.05) 0%, rgba(234,179,8,0.02) 100%);
-          border-bottom: 1px solid var(--border);
-          padding: 16px;
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-        
-        .bus-header:hover {
-          background: linear-gradient(135deg, rgba(249,115,22,0.1) 0%, rgba(234,179,8,0.05) 100%);
-        }
-        
-        .action-button {
-          background: var(--bg-card);
-          border: 1px solid var(--border);
-          border-radius: 40px;
-          padding: 8px 16px;
-          font-size: 13px;
-          font-weight: 500;
-          color: var(--text-secondary);
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-        
-        .action-button:hover {
-          background: var(--bg-card-hover);
-          border-color: #f97316;
-          color: #f97316;
-          transform: translateY(-1px);
-        }
-        
-        .action-button.primary {
-          background: linear-gradient(135deg, #f97316, #eab308);
-          color: white;
-          border: none;
-          box-shadow: 0 4px 12px rgba(249,115,22,0.3);
-        }
-        
-        .action-button.primary:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 8px 20px -5px #f97316;
-        }
-        
-        .action-button.edit {
-          background: rgba(59, 130, 246, 0.1);
-          color: #3b82f6;
-          border: 1px solid rgba(59, 130, 246, 0.2);
-        }
-        
-        .action-button.edit:hover {
-          background: rgba(59, 130, 246, 0.2);
-          border-color: rgba(59, 130, 246, 0.4);
-        }
-        
-        .action-button.delete {
-          background: rgba(239, 68, 68, 0.1);
-          color: #ef4444;
-          border: 1px solid rgba(239, 68, 68, 0.2);
-        }
-        
-        .action-button.delete:hover {
-          background: rgba(239, 68, 68, 0.2);
-          border-color: rgba(239, 68, 68, 0.4);
-        }
-        
-        .info-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-          gap: 16px;
-        }
-        
-        .info-card {
-          background: rgba(255,255,255,0.02);
-          border: 1px solid var(--border);
-          border-radius: 16px;
-          padding: 16px;
-          transition: all 0.2s ease;
-        }
-        
-        .info-card:hover {
-          background: rgba(255,255,255,0.04);
-          border-color: rgba(249,115,22,0.3);
-        }
-        
-        .modal-backdrop {
-          position: fixed;
-          inset: 0;
-          background: rgba(0,0,0,0.8);
-          backdrop-filter: blur(8px);
-          z-index: 1000;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 16px;
-        }
-        
-        .modal-content {
-          background: var(--bg-secondary);
-          border: 1px solid var(--border);
-          border-radius: 32px;
-          box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
-          max-width: 800px;
-          width: 100%;
-          max-height: 90vh;
-          overflow-y: auto;
-          animation: scaleIn 0.2s ease;
-        }
-        
-        .toast-success {
-          background: #10b981;
-          color: white;
-        }
-        
-        .toast-error {
-          background: #ef4444;
-          color: white;
-        }
-        
-        @media (max-width: 768px) {
-          .info-grid { grid-template-columns: 1fr; gap: 12px; }
-          .status-card { padding: 16px; }
-          .bus-card { margin-bottom: 12px; }
-        }
-      `}</style>
-
+    <div className="min-h-screen bg-slate-900">
       {/* Toast Notification */}
       {toast.show && (
-        <div style={{
-          position: 'fixed',
-          top: 20,
-          right: 20,
-          zIndex: 1100,
-          animation: 'slideIn 0.3s ease'
-        }}>
-          <div style={{
-            background: toast.type === 'success' ? '#10b981' : '#ef4444',
-            color: 'white',
-            padding: '14px 24px',
-            borderRadius: 16,
-            boxShadow: '0 10px 25px rgba(0,0,0,0.3)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            minWidth: 320,
-            border: '1px solid rgba(255,255,255,0.1)'
-          }}>
-            {toast.type === 'success' ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
-            <span style={{ flex: 1, fontSize: 14, fontWeight: 500 }}>{toast.message}</span>
+        <div className="fixed top-5 right-5 z-50 animate-slide-in">
+          <div className={`flex items-center gap-3 px-5 py-3 rounded-xl shadow-2xl border-l-4 backdrop-blur-sm ${
+            toast.type === 'success' 
+              ? 'bg-emerald-950/90 border-emerald-500 text-emerald-200' 
+              : 'bg-red-950/90 border-red-500 text-red-200'
+          }`}>
+            {toast.type === 'success' ? (
+              <CheckCircle className="text-emerald-400" size={20} />
+            ) : (
+              <AlertCircle className="text-red-400" size={20} />
+            )}
+            <span className="font-medium">{toast.message}</span>
             <button
               onClick={() => setToast({ show: false, message: '', type: 'success' })}
-              style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer' }}
+              className="ml-2 opacity-70 hover:opacity-100 transition-opacity"
             >
               <X size={16} />
             </button>
@@ -820,393 +469,207 @@ function BusDetails() {
 
       {/* Edit Modal */}
       {showEditModal && (
-        <div className="modal-backdrop">
-          <div className="modal-content">
-            <div style={{
-              padding: 24,
-              borderBottom: '1px solid var(--border)',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center'
-            }}>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-slate-800 rounded-2xl border border-slate-700 w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-slate-800 border-b border-slate-700 px-6 py-4 flex justify-between items-center">
               <div>
-                <h3 style={{ fontSize: 24, fontWeight: 700, color: '#f97316', margin: 0 }}>
-                  Edit Bus {editingBus?.bus_number}
-                </h3>
-                <p style={{ fontSize: 14, color: 'var(--text-muted)', marginTop: 4 }}>
-                  Update bus details and documents
-                </p>
+                <h3 className="text-xl font-bold text-blue-400">Edit Bus {editingBus?.bus_number}</h3>
+                <p className="text-xs text-slate-400 mt-1">Update bus details and documents</p>
               </div>
               <button
                 onClick={() => {
                   setShowEditModal(false);
                   setEditingBus(null);
                 }}
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 12,
-                  border: '1px solid var(--border)',
-                  background: 'var(--bg-card)',
-                  color: 'var(--text-muted)',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  transition: 'all 0.2s ease'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'var(--bg-card-hover)';
-                  e.currentTarget.style.color = '#ef4444';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'var(--bg-card)';
-                  e.currentTarget.style.color = 'var(--text-muted)';
-                }}
+                className="p-2 text-slate-400 hover:text-slate-300 hover:bg-slate-700 rounded-lg transition-all"
               >
-                <X size={18} />
+                <X size={20} />
               </button>
             </div>
 
-            <form onSubmit={handleSaveEdit} style={{ padding: 24 }}>
-              <div className="info-grid">
+            <form onSubmit={handleSaveEdit} className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Basic Info */}
-                <div style={{ gridColumn: 'span 2' }}>
-                  <h4 style={{ fontSize: 16, fontWeight: 600, color: '#f97316', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Bus size={18} />
+                <div className="md:col-span-2">
+                  <h4 className="text-sm font-semibold text-blue-400 mb-3 flex items-center gap-2">
+                    <Bus size={14} />
                     Basic Information
                   </h4>
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 8 }}>
-                    Bus Number <span style={{ color: '#ef4444' }}>*</span>
-                  </label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Bus Number *</label>
                   <input
                     type="text"
                     name="bus_number"
                     required
                     value={editFormData.bus_number}
                     onChange={handleEditInputChange}
-                    style={{
-                      width: '100%',
-                      padding: '12px 16px',
-                      border: '1px solid var(--border)',
-                      borderRadius: 12,
-                      fontSize: 14,
-                      outline: 'none',
-                      transition: 'all 0.2s ease',
-                      background: 'var(--bg-primary)',
-                      color: 'var(--text-primary)'
-                    }}
-                    onFocus={(e) => e.target.style.borderColor = '#f97316'}
-                    onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+                    className="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-lg focus:outline-none focus:border-blue-500 text-slate-200"
                     placeholder="e.g., KA01AB1234"
                   />
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 8 }}>Route Name</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Route Name</label>
                   <input
                     type="text"
                     name="route_name"
                     value={editFormData.route_name}
                     onChange={handleEditInputChange}
-                    style={{
-                      width: '100%',
-                      padding: '12px 16px',
-                      border: '1px solid var(--border)',
-                      borderRadius: 12,
-                      fontSize: 14,
-                      outline: 'none',
-                      transition: 'all 0.2s ease',
-                      background: 'var(--bg-primary)',
-                      color: 'var(--text-primary)'
-                    }}
-                    onFocus={(e) => e.target.style.borderColor = '#f97316'}
-                    onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+                    className="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-lg focus:outline-none focus:border-blue-500 text-slate-200"
                     placeholder="e.g., Route 1 - Amritsar"
                   />
                 </div>
 
                 {/* Documents Section */}
-                <div style={{ gridColumn: 'span 2', marginTop: 8 }}>
-                  <h4 style={{ fontSize: 16, fontWeight: 600, color: '#f97316', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <FileText size={18} />
+                <div className="md:col-span-2 mt-2">
+                  <h4 className="text-sm font-semibold text-blue-400 mb-3 flex items-center gap-2">
+                    <FileText size={14} />
                     Document Expiry Dates
                   </h4>
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 8 }}>PUC Expiry</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">PUC Expiry</label>
                   <input
                     type="date"
                     name="puc_expiry"
                     value={editFormData.puc_expiry}
                     onChange={handleEditInputChange}
-                    style={{
-                      width: '100%',
-                      padding: '12px 16px',
-                      border: '1px solid var(--border)',
-                      borderRadius: 12,
-                      fontSize: 14,
-                      outline: 'none',
-                      transition: 'all 0.2s ease',
-                      background: 'var(--bg-primary)',
-                      color: 'var(--text-primary)'
-                    }}
-                    onFocus={(e) => e.target.style.borderColor = '#f97316'}
-                    onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+                    className="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-lg focus:outline-none focus:border-blue-500 text-slate-200"
                   />
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 8 }}>Insurance Expiry</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Insurance Expiry</label>
                   <input
                     type="date"
                     name="insurance_expiry"
                     value={editFormData.insurance_expiry}
                     onChange={handleEditInputChange}
-                    style={{
-                      width: '100%',
-                      padding: '12px 16px',
-                      border: '1px solid var(--border)',
-                      borderRadius: 12,
-                      fontSize: 14,
-                      outline: 'none',
-                      transition: 'all 0.2s ease',
-                      background: 'var(--bg-primary)',
-                      color: 'var(--text-primary)'
-                    }}
-                    onFocus={(e) => e.target.style.borderColor = '#f97316'}
-                    onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+                    className="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-lg focus:outline-none focus:border-blue-500 text-slate-200"
                   />
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 8 }}>Fitness Expiry</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Fitness Expiry</label>
                   <input
                     type="date"
                     name="fitness_expiry"
                     value={editFormData.fitness_expiry}
                     onChange={handleEditInputChange}
-                    style={{
-                      width: '100%',
-                      padding: '12px 16px',
-                      border: '1px solid var(--border)',
-                      borderRadius: 12,
-                      fontSize: 14,
-                      outline: 'none',
-                      transition: 'all 0.2s ease',
-                      background: 'var(--bg-primary)',
-                      color: 'var(--text-primary)'
-                    }}
-                    onFocus={(e) => e.target.style.borderColor = '#f97316'}
-                    onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+                    className="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-lg focus:outline-none focus:border-blue-500 text-slate-200"
                   />
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 8 }}>Permit Expiry</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Permit Expiry</label>
                   <input
                     type="date"
                     name="permit_expiry"
                     value={editFormData.permit_expiry}
                     onChange={handleEditInputChange}
-                    style={{
-                      width: '100%',
-                      padding: '12px 16px',
-                      border: '1px solid var(--border)',
-                      borderRadius: 12,
-                      fontSize: 14,
-                      outline: 'none',
-                      transition: 'all 0.2s ease',
-                      background: 'var(--bg-primary)',
-                      color: 'var(--text-primary)'
-                    }}
-                    onFocus={(e) => e.target.style.borderColor = '#f97316'}
-                    onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+                    className="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-lg focus:outline-none focus:border-blue-500 text-slate-200"
                   />
                 </div>
 
                 {/* Service Section */}
-                <div style={{ gridColumn: 'span 2', marginTop: 8 }}>
-                  <h4 style={{ fontSize: 16, fontWeight: 600, color: '#f97316', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Wrench size={18} />
+                <div className="md:col-span-2 mt-2">
+                  <h4 className="text-sm font-semibold text-blue-400 mb-3 flex items-center gap-2">
+                    <Wrench size={14} />
                     Service Information
                   </h4>
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 8 }}>Current KM</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Current KM</label>
                   <input
                     type="number"
                     name="current_km"
                     value={editFormData.current_km}
                     onChange={handleEditInputChange}
-                    style={{
-                      width: '100%',
-                      padding: '12px 16px',
-                      border: '1px solid var(--border)',
-                      borderRadius: 12,
-                      fontSize: 14,
-                      outline: 'none',
-                      transition: 'all 0.2s ease',
-                      background: 'var(--bg-primary)',
-                      color: 'var(--text-primary)'
-                    }}
-                    onFocus={(e) => e.target.style.borderColor = '#f97316'}
-                    onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+                    className="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-lg focus:outline-none focus:border-blue-500 text-slate-200"
                     placeholder="e.g., 15000"
                   />
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 8 }}>Last Service Date</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Last Service Date</label>
                   <input
                     type="date"
                     name="last_service_date"
                     value={editFormData.last_service_date}
                     onChange={handleEditInputChange}
-                    style={{
-                      width: '100%',
-                      padding: '12px 16px',
-                      border: '1px solid var(--border)',
-                      borderRadius: 12,
-                      fontSize: 14,
-                      outline: 'none',
-                      transition: 'all 0.2s ease',
-                      background: 'var(--bg-primary)',
-                      color: 'var(--text-primary)'
-                    }}
-                    onFocus={(e) => e.target.style.borderColor = '#f97316'}
-                    onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+                    className="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-lg focus:outline-none focus:border-blue-500 text-slate-200"
                   />
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 8 }}>Last Service KM</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Last Service KM</label>
                   <input
                     type="number"
                     name="last_service_km"
                     value={editFormData.last_service_km}
                     onChange={handleEditInputChange}
-                    style={{
-                      width: '100%',
-                      padding: '12px 16px',
-                      border: '1px solid var(--border)',
-                      borderRadius: 12,
-                      fontSize: 14,
-                      outline: 'none',
-                      transition: 'all 0.2s ease',
-                      background: 'var(--bg-primary)',
-                      color: 'var(--text-primary)'
-                    }}
-                    onFocus={(e) => e.target.style.borderColor = '#f97316'}
-                    onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+                    className="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-lg focus:outline-none focus:border-blue-500 text-slate-200"
                     placeholder="e.g., 14500"
                   />
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 8 }}>Next Service Due Date</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Next Service Due Date</label>
                   <input
                     type="date"
                     name="next_service_due"
                     value={editFormData.next_service_due}
                     onChange={handleEditInputChange}
-                    style={{
-                      width: '100%',
-                      padding: '12px 16px',
-                      border: '1px solid var(--border)',
-                      borderRadius: 12,
-                      fontSize: 14,
-                      outline: 'none',
-                      transition: 'all 0.2s ease',
-                      background: 'var(--bg-primary)',
-                      color: 'var(--text-primary)'
-                    }}
-                    onFocus={(e) => e.target.style.borderColor = '#f97316'}
-                    onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+                    className="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-lg focus:outline-none focus:border-blue-500 text-slate-200"
                   />
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 8 }}>Next Service Due KM</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Next Service Due KM</label>
                   <input
                     type="number"
                     name="next_service_km"
                     value={editFormData.next_service_km}
                     onChange={handleEditInputChange}
-                    style={{
-                      width: '100%',
-                      padding: '12px 16px',
-                      border: '1px solid var(--border)',
-                      borderRadius: 12,
-                      fontSize: 14,
-                      outline: 'none',
-                      transition: 'all 0.2s ease',
-                      background: 'var(--bg-primary)',
-                      color: 'var(--text-primary)'
-                    }}
-                    onFocus={(e) => e.target.style.borderColor = '#f97316'}
-                    onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+                    className="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-lg focus:outline-none focus:border-blue-500 text-slate-200"
                     placeholder="e.g., 20000"
                   />
                 </div>
 
                 {/* Remarks */}
-                <div style={{ gridColumn: 'span 2' }}>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 8 }}>Remarks</label>
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Remarks</label>
                   <textarea
                     name="remarks"
                     value={editFormData.remarks}
                     onChange={handleEditInputChange}
                     rows="3"
-                    style={{
-                      width: '100%',
-                      padding: '12px 16px',
-                      border: '1px solid var(--border)',
-                      borderRadius: 12,
-                      fontSize: 14,
-                      outline: 'none',
-                      transition: 'all 0.2s ease',
-                      background: 'var(--bg-primary)',
-                      color: 'var(--text-primary)',
-                      resize: 'vertical'
-                    }}
-                    onFocus={(e) => e.target.style.borderColor = '#f97316'}
-                    onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+                    className="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-lg focus:outline-none focus:border-blue-500 text-slate-200 resize-vertical"
                     placeholder="Any additional notes or remarks..."
                   />
                 </div>
               </div>
 
-              <div style={{
-                marginTop: 24,
-                paddingTop: 20,
-                borderTop: '1px solid var(--border)',
-                display: 'flex',
-                justifyContent: 'flex-end',
-                gap: 12
-              }}>
+              <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-700">
                 <button
                   type="button"
                   onClick={() => {
                     setShowEditModal(false);
                     setEditingBus(null);
                   }}
-                  className="action-button"
-                  style={{ padding: '12px 24px' }}
+                  className="px-5 py-2.5 text-slate-300 bg-slate-700 rounded-lg hover:bg-slate-600 transition-all"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="action-button primary"
-                  style={{ padding: '12px 24px' }}
+                  className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all flex items-center gap-2"
                 >
-                  <Save size={16} style={{ marginRight: 6 }} />
+                  <Save size={16} />
                   Save Changes
                 </button>
               </div>
@@ -1215,514 +678,328 @@ function BusDetails() {
         </div>
       )}
 
-      <div style={{ 
-        minHeight: '100vh', 
-        background: 'radial-gradient(circle at 50% 50%, #1a1a2e, #0a0a0f)',
-        position: 'relative',
-        overflow: 'hidden'
-      }}>
-        {/* Background Orbs */}
-        <div style={{
-          position: 'fixed',
-          width: 600,
-          height: 600,
-          borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(249,115,22,0.15) 0%, transparent 70%)',
-          top: -200,
-          left: -200,
-          filter: 'blur(80px)',
-          pointerEvents: 'none',
-          zIndex: 0,
-          animation: 'glow 8s ease-in-out infinite'
-        }}></div>
-        <div style={{
-          position: 'fixed',
-          width: 500,
-          height: 500,
-          borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(234,179,8,0.1) 0%, transparent 70%)',
-          bottom: -150,
-          right: -150,
-          filter: 'blur(80px)',
-          pointerEvents: 'none',
-          zIndex: 0,
-          animation: 'glow 10s ease-in-out infinite reverse'
-        }}></div>
-
-        {/* Mobile Header */}
-        <div className="glass-effect" style={{
-          position: 'sticky',
-          top: 0,
-          zIndex: 40,
-          padding: '12px 16px',
-          borderBottom: '1px solid var(--border)',
-          display: 'block'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <button
-                onClick={handleBack}
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 12,
-                  background: 'var(--bg-card)',
-                  border: '1px solid var(--border)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  color: 'var(--text-secondary)'
-                }}
-              >
-                <ArrowLeft size={18} />
-              </button>
-              <div>
-                <h1 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>Bus Details</h1>
-                <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>{dateStr}</p>
-              </div>
-            </div>
-            <Link
-              href="/bus-details/add"
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 12,
-                background: 'linear-gradient(135deg, #f97316, #eab308)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'white'
-              }}
+      {/* Header */}
+      <div className="bg-slate-800/50 border-b border-slate-700 sticky top-0 z-40 p-3">
+        <div className="flex items-center justify-between max-w-7xl mx-auto">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleBack}
+              className="p-2 text-slate-400 hover:text-blue-400 transition-all rounded-xl hover:bg-slate-800 border border-slate-700"
             >
-              <Plus size={18} />
-            </Link>
-          </div>
-        </div>
-
-        <div style={{ position: 'relative', zIndex: 10, maxWidth: 1400, margin: '0 auto', padding: '16px' }}>
-          {/* Desktop Header */}
-          <div style={{ 
-            display: 'none',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: 24,
-            background: 'var(--bg-card)',
-            borderRadius: 20,
-            padding: 20,
-            border: '1px solid var(--border)'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <button
-                onClick={handleBack}
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 12,
-                  background: 'var(--bg-primary)',
-                  border: '1px solid var(--border)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  color: 'var(--text-secondary)'
-                }}
-              >
-                <ArrowLeft size={20} />
-              </button>
-              <div>
-                <h1 style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)' }}>Bus Details</h1>
-                <p style={{ fontSize: 14, color: 'var(--text-muted)', marginTop: 4 }}>{dateStr} • {currentTime}</p>
-              </div>
-            </div>
-            <Link
-              href="/bus-details/add"
-              className="action-button primary"
-              style={{ padding: '10px 20px' }}
-            >
-              <Plus size={18} />
-              <span>Add Bus</span>
-            </Link>
-          </div>
-
-          {/* Search Bar */}
-          <div className="search-bar" style={{ 
-            marginBottom: 20,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12
-          }}>
-            <Search size={18} color="var(--text-muted)" />
-            <input
-              type="text"
-              placeholder="Search by bus number or route..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              style={{
-                flex: 1,
-                border: 'none',
-                outline: 'none',
-                fontSize: 14,
-                background: 'transparent',
-                color: 'var(--text-primary)'
-              }}
-            />
-            {searchTerm && (
-              <button 
-                onClick={() => setSearchTerm('')} 
-                style={{ 
-                  border: 'none', 
-                  background: 'none', 
-                  cursor: 'pointer',
-                  color: 'var(--text-muted)'
-                }}
-              >
-                <span style={{ fontSize: 18 }}>×</span>
-              </button>
-            )}
-          </div>
-
-          {/* Summary Cards */}
-          <div style={{ 
-            display: 'grid', 
-            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-            gap: 16,
-            marginBottom: 24
-          }}>
-            <div className="status-card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-                <div style={{ 
-                  width: 48, 
-                  height: 48, 
-                  borderRadius: 16, 
-                  background: 'rgba(239,68,68,0.1)', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center'
-                }}>
-                  <XCircle size={24} color="#ef4444" />
-                </div>
-                <div style={{ fontSize: 28, fontWeight: 700, color: '#ef4444' }}>{expiredDocumentsCount}</div>
-              </div>
-              <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>Expired Documents</h3>
-              <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Documents past expiry date</p>
-            </div>
-
-            <div className="status-card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-                <div style={{ 
-                  width: 48, 
-                  height: 48, 
-                  borderRadius: 16, 
-                  background: 'rgba(249,115,22,0.1)', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center'
-                }}>
-                  <AlertCircle size={24} color="#f97316" />
-                </div>
-                <div style={{ fontSize: 28, fontWeight: 700, color: '#f97316' }}>{criticalAlertsCount}</div>
-              </div>
-              <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>Critical Alerts</h3>
-              <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Requires immediate attention</p>
-            </div>
-
-            <div className="status-card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-                <div style={{ 
-                  width: 48, 
-                  height: 48, 
-                  borderRadius: 16, 
-                  background: 'rgba(234,179,8,0.1)', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center'
-                }}>
-                  <Wrench size={24} color="#eab308" />
-                </div>
-                <div style={{ fontSize: 28, fontWeight: 700, color: '#eab308' }}>{dueForServiceCount}</div>
-              </div>
-              <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>Service Due</h3>
-              <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Buses requiring maintenance</p>
-            </div>
-
-            <div className="status-card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-                <div style={{ 
-                  width: 48, 
-                  height: 48, 
-                  borderRadius: 16, 
-                  background: 'rgba(59,130,246,0.1)', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center'
-                }}>
-                  <Bus size={24} color="#3b82f6" />
-                </div>
-                <div style={{ fontSize: 28, fontWeight: 700, color: '#3b82f6' }}>{buses.length}</div>
-              </div>
-              <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>Total Buses</h3>
-              <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Active fleet vehicles</p>
+              <ArrowLeft size={18} />
+            </button>
+            <div>
+              <h1 className="text-lg font-bold text-white sm:text-xl">Bus Details</h1>
+              <p className="text-xs text-slate-400">{dateStr}</p>
             </div>
           </div>
-
-          {filteredBuses.length === 0 ? (
-            <div style={{ 
-              textAlign: 'center', 
-              padding: 60,
-              background: 'var(--bg-card)',
-              borderRadius: 24,
-              border: '1px solid var(--border)'
-            }}>
-              <Bus size={48} color="var(--text-muted)" style={{ marginBottom: 16 }} />
-              <h3 style={{ fontSize: 18, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>
-                No buses found
-              </h3>
-              <p style={{ color: 'var(--text-muted)', marginBottom: 24 }}>
-                {searchTerm ? 'Try adjusting your search criteria' : 'Get started by adding your first bus'}
-              </p>
-              <Link
-                href="/bus-details/add"
-                className="action-button primary"
-                style={{ padding: '12px 24px' }}
-              >
-                <Plus size={18} />
-                <span>Add Your First Bus</span>
-              </Link>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {filteredBuses.map((bus) => (
-                <div key={bus.id} className="bus-card animate-fade-in">
-                  {/* Bus Header */}
-                  <div 
-                    className="bus-header"
-                    onClick={() => toggleBusExpansion(bus.id)}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-                          <div style={{
-                            width: 48,
-                            height: 48,
-                            borderRadius: 12,
-                            background: 'linear-gradient(135deg, #f97316, #eab308)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                          }}>
-                            <Bus size={24} color="white" />
-                          </div>
-                          <div>
-                            <h3 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>
-                              Bus {bus.bus_number}
-                            </h3>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-                              <MapPin size={12} color="var(--text-muted)" />
-                              <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-                                {bus.route_name || 'No route assigned'}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <div className={`badge-${getExpiryInfo(bus.puc_expiry).status === 'expired' ? 'expired' : getExpiryInfo(bus.puc_expiry).status}`} style={{
-                          padding: '6px 12px',
-                          borderRadius: 20,
-                          fontSize: 11,
-                          fontWeight: 600,
-                          whiteSpace: 'nowrap'
-                        }}>
-                          {getExpiryInfo(bus.puc_expiry).status === 'expired' ? '⚠️ EXPIRED' : 
-                           getExpiryInfo(bus.puc_expiry).status === 'critical' ? '🔥 CRITICAL' : 
-                           getExpiryInfo(bus.puc_expiry).status === 'warning' ? '⚠️ WARNING' : '✅ OK'}
-                        </div>
-                        {expandedBus === bus.id ? 
-                          <ChevronUp size={20} color="var(--text-muted)" /> : 
-                          <ChevronDown size={20} color="var(--text-muted)" />
-                        }
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Expandable Content */}
-                  {expandedBus === bus.id && (
-                    <div style={{ padding: 20 }}>
-                      {/* Action Buttons */}
-                      <div style={{ 
-                        display: 'flex', 
-                        gap: 12, 
-                        marginBottom: 24,
-                        paddingBottom: 20,
-                        borderBottom: '1px solid var(--border)'
-                      }}>
-                        <button
-                          onClick={() => openEditModal(bus)}
-                          className="action-button edit"
-                          style={{ padding: '10px 20px' }}
-                        >
-                          <Edit size={16} />
-                          <span>Edit Bus</span>
-                        </button>
-                        <button
-                          onClick={() => deleteBus(bus.id, bus.bus_number)}
-                          className="action-button delete"
-                          style={{ padding: '10px 20px' }}
-                        >
-                          <Trash2 size={16} />
-                          <span>Delete Bus</span>
-                        </button>
-                      </div>
-
-                      <div className="info-grid">
-                        {/* Document Expiry */}
-                        <div className="info-card">
-                          <h4 style={{ fontSize: 15, fontWeight: 600, color: '#f97316', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <FileText size={16} />
-                            Document Expiry
-                          </h4>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                            {[
-                              { label: 'PUC Certificate', expiry: bus.puc_expiry, icon: '📄' },
-                              { label: 'Insurance', expiry: bus.insurance_expiry, icon: '🛡️' },
-                              { label: 'Fitness Certificate', expiry: bus.fitness_expiry, icon: '✅' },
-                              { label: 'Permit', expiry: bus.permit_expiry, icon: '📋' }
-                            ].map((doc) => {
-                              const info = getExpiryInfo(doc.expiry);
-                              return (
-                                <div key={doc.label} style={{
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  alignItems: 'center',
-                                  padding: '8px 0',
-                                  borderBottom: '1px solid var(--border)'
-                                }}>
-                                  <div>
-                                    <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{doc.label}</div>
-                                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{formatDate(doc.expiry)}</div>
-                                  </div>
-                                  <div>
-                                    <span className={info.badgeClass} style={{
-                                      padding: '4px 12px',
-                                      borderRadius: 20,
-                                      fontSize: 11,
-                                      fontWeight: 600,
-                                      display: 'inline-block'
-                                    }}>
-                                      {info.text}
-                                    </span>
-                                    {info.daysText && (
-                                      <div style={{ fontSize: 10, color: info.color, marginTop: 4, textAlign: 'center' }}>
-                                        {info.daysText}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        {/* Service Information */}
-                        <div className="info-card">
-                          <h4 style={{ fontSize: 15, fontWeight: 600, color: '#f97316', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <Wrench size={16} />
-                            Service Information
-                          </h4>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                            <div style={{
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                              padding: '8px 0',
-                              borderBottom: '1px solid var(--border)'
-                            }}>
-                              <div>
-                                <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>Current KM</div>
-                                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Odometer reading</div>
-                              </div>
-                              <div style={{ fontSize: 16, fontWeight: 700, color: '#3b82f6' }}>
-                                {bus.current_km ? `${parseInt(bus.current_km).toLocaleString()} km` : 'Not set'}
-                              </div>
-                            </div>
-
-                            {bus.last_service_date && (
-                              <div style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center',
-                                padding: '8px 0',
-                                borderBottom: '1px solid var(--border)'
-                              }}>
-                                <div>
-                                  <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>Last Service</div>
-                                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{formatDate(bus.last_service_date)}</div>
-                                </div>
-                                <div style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
-                                  {bus.last_service_km && `${parseInt(bus.last_service_km).toLocaleString()} km`}
-                                </div>
-                              </div>
-                            )}
-
-                            <div style={{
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                              padding: '8px 0'
-                            }}>
-                              <div>
-                                <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>Next Service</div>
-                                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                                  {bus.next_service_due ? formatDate(bus.next_service_due) : 'Not scheduled'}
-                                </div>
-                              </div>
-                              <div>
-                                <span className={getServiceInfo(bus.next_service_due, bus.current_km, bus.next_service_km).badgeClass} style={{
-                                  padding: '4px 12px',
-                                  borderRadius: 20,
-                                  fontSize: 11,
-                                  fontWeight: 600,
-                                  display: 'inline-block'
-                                }}>
-                                  {getServiceInfo(bus.next_service_due, bus.current_km, bus.next_service_km).text}
-                                </span>
-                                {getServiceInfo(bus.next_service_due, bus.current_km, bus.next_service_km).kmText && (
-                                  <div style={{ fontSize: 10, color: '#eab308', marginTop: 4, textAlign: 'center' }}>
-                                    {getServiceInfo(bus.next_service_due, bus.current_km, bus.next_service_km).kmText}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Remarks */}
-                        {bus.remarks && (
-                          <div className="info-card" style={{ gridColumn: 'span 2' }}>
-                            <h4 style={{ fontSize: 15, fontWeight: 600, color: '#f97316', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <Info size={16} />
-                              Remarks
-                            </h4>
-                            <p style={{ 
-                              fontSize: 13, 
-                              color: 'var(--text-secondary)',
-                              lineHeight: 1.6
-                            }}>
-                              {bus.remarks}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
+          <Link
+            href="/bus-details/add"
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all"
+          >
+            <Plus size={16} />
+            <span className="hidden sm:inline">Add Bus</span>
+          </Link>
         </div>
       </div>
-    </>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        {/* Search Bar */}
+        <div className="flex items-center gap-3 bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 mb-5 focus-within:border-blue-500 transition-all">
+          <Search size={18} className="text-slate-500" />
+          <input
+            type="text"
+            placeholder="Search by bus number or route..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="flex-1 bg-transparent border-none outline-none text-slate-200 text-sm"
+          />
+          {searchTerm && (
+            <button onClick={() => setSearchTerm('')} className="text-slate-400 hover:text-slate-300">
+              <X size={16} />
+            </button>
+          )}
+        </div>
+
+        {/* Summary Cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-4">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-xs text-slate-400">Expired Docs</p>
+                <p className="text-2xl font-bold text-red-400 mt-1">{expiredDocumentsCount}</p>
+              </div>
+              <div className="p-2 bg-red-600 rounded-xl">
+                <XCircle size={18} className="text-white" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-4">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-xs text-slate-400">Critical Alerts</p>
+                <p className="text-2xl font-bold text-orange-400 mt-1">{criticalAlertsCount}</p>
+              </div>
+              <div className="p-2 bg-orange-600 rounded-xl">
+                <AlertCircle size={18} className="text-white" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-4">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-xs text-slate-400">Service Due</p>
+                <p className="text-2xl font-bold text-amber-400 mt-1">{dueForServiceCount}</p>
+              </div>
+              <div className="p-2 bg-amber-600 rounded-xl">
+                <Wrench size={18} className="text-white" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-4">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-xs text-slate-400">Total Buses</p>
+                <p className="text-2xl font-bold text-blue-400 mt-1">{buses.length}</p>
+              </div>
+              <div className="p-2 bg-blue-600 rounded-xl">
+                <Bus size={18} className="text-white" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Buses List */}
+        {filteredBuses.length === 0 ? (
+          <div className="text-center py-12 bg-slate-800/50 rounded-2xl border border-slate-700">
+            <Bus size={48} className="mx-auto text-slate-600 mb-4" />
+            <h3 className="text-lg font-semibold text-white mb-2">No buses found</h3>
+            <p className="text-slate-400 mb-6">
+              {searchTerm ? 'Try adjusting your search criteria' : 'Get started by adding your first bus'}
+            </p>
+            <Link
+              href="/bus-details/add"
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all"
+            >
+              <Plus size={16} />
+              Add Your First Bus
+            </Link>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {filteredBuses.map((bus) => (
+              <div key={bus.id} className="bg-slate-800/50 rounded-2xl border border-slate-700 overflow-hidden">
+                {/* Bus Header */}
+                <div 
+                  className="p-4 cursor-pointer hover:bg-slate-700/30 transition-colors"
+                  onClick={() => toggleBusExpansion(bus.id)}
+                >
+                  <div className="flex justify-between items-center flex-wrap gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center">
+                        <Bus size={22} className="text-white" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-white">Bus {bus.bus_number}</h3>
+                        <div className="flex items-center gap-1 mt-1">
+                          <MapPin size={10} className="text-slate-400" />
+                          <p className="text-xs text-slate-400">{bus.route_name || 'No route assigned'}</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        getExpiryInfo(bus.puc_expiry).status === 'expired' ? 'bg-red-950/50 text-red-400 border border-red-800' :
+                        getExpiryInfo(bus.puc_expiry).status === 'critical' ? 'bg-orange-950/50 text-orange-400 border border-orange-800' :
+                        getExpiryInfo(bus.puc_expiry).status === 'warning' ? 'bg-amber-950/50 text-amber-400 border border-amber-800' :
+                        'bg-emerald-950/50 text-emerald-400 border border-emerald-800'
+                      }`}>
+                        {getExpiryInfo(bus.puc_expiry).status === 'expired' ? '⚠️ EXPIRED' : 
+                         getExpiryInfo(bus.puc_expiry).status === 'critical' ? '🔥 CRITICAL' : 
+                         getExpiryInfo(bus.puc_expiry).status === 'warning' ? '⚠️ WARNING' : '✅ OK'}
+                      </span>
+                      {expandedBus === bus.id ? 
+                        <ChevronUp size={18} className="text-slate-400" /> : 
+                        <ChevronDown size={18} className="text-slate-400" />
+                      }
+                    </div>
+                  </div>
+                </div>
+
+                {/* Expandable Content */}
+                {expandedBus === bus.id && (
+                  <div className="p-4 pt-0 border-t border-slate-700">
+                    {/* Action Buttons */}
+                    <div className="flex gap-3 mb-5 pb-4 border-b border-slate-700">
+                      <button
+                        onClick={() => openEditModal(bus)}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-blue-600/20 rounded-lg text-blue-400 hover:bg-blue-600 hover:text-white transition-all text-sm"
+                      >
+                        <Edit size={14} />
+                        Edit Bus
+                      </button>
+                      <button
+                        onClick={() => deleteBus(bus.id, bus.bus_number)}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-red-600/20 rounded-lg text-red-400 hover:bg-red-600 hover:text-white transition-all text-sm"
+                      >
+                        <Trash2 size={14} />
+                        Delete Bus
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      {/* Document Expiry */}
+                      <div className="bg-slate-900 rounded-xl border border-slate-700 p-4">
+                        <h4 className="text-sm font-semibold text-blue-400 mb-3 flex items-center gap-2">
+                          <FileText size={14} />
+                          Document Expiry
+                        </h4>
+                        <div className="space-y-3">
+                          {[
+                            { label: 'PUC Certificate', expiry: bus.puc_expiry },
+                            { label: 'Insurance', expiry: bus.insurance_expiry },
+                            { label: 'Fitness Certificate', expiry: bus.fitness_expiry },
+                            { label: 'Permit', expiry: bus.permit_expiry }
+                          ].map((doc) => {
+                            const info = getExpiryInfo(doc.expiry);
+                            return (
+                              <div key={doc.label} className="flex justify-between items-center py-2 border-b border-slate-700 last:border-0">
+                                <div>
+                                  <div className="text-sm font-medium text-white">{doc.label}</div>
+                                  <div className="text-xs text-slate-400">{formatDate(doc.expiry)}</div>
+                                </div>
+                                <div className="text-right">
+                                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${info.badgeClass}`}>
+                                    {info.text}
+                                  </span>
+                                  {info.daysText && (
+                                    <div className="text-xs mt-1" style={{ color: info.color }}>{info.daysText}</div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Service Information */}
+                      <div className="bg-slate-900 rounded-xl border border-slate-700 p-4">
+                        <h4 className="text-sm font-semibold text-blue-400 mb-3 flex items-center gap-2">
+                          <Wrench size={14} />
+                          Service Information
+                        </h4>
+                        <div className="space-y-3">
+                          <div className="flex justify-between items-center py-2 border-b border-slate-700">
+                            <div>
+                              <div className="text-sm font-medium text-white">Current KM</div>
+                              <div className="text-xs text-slate-400">Odometer reading</div>
+                            </div>
+                            <div className="text-base font-semibold text-blue-400">
+                              {bus.current_km ? `${parseInt(bus.current_km).toLocaleString()} km` : 'Not set'}
+                            </div>
+                          </div>
+
+                          {bus.last_service_date && (
+                            <div className="flex justify-between items-center py-2 border-b border-slate-700">
+                              <div>
+                                <div className="text-sm font-medium text-white">Last Service</div>
+                                <div className="text-xs text-slate-400">{formatDate(bus.last_service_date)}</div>
+                              </div>
+                              <div className="text-sm text-slate-300">
+                                {bus.last_service_km && `${parseInt(bus.last_service_km).toLocaleString()} km`}
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="flex justify-between items-center py-2">
+                            <div>
+                              <div className="text-sm font-medium text-white">Next Service</div>
+                              <div className="text-xs text-slate-400">
+                                {bus.next_service_due ? formatDate(bus.next_service_due) : 'Not scheduled'}
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getServiceInfo(bus.next_service_due, bus.current_km, bus.next_service_km).badgeClass}`}>
+                                {getServiceInfo(bus.next_service_due, bus.current_km, bus.next_service_km).text}
+                              </span>
+                              {getServiceInfo(bus.next_service_due, bus.current_km, bus.next_service_km).kmText && (
+                                <div className="text-xs text-amber-400 mt-1">
+                                  {getServiceInfo(bus.next_service_due, bus.current_km, bus.next_service_km).kmText}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Remarks */}
+                      {bus.remarks && (
+                        <div className="lg:col-span-2 bg-slate-900 rounded-xl border border-slate-700 p-4">
+                          <h4 className="text-sm font-semibold text-blue-400 mb-2 flex items-center gap-2">
+                            <Info size={14} />
+                            Remarks
+                          </h4>
+                          <p className="text-sm text-slate-300 leading-relaxed">{bus.remarks}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <style jsx>{`
+        @keyframes slide-in {
+          from {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+        .animate-slide-in {
+          animation: slide-in 0.3s ease-out;
+        }
+        
+        .badge-valid {
+          background: rgba(16, 185, 129, 0.15);
+          color: #10b981;
+          border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+        
+        .badge-warning {
+          background: rgba(234, 179, 8, 0.15);
+          color: #eab308;
+          border: 1px solid rgba(234, 179, 8, 0.3);
+        }
+        
+        .badge-critical {
+          background: rgba(249, 115, 22, 0.15);
+          color: #f97316;
+          border: 1px solid rgba(249, 115, 22, 0.3);
+        }
+        
+        .badge-expired {
+          background: rgba(239, 68, 68, 0.15);
+          color: #ef4444;
+          border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+        
+        .badge-not-set {
+          background: rgba(100, 116, 139, 0.15);
+          color: #94a3b8;
+          border: 1px solid rgba(100, 116, 139, 0.3);
+        }
+      `}</style>
+    </div>
   );
 }
 

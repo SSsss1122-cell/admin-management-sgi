@@ -41,7 +41,6 @@ function FeesManagement() {
 
   const router = useRouter();
 
-  // Toast notification function
   const showToast = (type, message) => {
     setToast({ show: true, type, message });
     setTimeout(() => {
@@ -252,17 +251,17 @@ function FeesManagement() {
     const due = parseFloat(student.due_amount) || 0;
 
     if (total === 0) {
-      return 'bg-gray-800/50 text-gray-400 border-gray-700';
+      return 'bg-slate-800/50 text-slate-400 border-slate-700';
     }
     
     if (due === 0 && paid > 0) {
-      return 'bg-emerald-900/30 text-emerald-400 border-emerald-800/50';
+      return 'bg-emerald-950/50 text-emerald-400 border-emerald-800';
     } else if (paid > 0 && due > 0) {
-      return 'bg-amber-900/30 text-amber-400 border-amber-800/50';
+      return 'bg-amber-950/50 text-amber-400 border-amber-800';
     } else if (due > 0 && paid === 0) {
-      return 'bg-rose-900/30 text-rose-400 border-rose-800/50';
+      return 'bg-red-950/50 text-red-400 border-red-800';
     } else {
-      return 'bg-gray-800/50 text-gray-400 border-gray-700';
+      return 'bg-slate-800/50 text-slate-400 border-slate-700';
     }
   };
 
@@ -390,11 +389,11 @@ function FeesManagement() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
         <div className="relative">
-          <div className="animate-spin rounded-full h-16 w-16 border-4 border-gray-700 border-t-indigo-500"></div>
+          <div className="animate-spin rounded-full h-16 w-16 border-4 border-slate-700 border-t-blue-600"></div>
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="h-8 w-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full animate-pulse"></div>
+            <div className="h-8 w-8 bg-blue-600 rounded-full animate-pulse"></div>
           </div>
         </div>
       </div>
@@ -402,19 +401,19 @@ function FeesManagement() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
+    <div className="min-h-screen bg-slate-900">
       {/* Toast Notification */}
       {toast.show && (
         <div className="fixed top-20 right-4 z-50 animate-slide-in">
           <div className={`flex items-center gap-3 px-5 py-3 rounded-xl shadow-2xl backdrop-blur-md border ${
             toast.type === 'success' 
-              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' 
-              : 'bg-rose-500/10 border-rose-500/30 text-rose-400'
+              ? 'bg-emerald-950/90 border-emerald-500/30 text-emerald-400' 
+              : 'bg-red-950/90 border-red-500/30 text-red-400'
           }`}>
             {toast.type === 'success' ? (
               <CheckCircle size={20} className="text-emerald-400" />
             ) : (
-              <AlertCircle size={20} className="text-rose-400" />
+              <AlertCircle size={20} className="text-red-400" />
             )}
             <span className="text-sm font-medium">{toast.message}</span>
           </div>
@@ -437,49 +436,40 @@ function FeesManagement() {
         }
       `}</style>
 
-      {/* Dark decorative elements */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-indigo-600/10 to-purple-600/10 rounded-full blur-3xl"></div>
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-br from-emerald-600/10 to-teal-600/10 rounded-full blur-3xl"></div>
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-gradient-to-br from-amber-600/5 to-orange-600/5 rounded-full blur-3xl"></div>
-      </div>
-
-      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
         <div className="space-y-6 lg:space-y-8">
           {/* Header */}
           <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
             <div className="flex items-center gap-4">
               <button
                 onClick={handleBack}
-                className="group flex items-center text-gray-400 hover:text-indigo-400 transition-all p-2 rounded-xl hover:bg-gray-800/50 backdrop-blur-sm border border-gray-800 hover:border-indigo-500/30"
+                className="p-2 text-slate-400 hover:text-blue-400 transition-all rounded-xl hover:bg-slate-800 border border-slate-700"
               >
-                <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
+                <ArrowLeft size={20} />
               </button>
               <div>
                 <div className="flex items-center gap-3">
-                  <div className="p-3 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-2xl shadow-lg shadow-indigo-600/20">
+                  <div className="p-3 bg-blue-600 rounded-2xl">
                     <Wallet className="text-white" size={24} />
                   </div>
                   <div>
-                    <h1 className="text-2xl lg:text-3xl font-bold bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+                    <h1 className="text-2xl lg:text-3xl font-bold text-white">
                       Fee Management
                     </h1>
-                    <p className="text-gray-400 text-sm mt-1 flex items-center gap-2">
-                      <span>Comprehensive fee tracking & management</span>
-                      <span className="w-1 h-1 bg-gray-600 rounded-full"></span>
-                      <span className="text-indigo-400 font-medium">{filteredStudents.length} students</span>
+                    <p className="text-slate-400 text-sm mt-1">
+                      Comprehensive fee tracking & management
                     </p>
                   </div>
                 </div>
               </div>
             </div>
             
-            <div className="flex flex-wrap gap-3 w-full lg:w-auto">
+            <div className="flex flex-wrap gap-3">
               <button
                 onClick={exportToCSV}
-                className="flex items-center gap-2 px-4 py-2.5 bg-gray-800/80 backdrop-blur-sm border border-gray-700 rounded-xl text-gray-300 hover:bg-indigo-600/20 hover:border-indigo-500 hover:text-indigo-400 transition-all shadow-lg hover:shadow-indigo-600/10 group"
+                className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-slate-300 hover:bg-blue-600/20 hover:border-blue-500 hover:text-blue-400 transition-all"
               >
-                <Download size={18} className="group-hover:-translate-y-0.5 transition-transform" />
+                <Download size={18} />
                 <span className="text-sm font-medium">Export Report</span>
               </button>
             </div>
@@ -487,135 +477,98 @@ function FeesManagement() {
 
           {/* Stats Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="group relative bg-gray-800/50 backdrop-blur-xl rounded-2xl shadow-xl hover:shadow-2xl transition-all border border-gray-700/50 overflow-hidden">
-              <div className="absolute inset-0 bg-gradient-to-br from-indigo-600/10 to-purple-600/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-              <div className="relative p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="p-3 bg-gradient-to-br from-indigo-600 to-indigo-700 rounded-xl shadow-lg shadow-indigo-600/20">
-                    <Users className="text-white" size={20} />
-                  </div>
-                  <span className="text-xs font-medium text-indigo-400 bg-indigo-950/50 px-2 py-1 rounded-full border border-indigo-800/50">Total</span>
+            <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2 bg-blue-600 rounded-xl">
+                  <Users className="text-white" size={18} />
                 </div>
-                <h3 className="text-3xl font-bold text-white mb-1">{totalStudents}</h3>
-                <p className="text-sm text-gray-400">Enrolled Students</p>
-                <div className="mt-3 flex items-center gap-2 text-xs">
-                  <span className="text-emerald-400 font-medium">↑ 12%</span>
-                  <span className="text-gray-500">vs last month</span>
-                </div>
+                <span className="text-xs font-medium text-blue-400 bg-blue-950/50 px-2 py-0.5 rounded-full border border-blue-800">Total</span>
               </div>
+              <h3 className="text-2xl font-bold text-white">{totalStudents}</h3>
+              <p className="text-xs text-slate-400">Enrolled Students</p>
             </div>
 
-            <div className="group relative bg-gray-800/50 backdrop-blur-xl rounded-2xl shadow-xl hover:shadow-2xl transition-all border border-gray-700/50 overflow-hidden">
-              <div className="absolute inset-0 bg-gradient-to-br from-emerald-600/10 to-teal-600/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-              <div className="relative p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="p-3 bg-gradient-to-br from-emerald-600 to-teal-600 rounded-xl shadow-lg shadow-emerald-600/20">
-                    <TrendingUp className="text-white" size={20} />
-                  </div>
-                  <span className="text-xs font-medium text-emerald-400 bg-emerald-950/50 px-2 py-1 rounded-full border border-emerald-800/50">{collectionRate}%</span>
+            <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2 bg-emerald-600 rounded-xl">
+                  <TrendingUp className="text-white" size={18} />
                 </div>
-                <h3 className="text-3xl font-bold text-white mb-1">₹{totalPaid.toLocaleString('en-IN')}</h3>
-                <p className="text-sm text-gray-400">Total Collected</p>
-                <div className="mt-3 flex items-center gap-2 text-xs">
-                  <span className="text-emerald-400 font-medium">↑ 8.2%</span>
-                  <span className="text-gray-500">collection rate</span>
-                </div>
+                <span className="text-xs font-medium text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded-full border border-emerald-800">{collectionRate}%</span>
               </div>
+              <h3 className="text-2xl font-bold text-white">₹{totalPaid.toLocaleString('en-IN')}</h3>
+              <p className="text-xs text-slate-400">Total Collected</p>
             </div>
 
-            <div className="group relative bg-gray-800/50 backdrop-blur-xl rounded-2xl shadow-xl hover:shadow-2xl transition-all border border-gray-700/50 overflow-hidden">
-              <div className="absolute inset-0 bg-gradient-to-br from-amber-600/10 to-orange-600/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-              <div className="relative p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="p-3 bg-gradient-to-br from-amber-600 to-orange-600 rounded-xl shadow-lg shadow-amber-600/20">
-                    <Clock className="text-white" size={20} />
-                  </div>
-                  <span className="text-xs font-medium text-amber-400 bg-amber-950/50 px-2 py-1 rounded-full border border-amber-800/50">Pending</span>
+            <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2 bg-amber-600 rounded-xl">
+                  <Clock className="text-white" size={18} />
                 </div>
-                <h3 className="text-3xl font-bold text-white mb-1">₹{totalDue.toLocaleString('en-IN')}</h3>
-                <p className="text-sm text-gray-400">Outstanding Amount</p>
-                <div className="mt-3 flex items-center gap-2 text-xs">
-                  <span className="text-amber-400 font-medium">{dueStudents} students</span>
-                  <span className="text-gray-500">need attention</span>
-                </div>
+                <span className="text-xs font-medium text-amber-400 bg-amber-950/50 px-2 py-0.5 rounded-full border border-amber-800">Pending</span>
               </div>
+              <h3 className="text-2xl font-bold text-white">₹{totalDue.toLocaleString('en-IN')}</h3>
+              <p className="text-xs text-slate-400">Outstanding Amount</p>
             </div>
 
-            <div className="group relative bg-gray-800/50 backdrop-blur-xl rounded-2xl shadow-xl hover:shadow-2xl transition-all border border-gray-700/50 overflow-hidden">
-              <div className="absolute inset-0 bg-gradient-to-br from-purple-600/10 to-pink-600/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-              <div className="relative p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="p-3 bg-gradient-to-br from-purple-600 to-pink-600 rounded-xl shadow-lg shadow-purple-600/20">
-                    <Award className="text-white" size={20} />
-                  </div>
-                  <span className="text-xs font-medium text-purple-400 bg-purple-950/50 px-2 py-1 rounded-full border border-purple-800/50">Performance</span>
+            <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2 bg-cyan-600 rounded-xl">
+                  <Award className="text-white" size={18} />
                 </div>
-                <h3 className="text-3xl font-bold text-white mb-1">{paidStudents}</h3>
-                <p className="text-sm text-gray-400">Fully Paid Students</p>
-                <div className="mt-3 flex items-center gap-2 text-xs">
-                  <span className="text-purple-400 font-medium">{((paidStudents/totalStudents)*100).toFixed(1)}%</span>
-                  <span className="text-gray-500">completion rate</span>
-                </div>
+                <span className="text-xs font-medium text-cyan-400 bg-cyan-950/50 px-2 py-0.5 rounded-full border border-cyan-800">Performance</span>
               </div>
+              <h3 className="text-2xl font-bold text-white">{paidStudents}</h3>
+              <p className="text-xs text-slate-400">Fully Paid Students</p>
             </div>
           </div>
 
           {/* Financial Overview */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-gradient-to-br from-indigo-950 to-indigo-900 rounded-2xl p-6 shadow-xl shadow-indigo-900/30 border border-indigo-800/50">
-              <div className="flex items-center justify-between mb-4">
-                <div className="p-2 bg-indigo-800/50 rounded-lg backdrop-blur-sm border border-indigo-700/50">
-                  <Receipt className="text-indigo-300" size={20} />
+            <div className="bg-gradient-to-br from-blue-950 to-blue-900 rounded-2xl p-5 border border-blue-800">
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2 bg-blue-800/50 rounded-lg">
+                  <Receipt className="text-blue-300" size={18} />
                 </div>
-                <span className="text-indigo-300/80 text-sm">Total Fees</span>
+                <span className="text-blue-300/70 text-xs">Total Fees</span>
               </div>
-              <p className="text-3xl font-bold text-white mb-2">₹{totalFees.toLocaleString('en-IN')}</p>
-              <div className="flex items-center gap-2 text-indigo-300/60 text-sm">
-                <BarChart3 size={14} />
-                <span>Annual collection target</span>
-              </div>
+              <p className="text-2xl font-bold text-white">₹{totalFees.toLocaleString('en-IN')}</p>
+              <p className="text-xs text-blue-300/60 mt-1">Annual collection target</p>
             </div>
 
-            <div className="bg-gradient-to-br from-emerald-950 to-emerald-900 rounded-2xl p-6 shadow-xl shadow-emerald-900/30 border border-emerald-800/50">
-              <div className="flex items-center justify-between mb-4">
-                <div className="p-2 bg-emerald-800/50 rounded-lg backdrop-blur-sm border border-emerald-700/50">
-                  <CheckCircle className="text-emerald-300" size={20} />
+            <div className="bg-gradient-to-br from-emerald-950 to-emerald-900 rounded-2xl p-5 border border-emerald-800">
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2 bg-emerald-800/50 rounded-lg">
+                  <CheckCircle className="text-emerald-300" size={18} />
                 </div>
-                <span className="text-emerald-300/80 text-sm">Collected</span>
+                <span className="text-emerald-300/70 text-xs">Collected</span>
               </div>
-              <p className="text-3xl font-bold text-white mb-2">₹{totalPaid.toLocaleString('en-IN')}</p>
-              <div className="flex items-center gap-2 text-emerald-300/60 text-sm">
-                <TrendingUp size={14} />
-                <span>{collectionRate}% of total fees</span>
-              </div>
+              <p className="text-2xl font-bold text-white">₹{totalPaid.toLocaleString('en-IN')}</p>
+              <p className="text-xs text-emerald-300/60 mt-1">{collectionRate}% of total fees</p>
             </div>
 
-            <div className="bg-gradient-to-br from-amber-950 to-amber-900 rounded-2xl p-6 shadow-xl shadow-amber-900/30 border border-amber-800/50">
-              <div className="flex items-center justify-between mb-4">
-                <div className="p-2 bg-amber-800/50 rounded-lg backdrop-blur-sm border border-amber-700/50">
-                  <AlertCircle className="text-amber-300" size={20} />
+            <div className="bg-gradient-to-br from-amber-950 to-amber-900 rounded-2xl p-5 border border-amber-800">
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2 bg-amber-800/50 rounded-lg">
+                  <AlertCircle className="text-amber-300" size={18} />
                 </div>
-                <span className="text-amber-300/80 text-sm">Outstanding</span>
+                <span className="text-amber-300/70 text-xs">Outstanding</span>
               </div>
-              <p className="text-3xl font-bold text-white mb-2">₹{totalDue.toLocaleString('en-IN')}</p>
-              <div className="flex items-center gap-2 text-amber-300/60 text-sm">
-                <Clock size={14} />
-                <span>Due from {dueStudents} students</span>
-              </div>
+              <p className="text-2xl font-bold text-white">₹{totalDue.toLocaleString('en-IN')}</p>
+              <p className="text-xs text-amber-300/60 mt-1">Due from {dueStudents} students</p>
             </div>
           </div>
 
           {/* Filters */}
-          <div className="bg-gray-800/50 backdrop-blur-xl rounded-2xl shadow-xl border border-gray-700/50 p-5">
+          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
             <div className="flex flex-col lg:flex-row gap-4">
               <div className="flex-1 relative">
-                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500" size={18} />
+                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-500" size={18} />
                 <input
                   type="text"
                   placeholder="Search by name, USN, email, or branch..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-11 pr-4 py-3 bg-gray-900/50 border border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-200 placeholder-gray-500 transition-all"
+                  className="w-full pl-11 pr-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 placeholder-slate-500"
                 />
               </div>
               
@@ -623,7 +576,7 @@ function FeesManagement() {
                 <select
                   value={feeFilter}
                   onChange={(e) => setFeeFilter(e.target.value)}
-                  className="px-4 py-3 bg-gray-900/50 border border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 text-gray-200 cursor-pointer min-w-[140px]"
+                  className="px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 cursor-pointer"
                 >
                   <option value="all">All Status</option>
                   <option value="paid">Fully Paid</option>
@@ -635,7 +588,7 @@ function FeesManagement() {
                 <select
                   value={selectedPeriod}
                   onChange={(e) => setSelectedPeriod(e.target.value)}
-                  className="px-4 py-3 bg-gray-900/50 border border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 text-gray-200 cursor-pointer min-w-[140px]"
+                  className="px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 cursor-pointer"
                 >
                   <option value="all">All Periods</option>
                   <option value="upcoming">Upcoming</option>
@@ -644,87 +597,86 @@ function FeesManagement() {
 
                 <button
                   onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
-                  className="px-4 py-3 bg-gray-900/50 border border-gray-700 rounded-xl text-gray-400 hover:bg-indigo-600/20 hover:border-indigo-500 hover:text-indigo-400 transition-all"
+                  className="px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-slate-400 hover:text-blue-400 hover:border-blue-500 transition-all"
                 >
                   <Layers size={18} />
                 </button>
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-gray-700/50">
-              <span className="text-xs font-medium text-gray-500 py-1">Quick filters:</span>
+            <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-700">
+              <span className="text-xs font-medium text-slate-500 py-1">Quick filters:</span>
               <button
                 onClick={() => setFeeFilter('paid')}
-                className="px-3 py-1 bg-emerald-950/50 text-emerald-400 rounded-lg text-xs font-medium hover:bg-emerald-900/50 transition-colors border border-emerald-800/50"
+                className="px-3 py-1 bg-emerald-950/50 text-emerald-400 rounded-lg text-xs font-medium hover:bg-emerald-900/50 transition-colors border border-emerald-800"
               >
                 Fully Paid ({paidStudents})
               </button>
               <button
                 onClick={() => setFeeFilter('partial')}
-                className="px-3 py-1 bg-amber-950/50 text-amber-400 rounded-lg text-xs font-medium hover:bg-amber-900/50 transition-colors border border-amber-800/50"
+                className="px-3 py-1 bg-amber-950/50 text-amber-400 rounded-lg text-xs font-medium hover:bg-amber-900/50 transition-colors border border-amber-800"
               >
                 Partial ({partialPaidStudents})
               </button>
               <button
                 onClick={() => setFeeFilter('due')}
-                className="px-3 py-1 bg-rose-950/50 text-rose-400 rounded-lg text-xs font-medium hover:bg-rose-900/50 transition-colors border border-rose-800/50"
+                className="px-3 py-1 bg-red-950/50 text-red-400 rounded-lg text-xs font-medium hover:bg-red-900/50 transition-colors border border-red-800"
               >
                 Due ({dueStudents})
               </button>
             </div>
           </div>
 
-          {/* Rest of your grid/list view code remains the same */}
+          {/* Grid View */}
           {viewMode === 'grid' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {filteredStudents.map((student) => (
                 <div
                   key={student.id}
-                  className="group relative bg-gray-800/50 backdrop-blur-xl rounded-2xl shadow-xl hover:shadow-2xl transition-all border border-gray-700/50 overflow-hidden"
+                  className="bg-slate-800/50 rounded-2xl border border-slate-700 hover:border-blue-500/30 transition-all overflow-hidden"
                 >
-                  <div className={`absolute top-0 left-0 w-1 h-full ${
-                    getFeesStatusText(student).includes('Paid') ? 'bg-gradient-to-b from-emerald-500 to-emerald-600' :
-                    getFeesStatusText(student).includes('Partial') ? 'bg-gradient-to-b from-amber-500 to-amber-600' :
-                    getFeesStatusText(student).includes('Due') ? 'bg-gradient-to-b from-rose-500 to-rose-600' :
-                    'bg-gradient-to-b from-gray-600 to-gray-700'
+                  <div className={`h-1 ${
+                    getFeesStatusText(student).includes('Paid') ? 'bg-emerald-500' :
+                    getFeesStatusText(student).includes('Partial') ? 'bg-amber-500' :
+                    getFeesStatusText(student).includes('Due') ? 'bg-red-500' :
+                    'bg-slate-600'
                   }`}></div>
-
-                  <div className="p-6 pl-7">
+                  <div className="p-5">
                     <div className="flex justify-between items-start mb-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-600/20">
+                        <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center">
                           <GraduationCap className="text-white" size={20} />
                         </div>
                         <div>
-                          <h3 className="font-semibold text-gray-200">{student.full_name}</h3>
-                          <p className="text-xs text-gray-500">{student.usn}</p>
+                          <h3 className="font-semibold text-white">{student.full_name}</h3>
+                          <p className="text-xs text-slate-500">{student.usn}</p>
                         </div>
                       </div>
-                      <span className={`px-3 py-1 text-xs font-semibold rounded-full border ${getFeesStatusColor(student)}`}>
+                      <span className={`px-2 py-1 text-xs font-semibold rounded-full border ${getFeesStatusColor(student)}`}>
                         {getFeesStatusText(student)}
                       </span>
                     </div>
 
                     <div className="space-y-3 mb-4">
                       <div className="flex items-center gap-2 text-sm">
-                        <BookOpen size={14} className="text-gray-600" />
-                        <span className="text-gray-400">{student.branch} • {student.class}-{student.division}</span>
+                        <BookOpen size={14} className="text-slate-500" />
+                        <span className="text-slate-400">{student.branch} • {student.class}-{student.division}</span>
                       </div>
                       
                       {parseFloat(student.total_fees) > 0 && (
                         <div className="space-y-1">
                           <div className="flex justify-between text-xs">
-                            <span className="text-gray-500">Payment Progress</span>
-                            <span className="font-medium text-gray-300">
+                            <span className="text-slate-500">Payment Progress</span>
+                            <span className="font-medium text-slate-300">
                               {((parseFloat(student.paid_amount) / parseFloat(student.total_fees)) * 100).toFixed(1)}%
                             </span>
                           </div>
-                          <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+                          <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
                             <div 
-                              className={`h-full rounded-full transition-all duration-500 ${
-                                parseFloat(student.due_amount) === 0 ? 'bg-gradient-to-r from-emerald-500 to-emerald-600' :
-                                parseFloat(student.paid_amount) > 0 ? 'bg-gradient-to-r from-amber-500 to-amber-600' :
-                                'bg-gradient-to-r from-rose-500 to-rose-600'
+                              className={`h-full rounded-full transition-all ${
+                                parseFloat(student.due_amount) === 0 ? 'bg-emerald-500' :
+                                parseFloat(student.paid_amount) > 0 ? 'bg-amber-500' :
+                                'bg-red-500'
                               }`}
                               style={{ width: `${(parseFloat(student.paid_amount) / parseFloat(student.total_fees)) * 100}%` }}
                             ></div>
@@ -733,25 +685,25 @@ function FeesManagement() {
                       )}
 
                       <div className="grid grid-cols-3 gap-2 pt-2">
-                        <div className="text-center p-2 bg-gray-900/50 rounded-lg border border-gray-700/50">
-                          <p className="text-xs text-gray-500">Total</p>
-                          <p className="font-bold text-gray-300">₹{student.total_fees || '0'}</p>
+                        <div className="text-center p-2 bg-slate-900 rounded-lg border border-slate-700">
+                          <p className="text-xs text-slate-500">Total</p>
+                          <p className="font-bold text-white">₹{student.total_fees || '0'}</p>
                         </div>
-                        <div className="text-center p-2 bg-emerald-950/30 rounded-lg border border-emerald-800/50">
+                        <div className="text-center p-2 bg-emerald-950/30 rounded-lg border border-emerald-800">
                           <p className="text-xs text-emerald-400">Paid</p>
                           <p className="font-bold text-emerald-300">₹{student.paid_amount || '0'}</p>
                         </div>
-                        <div className="text-center p-2 bg-rose-950/30 rounded-lg border border-rose-800/50">
-                          <p className="text-xs text-rose-400">Due</p>
-                          <p className="font-bold text-rose-300">₹{student.due_amount || '0'}</p>
+                        <div className="text-center p-2 bg-red-950/30 rounded-lg border border-red-800">
+                          <p className="text-xs text-red-400">Due</p>
+                          <p className="font-bold text-red-300">₹{student.due_amount || '0'}</p>
                         </div>
                       </div>
 
                       {student.next_payment_date && (
                         <div className={`flex items-center gap-2 text-xs p-2 rounded-lg ${
                           isUpcomingPayment(student.next_payment_date) 
-                            ? 'bg-amber-950/30 text-amber-400 border border-amber-800/50' 
-                            : 'bg-gray-900/50 text-gray-400 border border-gray-700/50'
+                            ? 'bg-amber-950/30 text-amber-400 border border-amber-800' 
+                            : 'bg-slate-900/50 text-slate-400 border border-slate-700'
                         }`}>
                           <Calendar size={12} />
                           <span>Next payment: {formatDate(student.next_payment_date)}</span>
@@ -762,10 +714,10 @@ function FeesManagement() {
                       )}
                     </div>
 
-                    <div className="flex justify-end gap-2 pt-3 border-t border-gray-700/50">
+                    <div className="flex justify-end gap-2 pt-3 border-t border-slate-700">
                       <button
                         onClick={() => openFeeForm(student)}
-                        className="p-2 text-indigo-400 hover:bg-indigo-600/20 rounded-lg transition-colors"
+                        className="p-2 text-blue-400 hover:bg-blue-600/20 rounded-lg transition-colors"
                         title="Edit Fee Details"
                       >
                         <Edit size={16} />
@@ -776,73 +728,71 @@ function FeesManagement() {
               ))}
             </div>
           ) : (
-            <div className="bg-gray-800/50 backdrop-blur-xl rounded-2xl shadow-xl border border-gray-700/50 overflow-hidden">
+            <div className="bg-slate-800/50 rounded-2xl border border-slate-700 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="bg-gray-900/50 border-b border-gray-700">
-                      <th className="px-6 py-4 text-left">
+                    <tr className="bg-slate-900 border-b border-slate-700">
+                      <th className="px-5 py-3 text-left">
                         <input
                           type="checkbox"
                           checked={selectedStudents.length === filteredStudents.length}
                           onChange={selectAllStudents}
-                          className="rounded bg-gray-800 border-gray-600 text-indigo-500 focus:ring-indigo-500 focus:ring-offset-gray-800"
+                          className="rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-0"
                         />
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Student</th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Branch</th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Total</th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Paid</th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Due</th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Status</th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Next Payment</th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Actions</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Student</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Branch</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Total</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Paid</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Due</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Status</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Next Payment</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-700/50">
+                  <tbody className="divide-y divide-slate-700">
                     {filteredStudents.map((student) => (
-                      <tr key={student.id} className="hover:bg-gray-700/30 transition-colors">
-                        <td className="px-6 py-4">
+                      <tr key={student.id} className="hover:bg-slate-700/30 transition-colors">
+                        <td className="px-5 py-3">
                           <input
                             type="checkbox"
                             checked={selectedStudents.includes(student.id)}
                             onChange={() => toggleStudentSelection(student.id)}
-                            className="rounded bg-gray-800 border-gray-600 text-indigo-500 focus:ring-indigo-500 focus:ring-offset-gray-800"
+                            className="rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-0"
                           />
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-5 py-3">
                           <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-lg flex items-center justify-center">
+                            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
                               <GraduationCap className="text-white" size={14} />
                             </div>
                             <div>
-                              <p className="font-medium text-gray-200">{student.full_name}</p>
-                              <p className="text-xs text-gray-500">{student.usn}</p>
+                              <p className="font-medium text-white">{student.full_name}</p>
+                              <p className="text-xs text-slate-500">{student.usn}</p>
                             </div>
                           </div>
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-400">{student.branch}</td>
-                        <td className="px-6 py-4 text-sm font-medium text-gray-300">₹{student.total_fees || '0'}</td>
-                        <td className="px-6 py-4 text-sm font-medium text-emerald-400">₹{student.paid_amount || '0'}</td>
-                        <td className="px-6 py-4 text-sm font-medium text-rose-400">₹{student.due_amount || '0'}</td>
-                        <td className="px-6 py-4">
-                          <span className={`px-3 py-1 text-xs font-semibold rounded-full border ${getFeesStatusColor(student)}`}>
+                        <td className="px-5 py-3 text-sm text-slate-400">{student.branch}</td>
+                        <td className="px-5 py-3 text-sm font-medium text-white">₹{student.total_fees || '0'}</td>
+                        <td className="px-5 py-3 text-sm font-medium text-emerald-400">₹{student.paid_amount || '0'}</td>
+                        <td className="px-5 py-3 text-sm font-medium text-red-400">₹{student.due_amount || '0'}</td>
+                        <td className="px-5 py-3">
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full border ${getFeesStatusColor(student)}`}>
                             {getFeesStatusText(student)}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-400">
+                        <td className="px-5 py-3 text-sm text-slate-400">
                           {formatDate(student.next_payment_date)}
                         </td>
-                        <td className="px-6 py-4">
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => openFeeForm(student)}
-                              className="p-1.5 text-indigo-400 hover:bg-indigo-600/20 rounded-lg transition-colors"
-                              title="Edit"
-                            >
-                              <Edit size={14} />
-                            </button>
-                          </div>
+                        <td className="px-5 py-3">
+                          <button
+                            onClick={() => openFeeForm(student)}
+                            className="p-1.5 text-blue-400 hover:bg-blue-600/20 rounded-lg transition-colors"
+                            title="Edit"
+                          >
+                            <Edit size={14} />
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -854,19 +804,19 @@ function FeesManagement() {
 
           {/* Empty State */}
           {filteredStudents.length === 0 && (
-            <div className="text-center py-12 bg-gray-800/50 backdrop-blur-xl rounded-2xl border border-gray-700/50">
-              <div className="w-20 h-20 bg-gradient-to-br from-indigo-600/20 to-purple-600/20 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-indigo-500/30">
-                <Receipt className="text-indigo-400" size={32} />
+            <div className="text-center py-12 bg-slate-800/50 rounded-2xl border border-slate-700">
+              <div className="w-20 h-20 bg-slate-700/50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <Receipt className="text-slate-500" size={32} />
               </div>
-              <h3 className="text-lg font-semibold text-gray-200 mb-2">No Students Found</h3>
-              <p className="text-gray-400 mb-4">Try adjusting your search or filter criteria</p>
+              <h3 className="text-lg font-semibold text-white mb-2">No Students Found</h3>
+              <p className="text-slate-400 mb-4">Try adjusting your search or filter criteria</p>
               <button
                 onClick={() => {
                   setSearchTerm('');
                   setFeeFilter('all');
                   setSelectedPeriod('all');
                 }}
-                className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-colors shadow-lg shadow-indigo-600/20"
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
                 Clear Filters
               </button>
@@ -878,33 +828,33 @@ function FeesManagement() {
       {/* Fee Modal */}
       {showFeeForm && selectedStudent && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-800 rounded-2xl shadow-2xl border border-gray-700 max-w-md w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-slate-800 rounded-2xl border border-slate-700 max-w-md w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex justify-between items-center mb-6">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-xl">
+                  <div className="p-2 bg-blue-600 rounded-xl">
                     <Wallet className="text-white" size={20} />
                   </div>
-                  <h3 className="text-xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
+                  <h3 className="text-xl font-bold text-white">
                     Update Fee Details
                   </h3>
                 </div>
                 <button 
                   onClick={() => setShowFeeForm(false)} 
-                  className="p-2 text-gray-400 hover:text-gray-300 hover:bg-gray-700 rounded-lg transition-all"
+                  className="p-2 text-slate-400 hover:text-slate-300 hover:bg-slate-700 rounded-lg transition-all"
                 >
                   <X size={20} />
                 </button>
               </div>
               
-              <div className="mb-6 p-4 bg-gradient-to-br from-indigo-950 to-purple-950 rounded-xl border border-indigo-800/50">
+              <div className="mb-6 p-4 bg-blue-950/30 rounded-xl border border-blue-800">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-gray-800 rounded-lg flex items-center justify-center shadow-sm border border-gray-600">
-                    <GraduationCap className="text-indigo-400" size={18} />
+                  <div className="w-10 h-10 bg-slate-800 rounded-lg flex items-center justify-center">
+                    <GraduationCap className="text-blue-400" size={18} />
                   </div>
                   <div>
-                    <p className="font-semibold text-gray-200">{selectedStudent.full_name}</p>
-                    <p className="text-sm text-gray-400">{selectedStudent.usn} • {selectedStudent.branch}</p>
+                    <p className="font-semibold text-white">{selectedStudent.full_name}</p>
+                    <p className="text-sm text-slate-400">{selectedStudent.usn} • {selectedStudent.branch}</p>
                   </div>
                 </div>
               </div>
@@ -912,66 +862,66 @@ function FeesManagement() {
               <form onSubmit={handleFeeSubmit} className="space-y-5">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">Total Fees (₹)</label>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">Total Fees (₹)</label>
                     <input
                       type="number"
                       value={feeData.total_fees}
                       onChange={(e) => setFeeData({...feeData, total_fees: e.target.value})}
                       onBlur={calculateDue}
-                      className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-200 placeholder-gray-500 transition-all"
+                      className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200"
                       placeholder="Enter amount"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">Paid Amount (₹)</label>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">Paid Amount (₹)</label>
                     <input
                       type="number"
                       value={feeData.paid_amount}
                       onChange={(e) => setFeeData({...feeData, paid_amount: e.target.value})}
                       onBlur={calculateDue}
-                      className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-200 placeholder-gray-500 transition-all"
+                      className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200"
                       placeholder="Enter amount"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Due Amount (₹)</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Due Amount (₹)</label>
                   <input
                     type="number"
                     value={feeData.due_amount}
                     readOnly
-                    className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-xl text-gray-400"
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-slate-400"
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">Last Payment Date</label>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">Last Payment Date</label>
                     <input
                       type="date"
                       value={feeData.last_payment_date}
                       onChange={(e) => setFeeData({...feeData, last_payment_date: e.target.value})}
-                      className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-200 transition-all"
+                      className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">Next Payment Date</label>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">Next Payment Date</label>
                     <input
                       type="date"
                       value={feeData.next_payment_date}
                       onChange={(e) => setFeeData({...feeData, next_payment_date: e.target.value})}
-                      className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-200 transition-all"
+                      className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Payment Mode</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Payment Mode</label>
                   <select
                     value={feeData.payment_mode}
                     onChange={(e) => setFeeData({...feeData, payment_mode: e.target.value})}
-                    className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-200 transition-all"
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200"
                   >
                     <option value="">Select Payment Mode</option>
                     <option value="Cash">Cash</option>
@@ -987,13 +937,13 @@ function FeesManagement() {
                   <button
                     type="button"
                     onClick={() => setShowFeeForm(false)}
-                    className="px-6 py-3 text-gray-300 bg-gray-700 rounded-xl hover:bg-gray-600 transition-all font-medium"
+                    className="px-6 py-3 text-slate-300 bg-slate-700 rounded-xl hover:bg-slate-600 transition-all font-medium"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all font-medium shadow-lg shadow-indigo-600/20"
+                    className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all font-medium"
                   >
                     Update Fees
                   </button>

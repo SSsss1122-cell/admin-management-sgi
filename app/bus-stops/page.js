@@ -131,78 +131,72 @@ function BusStopsPage() {
   }, [showMapPicker, mapLoaded, formData.latitude, formData.longitude]);
 
   const loadInstitutionData = async () => {
-  try {
-    const adminData = await getAdminInstitution();
-
-    console.log('ADMIN DATA:', adminData);
-
-    if (adminData?.institution_id) {
-      setInstitutionId(adminData.institution_id);
-    } else {
-      setFormError('No institution assigned to admin');
+    try {
+      const adminData = await getAdminInstitution();
+      if (adminData?.institution_id) {
+        setInstitutionId(adminData.institution_id);
+      } else {
+        setFormError('No institution assigned to admin');
+      }
+    } catch (error) {
+      console.error('Error loading institution:', error);
+      setFormError('Failed to load institution data');
     }
-  } catch (error) {
-    console.error('Error loading institution:', error);
-    setFormError('Failed to load institution data');
-  }
-};
+  };
 
   const fetchBuses = async () => {
-  try {
-    const { data, error } = await supabase
-      .from('buses')
-      .select('id, bus_number, route_name, is_active')
-      .eq('institution_id', institutionId)
-      .order('bus_number');
+    try {
+      const { data, error } = await supabase
+        .from('buses')
+        .select('id, bus_number, route_name, is_active')
+        .eq('institution_id', institutionId)
+        .order('bus_number');
 
-    if (error) throw error;
-
-    setBuses(data || []);
-  } catch (error) {
-    console.error('Error fetching buses:', error);
-  }
-};
+      if (error) throw error;
+      setBuses(data || []);
+    } catch (error) {
+      console.error('Error fetching buses:', error);
+    }
+  };
 
   const fetchStops = async () => {
-  try {
-    setLoading(true);
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('bus_stops')
+        .select(`
+          *,
+          buses (
+            id,
+            bus_number,
+            route_name
+          )
+        `)
+        .eq('institution_id', institutionId)
+        .order('bus_id', { ascending: true })
+        .order('direction', { ascending: true })
+        .order('sequence', { ascending: true });
 
-    const { data, error } = await supabase
-      .from('bus_stops')
-      .select(`
-        *,
-        buses (
-          id,
-          bus_number,
-          route_name
-        )
-      `)
-      .eq('institution_id', institutionId) // IMPORTANT
-      .order('bus_id', { ascending: true })
-      .order('direction', { ascending: true })
-      .order('sequence', { ascending: true });
-
-    if (error) throw error;
-
-    setStops(data || []);
-  } catch (error) {
-    console.error('Error fetching stops:', error);
-    setFormError('Failed to fetch stops');
-  } finally {
-    setLoading(false);
-  }
-};
+      if (error) throw error;
+      setStops(data || []);
+    } catch (error) {
+      console.error('Error fetching stops:', error);
+      setFormError('Failed to fetch stops');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-  loadInstitutionData();
-}, []);
+    loadInstitutionData();
+  }, []);
 
-useEffect(() => {
-  if (institutionId) {
-    fetchBuses();
-    fetchStops();
-  }
-}, [institutionId]);
+  useEffect(() => {
+    if (institutionId) {
+      fetchBuses();
+      fetchStops();
+    }
+  }, [institutionId]);
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -259,17 +253,17 @@ useEffect(() => {
         const { error } = await supabase
           .from('bus_stops')
           .insert([{
-  institution_id: institutionId,
-  bus_id: parseInt(formData.bus_id),
-  stop_name: formData.stop_name,
-  sequence: parseInt(formData.sequence),
-  latitude: parseFloat(formData.latitude),
-  longitude: parseFloat(formData.longitude),
-  estimated_time: formData.estimated_time ? parseInt(formData.estimated_time) : null,
-  is_major: formData.is_major,
-  landmark: formData.landmark || null,
-  direction: formData.direction
-}]);
+            institution_id: institutionId,
+            bus_id: parseInt(formData.bus_id),
+            stop_name: formData.stop_name,
+            sequence: parseInt(formData.sequence),
+            latitude: parseFloat(formData.latitude),
+            longitude: parseFloat(formData.longitude),
+            estimated_time: formData.estimated_time ? parseInt(formData.estimated_time) : null,
+            is_major: formData.is_major,
+            landmark: formData.landmark || null,
+            direction: formData.direction
+          }]);
 
         if (error) throw error;
         setFormSuccess('Stop added successfully!');
@@ -294,11 +288,10 @@ useEffect(() => {
 
   const handleEdit = (stop) => {
     if (stop.institution_id !== institutionId) {
-  setFormError('Unauthorized access');
-  return;
-}
-
-setEditingStop(stop);
+      setFormError('Unauthorized access');
+      return;
+    }
+    setEditingStop(stop);
     setFormData({
       bus_id: stop.bus_id.toString(),
       stop_name: stop.stop_name,
@@ -314,37 +307,34 @@ setEditingStop(stop);
   };
 
   const handleDelete = async () => {
-  if (!stopToDelete) return;
+    if (!stopToDelete) return;
 
-  try {
-    // Verify institution ownership first
-    if (stopToDelete.institution_id !== institutionId) {
-      setFormError('Unauthorized delete attempt');
-      return;
+    try {
+      if (stopToDelete.institution_id !== institutionId) {
+        setFormError('Unauthorized delete attempt');
+        return;
+      }
+
+      const { error } = await supabase
+        .from('bus_stops')
+        .delete()
+        .eq('id', stopToDelete.id)
+        .eq('institution_id', institutionId);
+
+      if (error) throw error;
+
+      setShowDeleteModal(false);
+      setStopToDelete(null);
+      fetchStops();
+      setFormSuccess('Stop deleted successfully!');
+      setTimeout(() => setFormSuccess(''), 3000);
+
+    } catch (error) {
+      console.error('Error deleting stop:', error);
+      setFormError(error.message);
+      setTimeout(() => setFormError(''), 3000);
     }
-
-    const { error } = await supabase
-      .from('bus_stops')
-      .delete()
-      .eq('id', stopToDelete.id)
-      .eq('institution_id', institutionId);
-
-    if (error) throw error;
-
-    setShowDeleteModal(false);
-    setStopToDelete(null);
-
-    fetchStops();
-
-    setFormSuccess('Stop deleted successfully!');
-    setTimeout(() => setFormSuccess(''), 3000);
-
-  } catch (error) {
-    console.error('Error deleting stop:', error);
-    setFormError(error.message);
-    setTimeout(() => setFormError(''), 3000);
-  }
-};
+  };
 
   const resetForm = () => {
     setEditingStop(null);
@@ -407,566 +397,253 @@ setEditingStop(stop);
   const dateStr = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
   return (
-    <>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-        
-        * { 
-          box-sizing: border-box; 
-          margin: 0; 
-          padding: 0; 
-        }
-        
-        :root {
-          --bg-primary: #0a0a0f;
-          --bg-secondary: #11111f;
-          --bg-card: #16162a;
-          --bg-card-hover: #1c1c34;
-          --border: rgba(255,255,255,0.08);
-          --border-hover: rgba(255,255,255,0.15);
-          --text-primary: #ffffff;
-          --text-secondary: #a0a0c0;
-          --text-muted: #6b6b8b;
-          --accent-blue: #3b82f6;
-          --accent-cyan: #06b6d4;
-          --accent-purple: #8b5cf6;
-          --accent-orange: #f59e0b;
-          --accent-green: #10b981;
-          --accent-red: #ef4444;
-        }
-        
-        body { 
-          font-family: 'Inter', sans-serif; 
-          background: var(--bg-primary);
-          color: var(--text-primary);
-        }
-        
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        
-        @keyframes float {
-          0%,100% { transform: translateY(0px); }
-          50% { transform: translateY(-5px); }
-        }
-        
-        @keyframes glow {
-          0%,100% { filter: blur(60px) opacity(0.5); }
-          50% { filter: blur(80px) opacity(0.8); }
-        }
-        
-        .glass-effect {
-          background: rgba(22, 22, 42, 0.8);
-          backdrop-filter: blur(12px);
-          border: 1px solid rgba(255, 255, 255, 0.08);
-        }
-        
-        .stat-card {
-          background: var(--bg-card);
-          border: 1px solid var(--border);
-          border-radius: 20px;
-          padding: 20px;
-          transition: all 0.3s ease;
-          position: relative;
-          overflow: hidden;
-        }
-        
-        .stat-card::before {
-          content: '';
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          height: 3px;
-          background: linear-gradient(90deg, #3b82f6, #06b6d4);
-          opacity: 0;
-          transition: opacity 0.3s ease;
-        }
-        
-        .stat-card:hover {
-          transform: translateY(-4px);
-          background: var(--bg-card-hover);
-          border-color: var(--border-hover);
-        }
-        
-        .stat-card:hover::before {
-          opacity: 1;
-        }
-        
-        .stop-table {
-          background: var(--bg-card);
-          border: 1px solid var(--border);
-          border-radius: 20px;
-          overflow: hidden;
-        }
-        
-        .stop-table th {
-          background: var(--bg-primary);
-          padding: 16px;
-          text-align: left;
-          font-size: 12px;
-          font-weight: 600;
-          color: var(--text-muted);
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-          border-bottom: 1px solid var(--border);
-        }
-        
-        .stop-table td {
-          padding: 16px;
-          border-bottom: 1px solid var(--border);
-          color: var(--text-secondary);
-          font-size: 14px;
-        }
-        
-        .stop-table tr:hover {
-          background: var(--bg-card-hover);
-        }
-        
-        .action-button {
-          background: var(--bg-card);
-          border: 1px solid var(--border);
-          border-radius: 40px;
-          padding: 8px 16px;
-          font-size: 13px;
-          font-weight: 500;
-          color: var(--text-secondary);
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-        
-        .action-button:hover {
-          background: var(--bg-card-hover);
-          border-color: #3b82f6;
-          color: #3b82f6;
-        }
-        
-        .action-button.primary {
-          background: linear-gradient(135deg, #3b82f6, #06b6d4);
-          color: white;
-          border: none;
-        }
-        
-        .action-button.primary:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 10px 25px -5px #3b82f6;
-        }
-        
-        .input-field {
-          width: 100%;
-          padding: 12px 16px;
-          background: var(--bg-primary);
-          border: 1px solid var(--border);
-          border-radius: 12px;
-          font-size: 14px;
-          color: var(--text-primary);
-          outline: none;
-          transition: all 0.2s ease;
-        }
-        
-        .input-field:focus {
-          border-color: #3b82f6;
-          box-shadow: 0 0 0 3px rgba(59,130,246,0.2);
-        }
-        
-        .input-field::placeholder {
-          color: var(--text-muted);
-        }
-        
-        .info-chip {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          padding: 4px 10px;
-          background: rgba(255,255,255,0.02);
-          border: 1px solid var(--border);
-          border-radius: 30px;
-          font-size: 11px;
-          color: var(--text-secondary);
-        }
-        
-        .badge-morning {
-          background: rgba(245,158,11,0.1);
-          border: 1px solid rgba(245,158,11,0.2);
-          color: #f59e0b;
-        }
-        
-        .badge-evening {
-          background: rgba(59,130,246,0.1);
-          border: 1px solid rgba(59,130,246,0.2);
-          color: #3b82f6;
-        }
-        
-        @media (max-width: 768px) {
-          .stat-card { padding: 16px; }
-          .stop-table th, .stop-table td { padding: 12px; }
-        }
-      `}</style>
-
-      <div style={{ 
-        minHeight: '100vh', 
-        background: 'radial-gradient(circle at 50% 50%, #1a1a2e, #0a0a0f)',
-        position: 'relative',
-        overflow: 'hidden'
-      }}>
-        {/* Background Orbs */}
-        <div style={{
-          position: 'fixed',
-          width: 600,
-          height: 600,
-          borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(59,130,246,0.15) 0%, transparent 70%)',
-          top: -200,
-          left: -200,
-          filter: 'blur(80px)',
-          pointerEvents: 'none',
-          zIndex: 0,
-          animation: 'glow 8s ease-in-out infinite'
-        }}></div>
-        <div style={{
-          position: 'fixed',
-          width: 500,
-          height: 500,
-          borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(6,182,212,0.1) 0%, transparent 70%)',
-          bottom: -150,
-          right: -150,
-          filter: 'blur(80px)',
-          pointerEvents: 'none',
-          zIndex: 0,
-          animation: 'glow 10s ease-in-out infinite reverse'
-        }}></div>
-
+    <div className="min-h-screen bg-slate-900">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
         {/* Header */}
-        <div className="glass-effect" style={{
-          position: 'sticky',
-          top: 0,
-          zIndex: 40,
-          padding: '12px 16px',
-          borderBottom: '1px solid var(--border)'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5 lg:p-6 mb-6">
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+            <div className="flex items-center gap-4">
               <button
                 onClick={() => router.back()}
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 12,
-                  background: 'var(--bg-card)',
-                  border: '1px solid var(--border)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  color: 'var(--text-secondary)'
-                }}
+                className="p-2 text-slate-400 hover:text-blue-400 transition-all rounded-xl hover:bg-slate-800 border border-slate-700"
               >
-                <ChevronLeft size={18} />
+                <ChevronLeft size={20} />
               </button>
               <div>
-                <h1 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>Bus Stops</h1>
-                <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>{currentTime}</p>
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-blue-600 rounded-2xl">
+                    <MapPin className="text-white" size={24} />
+                  </div>
+                  <div>
+                    <h1 className="text-2xl lg:text-3xl font-bold text-white">
+                      Bus Stops Management
+                    </h1>
+                    <p className="text-slate-400 text-sm mt-1">
+                      Manage bus stops, routes and sequences
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 10 }}>
+
+            <div className="flex gap-2">
               <Link href="/bus-route-mapper">
-                <button className="action-button primary">
+                <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all">
                   <Map size={16} />
-                  <span>Build Route from Map</span>
+                  Build Route from Map
                 </button>
               </Link>
-              <button onClick={openAddModal} className="action-button primary">
+              <button onClick={openAddModal} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all">
                 <Plus size={16} />
-                <span>Add Stop</span>
+                Add Stop
               </button>
             </div>
           </div>
         </div>
 
-        <div style={{ position: 'relative', zIndex: 10, maxWidth: 1400, margin: '0 auto', padding: '16px' }}>
-          {/* Success/Error Messages */}
-          {formSuccess && (
-            <div style={{ 
-              marginBottom: 20, 
-              padding: '12px 16px', 
-              background: 'rgba(16,185,129,0.1)', 
-              border: '1px solid rgba(16,185,129,0.2)',
-              borderRadius: 12,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8
-            }}>
-              <CheckCircle size={16} color="#10b981" />
-              <span style={{ color: '#10b981', fontSize: 13 }}>{formSuccess}</span>
-            </div>
-          )}
-          {formError && (
-            <div style={{ 
-              marginBottom: 20, 
-              padding: '12px 16px', 
-              background: 'rgba(239,68,68,0.1)', 
-              border: '1px solid rgba(239,68,68,0.2)',
-              borderRadius: 12,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8
-            }}>
-              <AlertCircle size={16} color="#ef4444" />
-              <span style={{ color: '#ef4444', fontSize: 13 }}>{formError}</span>
-            </div>
-          )}
+        {/* Success/Error Messages */}
+        {formSuccess && (
+          <div className="mb-5 p-3 bg-emerald-950/50 border border-emerald-800 rounded-xl flex items-center gap-2">
+            <CheckCircle size={16} className="text-emerald-400" />
+            <span className="text-emerald-400 text-sm">{formSuccess}</span>
+          </div>
+        )}
+        {formError && (
+          <div className="mb-5 p-3 bg-red-950/50 border border-red-800 rounded-xl flex items-center gap-2">
+            <AlertCircle size={16} className="text-red-400" />
+            <span className="text-red-400 text-sm">{formError}</span>
+          </div>
+        )}
 
-          {/* Stats Cards */}
-          <div style={{ 
-            display: 'grid', 
-            gridTemplateColumns: 'repeat(2, 1fr)',
-            gap: 12,
-            marginBottom: 20
-          }}>
-            <div className="stat-card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Total Stops</p>
-                  <p style={{ fontSize: 28, fontWeight: 700, color: '#3b82f6', marginTop: 4 }}>{stops.length}</p>
-                </div>
-                <div style={{ 
-                  width: 40, 
-                  height: 40, 
-                  borderRadius: 12, 
-                  background: 'rgba(59,130,246,0.1)', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center'
-                }}>
-                  <MapPin size={20} color="#3b82f6" />
-                </div>
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-4">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-xs text-slate-400">Total Stops</p>
+                <p className="text-2xl font-bold text-white mt-1">{stops.length}</p>
               </div>
-            </div>
-
-            <div className="stat-card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Active Buses</p>
-                  <p style={{ fontSize: 28, fontWeight: 700, color: '#06b6d4', marginTop: 4 }}>{buses.filter(b => b.is_active).length}</p>
-                </div>
-                <div style={{ 
-                  width: 40, 
-                  height: 40, 
-                  borderRadius: 12, 
-                  background: 'rgba(6,182,212,0.1)', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center'
-                }}>
-                  <Bus size={20} color="#06b6d4" />
-                </div>
+              <div className="p-2 bg-blue-600 rounded-xl">
+                <MapPin className="text-white" size={18} />
               </div>
             </div>
           </div>
 
-          {/* Filters */}
-          <div style={{ 
-            background: 'var(--bg-card)',
-            borderRadius: 20,
-            border: '1px solid var(--border)',
-            padding: 16,
-            marginBottom: 20
-          }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
-              <div className="info-chip" style={{ background: 'var(--bg-primary)' }}>
-                <Search size={14} />
-                <input
-                  type="text"
-                  placeholder="Search stops..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    outline: 'none',
-                    color: 'var(--text-primary)',
-                    fontSize: 13,
-                    width: '100%'
-                  }}
-                />
+          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-4">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-xs text-slate-400">Active Buses</p>
+                <p className="text-2xl font-bold text-white mt-1">{buses.filter(b => b.is_active).length}</p>
               </div>
-              
-              <select
-                value={selectedBus}
-                onChange={(e) => setSelectedBus(e.target.value)}
-                className="input-field"
-                style={{ fontSize: 13 }}
-              >
-                <option value="all">All Buses</option>
-                {buses.map(bus => (
-                  <option key={bus.id} value={bus.id}>
-                    {bus.bus_number}
-                  </option>
-                ))}
-              </select>
-
-              <select
-                value={selectedDirection}
-                onChange={(e) => setSelectedDirection(e.target.value)}
-                className="input-field"
-                style={{ fontSize: 13 }}
-              >
-                <option value="all">All Directions</option>
-                <option value="morning">🌅 Morning (Aland → College)</option>
-                <option value="evening">🌙 Evening (College → Aland)</option>
-              </select>
-
-              <button
-                onClick={() => {
-                  setSearchTerm('');
-                  setSelectedBus('all');
-                  setSelectedDirection('all');
-                }}
-                className="action-button"
-                style={{ justifyContent: 'center' }}
-              >
-                <RefreshCw size={14} />
-                <span>Reset</span>
-              </button>
+              <div className="p-2 bg-cyan-600 rounded-xl">
+                <Bus className="text-white" size={18} />
+              </div>
             </div>
           </div>
+        </div>
 
-          {/* Stops Table */}
-          <div className="stop-table">
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
+        {/* Filters */}
+        <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="flex items-center gap-2 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2">
+              <Search size={14} className="text-slate-500" />
+              <input
+                type="text"
+                placeholder="Search stops..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="flex-1 bg-transparent border-none outline-none text-slate-200 text-sm"
+              />
+            </div>
+            
+            <select
+              value={selectedBus}
+              onChange={(e) => setSelectedBus(e.target.value)}
+              className="px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-slate-200 text-sm focus:outline-none focus:border-blue-500"
+            >
+              <option value="all">All Buses</option>
+              {buses.map(bus => (
+                <option key={bus.id} value={bus.id}>
+                  {bus.bus_number}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={selectedDirection}
+              onChange={(e) => setSelectedDirection(e.target.value)}
+              className="px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-slate-200 text-sm focus:outline-none focus:border-blue-500"
+            >
+              <option value="all">All Directions</option>
+              <option value="morning">🌅 Morning (Aland → College)</option>
+              <option value="evening">🌙 Evening (College → Aland)</option>
+            </select>
+
+            <button
+              onClick={() => {
+                setSearchTerm('');
+                setSelectedBus('all');
+                setSelectedDirection('all');
+              }}
+              className="flex items-center justify-center gap-2 px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-400 hover:text-blue-400 transition-all text-sm"
+            >
+              <RefreshCw size={14} />
+              Reset
+            </button>
+          </div>
+        </div>
+
+        {/* Stops Table */}
+        <div className="bg-slate-800/50 rounded-2xl border border-slate-700 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-slate-900 border-b border-slate-700">
+                <tr>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">#</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Bus</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Stop Name</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Seq</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Direction</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Major</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-700">
+                {loading ? (
                   <tr>
-                    <th>#</th>
-                    <th>Bus</th>
-                    <th>Stop Name</th>
-                    <th>Seq</th>
-                    <th>Direction</th>
-                    <th>Major</th>
-                    <th>Actions</th>
+                    <td colSpan="7" className="px-5 py-12 text-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-600 border-t-transparent mx-auto mb-3"></div>
+                      <p className="text-slate-400 text-sm">Loading stops...</p>
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {loading ? (
-                    <tr>
-                      <td colSpan="7" style={{ textAlign: 'center', padding: 40 }}>
-                        <div className="animate-spin" style={{ width: 24, height: 24, border: '2px solid #3b82f6', borderTopColor: 'transparent', borderRadius: '50%', margin: '0 auto' }}></div>
-                        <p style={{ marginTop: 12, color: 'var(--text-muted)' }}>Loading stops...</p>
-                       </td>
-                    </tr>
-                  ) : filteredStops.length === 0 ? (
-                    <tr>
-                      <td colSpan="7" style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
-                        No stops found. Click "Add New Stop" to create one.
-                       </td>
-                    </tr>
-                  ) : (
-                    filteredStops.map((stop, idx) => (
-                      <tr key={stop.id}>
-                        <td>{idx + 1}</td>
-                        <td>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <Bus size={14} color="var(--text-muted)" />
-                            <span>{getBusName(stop.bus_id)}</span>
-                          </div>
-                        </td>
-                        <td>
-                          <div>
-                            <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{stop.stop_name}</span>
-                            {stop.landmark && (
-                              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{stop.landmark}</div>
-                            )}
-                          </div>
-                        </td>
-                        <td>{stop.sequence}</td>
-                        <td>
-                          <span className={`info-chip ${stop.direction === 'morning' ? 'badge-morning' : 'badge-evening'}`}>
-                            {stop.direction === 'morning' ? '🌅 Morning' : '🌙 Evening'}
-                          </span>
-                        </td>
-                        <td>
-                          {stop.is_major ? (
-                            <Star size={14} fill="#f59e0b" color="#f59e0b" />
-                          ) : (
-                            <span style={{ color: 'var(--text-muted)' }}>—</span>
+                ) : filteredStops.length === 0 ? (
+                  <tr>
+                    <td colSpan="7" className="px-5 py-12 text-center text-slate-400">
+                      No stops found. Click "Add Stop" to create one.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredStops.map((stop, idx) => (
+                    <tr key={stop.id} className="hover:bg-slate-700/30 transition-colors">
+                      <td className="px-5 py-3 text-sm text-slate-400">{idx + 1}</td>
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-2">
+                          <Bus size={14} className="text-slate-500" />
+                          <span className="text-sm text-slate-300">{getBusName(stop.bus_id)}</span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3">
+                        <div>
+                          <span className="text-sm font-medium text-white">{stop.stop_name}</span>
+                          {stop.landmark && (
+                            <div className="text-xs text-slate-500">{stop.landmark}</div>
                           )}
-                        </td>
-                        <td>
-                          <div style={{ display: 'flex', gap: 8 }}>
-                            <button
-                              onClick={() => handleEdit(stop)}
-                              className="action-button"
-                              style={{ padding: '6px 12px' }}
-                            >
-                              <Edit size={14} />
-                            </button>
-                            <button
-                              onClick={() => {
-                                setStopToDelete(stop);
-                                setShowDeleteModal(true);
-                              }}
-                              className="action-button"
-                              style={{ padding: '6px 12px', background: 'rgba(239,68,68,0.1)', borderColor: 'rgba(239,68,68,0.2)', color: '#ef4444' }}
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3 text-sm text-slate-300">{stop.sequence}</td>
+                      <td className="px-5 py-3">
+                        <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
+                          stop.direction === 'morning' 
+                            ? 'bg-orange-950/50 text-orange-400 border border-orange-800' 
+                            : 'bg-cyan-950/50 text-cyan-400 border border-cyan-800'
+                        }`}>
+                          {stop.direction === 'morning' ? '🌅 Morning' : '🌙 Evening'}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3">
+                        {stop.is_major ? (
+                          <Star size={14} className="text-amber-400 fill-amber-400" />
+                        ) : (
+                          <span className="text-slate-500">—</span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3">
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleEdit(stop)}
+                            className="p-1.5 rounded-lg text-blue-400 hover:bg-blue-600/20 transition-colors"
+                            title="Edit"
+                          >
+                            <Edit size={14} />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setStopToDelete(stop);
+                              setShowDeleteModal(true);
+                            }}
+                            className="p-1.5 rounded-lg text-red-400 hover:bg-red-600/20 transition-colors"
+                            title="Delete"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
+        </div>
 
-          <div style={{ marginTop: 16, textAlign: 'center', fontSize: 12, color: 'var(--text-muted)' }}>
-            Showing {filteredStops.length} of {stops.length} stops
-          </div>
+        <div className="mt-4 text-center text-xs text-slate-500">
+          Showing {filteredStops.length} of {stops.length} stops
         </div>
       </div>
 
       {/* Add/Edit Modal */}
       {showModal && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(0,0,0,0.8)',
-          backdropFilter: 'blur(4px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000,
-          padding: 16,
-          overflowY: 'auto'
-        }}>
-          <div style={{
-            background: 'var(--bg-card)',
-            borderRadius: 24,
-            maxWidth: 800,
-            width: '100%',
-            maxHeight: '90vh',
-            overflowY: 'auto',
-            border: '1px solid var(--border)'
-          }}>
-            <div style={{
-              position: 'sticky',
-              top: 0,
-              background: 'var(--bg-card)',
-              borderBottom: '1px solid var(--border)',
-              padding: '16px 20px',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center'
-            }}>
-              <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)' }}>
-                {editingStop ? 'Edit Bus Stop' : 'Add New Bus Stop'}
-              </h2>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-slate-800 rounded-2xl border border-slate-700 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-slate-800 border-b border-slate-700 px-6 py-4 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-600 rounded-xl">
+                  {editingStop ? <Edit className="text-white" size={20} /> : <MapPin className="text-white" size={20} />}
+                </div>
+                <h2 className="text-xl font-bold text-white">
+                  {editingStop ? 'Edit Bus Stop' : 'Add New Bus Stop'}
+                </h2>
+              </div>
               <button
                 onClick={() => {
                   setShowModal(false);
@@ -974,34 +651,22 @@ setEditingStop(stop);
                   if (mapInstance) mapInstance.remove();
                   resetForm();
                 }}
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 10,
-                  background: 'var(--bg-primary)',
-                  border: '1px solid var(--border)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer'
-                }}
+                className="p-2 text-slate-400 hover:text-slate-300 hover:bg-slate-700 rounded-lg transition-all"
               >
-                <X size={18} color="var(--text-secondary)" />
+                <X size={20} />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} style={{ padding: 20 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 16 }}>
+            <form onSubmit={handleSubmit} className="p-6 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8, display: 'block' }}>
-                    Select Bus *
-                  </label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Select Bus *</label>
                   <select
                     name="bus_id"
                     value={formData.bus_id}
                     onChange={handleInputChange}
                     required
-                    className="input-field"
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg focus:outline-none focus:border-blue-500 text-slate-200"
                   >
                     <option value="">Select a bus</option>
                     {buses.map(bus => (
@@ -1013,25 +678,21 @@ setEditingStop(stop);
                 </div>
 
                 <div>
-                  <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8, display: 'block' }}>
-                    Direction *
-                  </label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Direction *</label>
                   <select
                     name="direction"
                     value={formData.direction}
                     onChange={handleInputChange}
                     required
-                    className="input-field"
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg focus:outline-none focus:border-blue-500 text-slate-200"
                   >
-                    <option value="morning">🌅 Morning (Aland Checkpost → College)</option>
-                    <option value="evening">🌙 Evening (College → Aland Checkpost)</option>
+                    <option value="morning">🌅 Morning (Aland → College)</option>
+                    <option value="evening">🌙 Evening (College → Aland)</option>
                   </select>
                 </div>
 
                 <div>
-                  <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8, display: 'block' }}>
-                    Stop Name *
-                  </label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Stop Name *</label>
                   <input
                     type="text"
                     name="stop_name"
@@ -1039,14 +700,12 @@ setEditingStop(stop);
                     onChange={handleInputChange}
                     required
                     placeholder="e.g., SGI College"
-                    className="input-field"
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg focus:outline-none focus:border-blue-500 text-slate-200"
                   />
                 </div>
 
                 <div>
-                  <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8, display: 'block' }}>
-                    Sequence Number *
-                  </label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Sequence Number *</label>
                   <input
                     type="number"
                     name="sequence"
@@ -1054,49 +713,44 @@ setEditingStop(stop);
                     onChange={handleInputChange}
                     required
                     placeholder="1, 2, 3..."
-                    className="input-field"
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg focus:outline-none focus:border-blue-500 text-slate-200"
                   />
                 </div>
 
                 <div>
-                  <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8, display: 'block' }}>
-                    Estimated Time (minutes)
-                  </label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Estimated Time (minutes)</label>
                   <input
                     type="number"
                     name="estimated_time"
                     value={formData.estimated_time}
                     onChange={handleInputChange}
                     placeholder="Minutes from start"
-                    className="input-field"
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg focus:outline-none focus:border-blue-500 text-slate-200"
                   />
                 </div>
 
                 <div>
-                  <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8, display: 'block' }}>
-                    Landmark
-                  </label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Landmark</label>
                   <input
                     type="text"
                     name="landmark"
                     value={formData.landmark}
                     onChange={handleInputChange}
                     placeholder="Nearby landmark"
-                    className="input-field"                  />
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg focus:outline-none focus:border-blue-500 text-slate-200"
+                  />
                 </div>
 
-                <div style={{ gridColumn: 'span 2' }}>
-                  <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8, display: 'block' }}>
-                    Location Coordinates *
-                  </label>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 12 }}>
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Location Coordinates *</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <input
                       type="text"
                       name="latitude"
                       value={formData.latitude}
                       onChange={handleInputChange}
                       placeholder="Latitude"
-                      className="input-field"
+                      className="px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg focus:outline-none focus:border-blue-500 text-slate-200"
                     />
                     <input
                       type="text"
@@ -1104,64 +758,61 @@ setEditingStop(stop);
                       value={formData.longitude}
                       onChange={handleInputChange}
                       placeholder="Longitude"
-                      className="input-field"
+                      className="px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg focus:outline-none focus:border-blue-500 text-slate-200"
                     />
                     <button
                       type="button"
                       onClick={getCurrentLocation}
-                      className="action-button"
-                      style={{ whiteSpace: 'nowrap' }}
+                      className="flex items-center justify-center gap-2 px-3 py-2 bg-slate-700 rounded-lg text-slate-300 hover:text-blue-400 transition-all"
                     >
                       <Navigation size={14} />
-                      <span>My Location</span>
+                      My Location
                     </button>
                   </div>
                 </div>
 
-                <div style={{ gridColumn: 'span 2' }}>
+                <div className="md:col-span-2">
                   <button
                     type="button"
                     onClick={() => setShowMapPicker(true)}
-                    className="action-button"
-                    style={{ width: '100%', justifyContent: 'center', marginBottom: 12 }}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-slate-700 rounded-lg text-slate-300 hover:text-blue-400 transition-all mb-3"
                   >
                     <Map size={16} />
-                    <span>Open Map to Pick Location</span>
+                    Open Map to Pick Location
                   </button>
                   
                   {formData.latitude && formData.longitude && (
-                    <div className="info-chip" style={{ width: '100%', justifyContent: 'center', background: 'rgba(59,130,246,0.1)' }}>
-                      <MapPin size={12} />
-                      <span>Selected: {parseFloat(formData.latitude).toFixed(6)}, {parseFloat(formData.longitude).toFixed(6)}</span>
+                    <div className="flex items-center justify-center gap-2 p-2 bg-blue-950/50 rounded-lg border border-blue-800">
+                      <MapPin size={12} className="text-blue-400" />
+                      <span className="text-xs text-blue-400">
+                        Selected: {parseFloat(formData.latitude).toFixed(6)}, {parseFloat(formData.longitude).toFixed(6)}
+                      </span>
                     </div>
                   )}
                 </div>
 
-                <div>
-                  <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div className="md:col-span-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
                       name="is_major"
                       checked={formData.is_major}
                       onChange={handleInputChange}
-                      style={{ width: 18, height: 18 }}
+                      className="w-4 h-4 rounded border-slate-600 bg-slate-900 text-blue-600 focus:ring-blue-500"
                     />
-                    Mark as Major Stop
+                    <span className="text-sm font-medium text-slate-300">Mark as Major Stop</span>
                   </label>
-                  <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-                    Major stops are highlighted and shown on the main route
-                  </p>
+                  <p className="text-xs text-slate-500 mt-1 ml-6">Major stops are highlighted and shown on the main route</p>
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: 12, marginTop: 24, paddingTop: 20, borderTop: '1px solid var(--border)' }}>
+              <div className="flex gap-3 pt-4 border-t border-slate-700">
                 <button
                   type="submit"
-                  className="action-button primary"
-                  style={{ flex: 1, justifyContent: 'center' }}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all"
                 >
                   <Save size={16} />
-                  <span>{editingStop ? 'Update Stop' : 'Add Stop'}</span>
+                  {editingStop ? 'Update Stop' : 'Add Stop'}
                 </button>
                 <button
                   type="button"
@@ -1171,11 +822,10 @@ setEditingStop(stop);
                     if (mapInstance) mapInstance.remove();
                     resetForm();
                   }}
-                  className="action-button"
-                  style={{ flex: 1, justifyContent: 'center' }}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-slate-700 text-slate-300 rounded-lg hover:bg-slate-600 transition-all"
                 >
                   <X size={16} />
-                  <span>Cancel</span>
+                  Cancel
                 </button>
               </div>
             </form>
@@ -1185,37 +835,12 @@ setEditingStop(stop);
 
       {/* Map Picker Modal */}
       {showMapPicker && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(0,0,0,0.9)',
-          backdropFilter: 'blur(8px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1100,
-          padding: 16
-        }}>
-          <div style={{
-            background: 'var(--bg-card)',
-            borderRadius: 24,
-            width: '90%',
-            height: '80%',
-            display: 'flex',
-            flexDirection: 'column',
-            border: '1px solid var(--border)',
-            overflow: 'hidden'
-          }}>
-            <div style={{
-              padding: '16px 20px',
-              borderBottom: '1px solid var(--border)',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center'
-            }}>
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 rounded-2xl border border-slate-700 w-[90vw] h-[80vh] flex flex-col overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-700 flex justify-between items-center">
               <div>
-                <h3 style={{ fontSize: 18, fontWeight: 600 }}>Pick Location on Map</h3>
-                <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Click or drag marker to select coordinates</p>
+                <h3 className="text-lg font-semibold text-white">Pick Location on Map</h3>
+                <p className="text-xs text-slate-400">Click or drag marker to select coordinates</p>
               </div>
               <button
                 onClick={() => {
@@ -1226,31 +851,15 @@ setEditingStop(stop);
                     setMarkerInstance(null);
                   }
                 }}
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 10,
-                  background: 'var(--bg-primary)',
-                  border: '1px solid var(--border)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer'
-                }}
+                className="p-2 text-slate-400 hover:text-slate-300 hover:bg-slate-700 rounded-lg transition-all"
               >
-                <X size={18} color="var(--text-secondary)" />
+                <X size={20} />
               </button>
             </div>
             
-            <div ref={mapContainerRef} style={{ flex: 1, width: '100%', minHeight: 400 }}></div>
+            <div ref={mapContainerRef} className="flex-1 w-full min-h-[400px]"></div>
             
-            <div style={{
-              padding: '16px 20px',
-              borderTop: '1px solid var(--border)',
-              display: 'flex',
-              gap: 12,
-              justifyContent: 'flex-end'
-            }}>
+            <div className="px-6 py-4 border-t border-slate-700 flex justify-end">
               <button
                 onClick={() => {
                   setShowMapPicker(false);
@@ -1260,7 +869,7 @@ setEditingStop(stop);
                     setMarkerInstance(null);
                   }
                 }}
-                className="action-button"
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all"
               >
                 Confirm & Close
               </button>
@@ -1271,72 +880,41 @@ setEditingStop(stop);
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && stopToDelete && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(0,0,0,0.8)',
-          backdropFilter: 'blur(4px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000,
-          padding: 16
-        }}>
-          <div style={{
-            background: 'var(--bg-card)',
-            borderRadius: 24,
-            maxWidth: 400,
-            width: '100%',
-            border: '1px solid var(--border)',
-            overflow: 'hidden'
-          }}>
-            <div style={{
-              padding: 20,
-              textAlign: 'center'
-            }}>
-              <div style={{
-                width: 48,
-                height: 48,
-                borderRadius: '50%',
-                background: 'rgba(239,68,68,0.1)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                margin: '0 auto 16px'
-              }}>
-                <Trash2 size={24} color="#ef4444" />
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 rounded-2xl border border-slate-700 max-w-md w-full">
+            <div className="p-6 text-center">
+              <div className="w-12 h-12 rounded-full bg-red-950/50 flex items-center justify-center mx-auto mb-4">
+                <Trash2 size={24} className="text-red-400" />
               </div>
-              <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>Delete Bus Stop</h3>
-              <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 20 }}>
-                Are you sure you want to delete <strong>{stopToDelete.stop_name}</strong>?<br />
+              <h3 className="text-lg font-semibold text-white mb-2">Delete Bus Stop</h3>
+              <p className="text-sm text-slate-400 mb-4">
+                Are you sure you want to delete <span className="font-medium text-white">{stopToDelete.stop_name}</span>?<br />
                 This action cannot be undone.
               </p>
-              <div style={{ display: 'flex', gap: 12 }}>
+              <div className="flex gap-3">
                 <button
                   onClick={handleDelete}
-                  className="action-button"
-                  style={{ flex: 1, justifyContent: 'center', background: '#ef4444', color: 'white', border: 'none' }}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all"
                 >
                   <Trash2 size={14} />
-                  <span>Delete</span>
+                  Delete
                 </button>
                 <button
                   onClick={() => {
                     setShowDeleteModal(false);
                     setStopToDelete(null);
                   }}
-                  className="action-button"
-                  style={{ flex: 1, justifyContent: 'center' }}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-slate-700 text-slate-300 rounded-lg hover:bg-slate-600 transition-all"
                 >
                   <X size={14} />
-                  <span>Cancel</span>
+                  Cancel
                 </button>
               </div>
             </div>
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }
 

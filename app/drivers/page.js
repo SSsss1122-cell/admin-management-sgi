@@ -208,6 +208,10 @@ function DriversDashboard() {
     setFilteredDrivers(filtered);
   };
 
+  useEffect(() => {
+    filterDrivers();
+  }, [searchTerm, filterStatus, drivers]);
+
   const handleAddDriver = async (e) => {
     e.preventDefault();
     try {
@@ -482,11 +486,11 @@ function DriversDashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
         <div className="relative">
-          <div className="animate-spin rounded-full h-16 w-16 border-4 border-gray-700 border-t-purple-500"></div>
+          <div className="animate-spin rounded-full h-16 w-16 border-4 border-slate-700 border-t-blue-600"></div>
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="h-8 w-8 bg-gradient-to-br from-purple-500 to-pink-600 rounded-full animate-pulse"></div>
+            <div className="h-8 w-8 bg-blue-600 rounded-full animate-pulse"></div>
           </div>
         </div>
       </div>
@@ -494,164 +498,144 @@ function DriversDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
-      {/* Dark decorative elements */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-purple-600/10 to-pink-600/10 rounded-full blur-3xl"></div>
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-br from-blue-600/10 to-cyan-600/10 rounded-full blur-3xl"></div>
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-gradient-to-br from-amber-600/5 to-orange-600/5 rounded-full blur-3xl"></div>
-      </div>
-
-      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
+    <div className="min-h-screen bg-slate-900">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
         <div className="space-y-6 lg:space-y-8">
-          {/* Dark Header */}
-          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={handleBack}
-                className="group flex items-center text-gray-400 hover:text-purple-400 transition-all p-2 rounded-xl hover:bg-gray-800/50 backdrop-blur-sm border border-gray-800 hover:border-purple-500/30"
-              >
-                <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
-              </button>
-              <div>
-                <div className="flex items-center gap-3">
-                  <div className="p-3 bg-gradient-to-br from-purple-600 to-pink-600 rounded-2xl shadow-lg shadow-purple-600/20">
-                    <Truck className="text-white" size={24} />
+          {/* Header */}
+          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5 lg:p-6">
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={handleBack}
+                  className="p-2 text-slate-400 hover:text-blue-400 transition-all rounded-xl hover:bg-slate-800 border border-slate-700"
+                >
+                  <ArrowLeft size={20} />
+                </button>
+                <div>
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 bg-blue-600 rounded-2xl shadow-lg shadow-blue-600/20">
+                      <Truck className="text-white" size={24} />
+                    </div>
+                    <div>
+                      <h1 className="text-2xl lg:text-3xl font-bold text-white">
+                        Drivers Management
+                      </h1>
+                      <p className="text-slate-400 text-sm mt-1">
+                        Manage driver profiles and bus assignments
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h1 className="text-2xl lg:text-3xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-rose-400 bg-clip-text text-transparent">
-                      Drivers Management
-                    </h1>
-                    <p className="text-gray-400 text-sm mt-1 flex items-center gap-2">
-                      <span>Manage driver profiles and bus assignments</span>
-                      <span className="w-1 h-1 bg-gray-600 rounded-full"></span>
-                      <span className="text-purple-400 font-medium">{filteredDrivers.length} drivers</span>
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-4">
-              <div className="hidden sm:flex items-center gap-3 bg-gray-800/50 backdrop-blur-xl rounded-xl px-4 py-2 border border-gray-700/50">
-                <div className="text-right">
-                  <p className="text-xs text-gray-400">Welcome,</p>
-                  <p className="font-semibold text-gray-200">{adminName || 'Admin'}</p>
-                </div>
-                <div className="w-8 h-8 bg-gradient-to-br from-purple-600 to-pink-600 rounded-full flex items-center justify-center">
-                  <User className="text-white" size={16} />
                 </div>
               </div>
               
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={exportDrivers}
-                  className="p-2 bg-gray-800/50 backdrop-blur-xl border border-gray-700 rounded-xl text-gray-400 hover:text-purple-400 hover:border-purple-500/50 transition-all"
-                  title="Export Drivers"
-                >
-                  <Download size={18} />
-                </button>
+              <div className="flex items-center gap-4">
+                <div className="hidden sm:flex items-center gap-3 bg-slate-800 rounded-xl px-4 py-2 border border-slate-700">
+                  <div className="text-right">
+                    <p className="text-xs text-slate-400">Welcome,</p>
+                    <p className="font-semibold text-white">{adminName || 'Admin'}</p>
+                  </div>
+                  <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+                    <User className="text-white" size={16} />
+                  </div>
+                </div>
                 
-                {selectedDrivers.length > 0 && (
+                <div className="flex items-center gap-2">
                   <button
-                    onClick={deleteSelectedDrivers}
-                    className="flex items-center text-sm bg-rose-600/90 text-white px-4 py-2 rounded-xl hover:bg-rose-700 transition-all shadow-lg shadow-rose-600/20"
+                    onClick={exportDrivers}
+                    className="p-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-400 hover:text-blue-400 hover:border-blue-500/50 transition-all"
+                    title="Export Drivers"
                   >
-                    <Trash2 size={16} className="mr-2" />
-                    Delete ({selectedDrivers.length})
+                    <Download size={18} />
                   </button>
-                )}
-                
-                <button
-                  onClick={handleLogout}
-                  className="flex items-center text-sm bg-rose-600/90 text-white px-4 py-2 rounded-xl hover:bg-rose-700 transition-all shadow-lg shadow-rose-600/20"
-                >
-                  <LogOut size={16} className="mr-2" />
-                  <span className="hidden sm:inline">Logout</span>
-                </button>
-                
-                <button
-                  onClick={() => setShowAddForm(true)}
-                  className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-4 py-2 rounded-xl hover:from-purple-700 hover:to-pink-700 transition-all shadow-lg shadow-purple-600/20 flex items-center"
-                >
-                  <UserPlus size={16} className="mr-2" />
-                  <span className="hidden sm:inline">Add Driver</span>
-                </button>
+                  
+                  {selectedDrivers.length > 0 && (
+                    <button
+                      onClick={deleteSelectedDrivers}
+                      className="flex items-center text-sm bg-red-600 text-white px-4 py-2 rounded-xl hover:bg-red-700 transition-all"
+                    >
+                      <Trash2 size={16} className="mr-2" />
+                      Delete ({selectedDrivers.length})
+                    </button>
+                  )}
+                  
+                  <button
+                    onClick={handleLogout}
+                    className="flex items-center text-sm bg-red-600 text-white px-4 py-2 rounded-xl hover:bg-red-700 transition-all"
+                  >
+                    <LogOut size={16} className="mr-2" />
+                    <span className="hidden sm:inline">Logout</span>
+                  </button>
+                  
+                  <button
+                    onClick={() => setShowAddForm(true)}
+                    className="bg-blue-600 text-white px-4 py-2 rounded-xl hover:bg-blue-700 transition-all flex items-center"
+                  >
+                    <UserPlus size={16} className="mr-2" />
+                    <span className="hidden sm:inline">Add Driver</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Stats Cards - Same as before */}
+          {/* Stats Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Stats cards content - keep as is */}
-            <div className="group relative bg-gray-800/50 backdrop-blur-xl rounded-2xl shadow-xl hover:shadow-2xl transition-all border border-gray-700/50 overflow-hidden">
-              <div className="absolute inset-0 bg-gradient-to-br from-purple-600/10 to-pink-600/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-              <div className="relative p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="p-3 bg-gradient-to-br from-purple-600 to-purple-700 rounded-xl shadow-lg shadow-purple-600/20">
-                    <Users className="text-white" size={20} />
-                  </div>
-                  <span className="text-xs font-medium text-purple-400 bg-purple-950/50 px-2 py-1 rounded-full border border-purple-800/50">Total</span>
+            <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2 bg-blue-600 rounded-xl">
+                  <Users className="text-white" size={18} />
                 </div>
-                <h3 className="text-3xl font-bold text-white mb-1">{stats.totalDrivers}</h3>
-                <p className="text-sm text-gray-400">Total Drivers</p>
+                <span className="text-xs font-medium text-blue-400 bg-blue-950/50 px-2 py-0.5 rounded-full border border-blue-800">Total</span>
               </div>
+              <h3 className="text-2xl font-bold text-white">{stats.totalDrivers}</h3>
+              <p className="text-xs text-slate-400">Total Drivers</p>
             </div>
 
-            <div className="group relative bg-gray-800/50 backdrop-blur-xl rounded-2xl shadow-xl hover:shadow-2xl transition-all border border-gray-700/50 overflow-hidden">
-              <div className="absolute inset-0 bg-gradient-to-br from-blue-600/10 to-cyan-600/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-              <div className="relative p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="p-3 bg-gradient-to-br from-blue-600 to-cyan-600 rounded-xl shadow-lg shadow-blue-600/20">
-                    <IdCard className="text-white" size={20} />
-                  </div>
-                  <span className="text-xs font-medium text-blue-400 bg-blue-950/50 px-2 py-1 rounded-full border border-blue-800/50">Licensed</span>
+            <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2 bg-cyan-600 rounded-xl">
+                  <IdCard className="text-white" size={18} />
                 </div>
-                <h3 className="text-3xl font-bold text-white mb-1">{stats.totalWithLicense}</h3>
-                <p className="text-sm text-gray-400">With Valid License</p>
+                <span className="text-xs font-medium text-cyan-400 bg-cyan-950/50 px-2 py-0.5 rounded-full border border-cyan-800">Licensed</span>
               </div>
+              <h3 className="text-2xl font-bold text-white">{stats.totalWithLicense}</h3>
+              <p className="text-xs text-slate-400">With Valid License</p>
             </div>
 
-            <div className="group relative bg-gray-800/50 backdrop-blur-xl rounded-2xl shadow-xl hover:shadow-2xl transition-all border border-gray-700/50 overflow-hidden">
-              <div className="absolute inset-0 bg-gradient-to-br from-emerald-600/10 to-teal-600/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-              <div className="relative p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="p-3 bg-gradient-to-br from-emerald-600 to-teal-600 rounded-xl shadow-lg shadow-emerald-600/20">
-                    <Bus className="text-white" size={20} />
-                  </div>
-                  <span className="text-xs font-medium text-emerald-400 bg-emerald-950/50 px-2 py-1 rounded-full border border-emerald-800/50">Assigned</span>
+            <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2 bg-emerald-600 rounded-xl">
+                  <Bus className="text-white" size={18} />
                 </div>
-                <h3 className="text-3xl font-bold text-white mb-1">{stats.assignedDrivers}</h3>
-                <p className="text-sm text-gray-400">Assigned to Buses</p>
+                <span className="text-xs font-medium text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded-full border border-emerald-800">Assigned</span>
               </div>
+              <h3 className="text-2xl font-bold text-white">{stats.assignedDrivers}</h3>
+              <p className="text-xs text-slate-400">Assigned to Buses</p>
             </div>
 
-            <div className="group relative bg-gray-800/50 backdrop-blur-xl rounded-2xl shadow-xl hover:shadow-2xl transition-all border border-gray-700/50 overflow-hidden">
-              <div className="absolute inset-0 bg-gradient-to-br from-amber-600/10 to-orange-600/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-              <div className="relative p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="p-3 bg-gradient-to-br from-amber-600 to-orange-600 rounded-xl shadow-lg shadow-amber-600/20">
-                    <Award className="text-white" size={20} />
-                  </div>
-                  <span className="text-xs font-medium text-amber-400 bg-amber-950/50 px-2 py-1 rounded-full border border-amber-800/50">Experienced</span>
+            <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2 bg-amber-600 rounded-xl">
+                  <Award className="text-white" size={18} />
                 </div>
-                <h3 className="text-3xl font-bold text-white mb-1">{stats.experiencedDrivers}</h3>
-                <p className="text-sm text-gray-400">5+ Years Experience</p>
+                <span className="text-xs font-medium text-amber-400 bg-amber-950/50 px-2 py-0.5 rounded-full border border-amber-800">Experienced</span>
               </div>
+              <h3 className="text-2xl font-bold text-white">{stats.experiencedDrivers}</h3>
+              <p className="text-xs text-slate-400">5+ Years Experience</p>
             </div>
           </div>
 
           {/* Filters */}
-          <div className="bg-gray-800/50 backdrop-blur-xl rounded-2xl shadow-xl border border-gray-700/50 p-5">
+          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
             <div className="flex flex-col lg:flex-row gap-4">
               <div className="flex-1 relative">
-                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500" size={18} />
+                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-500" size={18} />
                 <input
                   type="text"
                   placeholder="Search by name, code, license, or bus..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-11 pr-4 py-3 bg-gray-900/50 border border-gray-700 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-gray-200 placeholder-gray-500 transition-all"
+                  className="w-full pl-11 pr-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 placeholder-slate-500"
                 />
               </div>
               
@@ -659,7 +643,7 @@ function DriversDashboard() {
                 <select
                   value={filterStatus}
                   onChange={(e) => setFilterStatus(e.target.value)}
-                  className="px-4 py-3 bg-gray-900/50 border border-gray-700 rounded-xl focus:ring-2 focus:ring-purple-500 text-gray-200 cursor-pointer min-w-[140px]"
+                  className="px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 cursor-pointer"
                 >
                   <option value="all">All Drivers</option>
                   <option value="assigned">Assigned</option>
@@ -669,7 +653,7 @@ function DriversDashboard() {
 
                 <button
                   onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
-                  className="px-4 py-3 bg-gray-900/50 border border-gray-700 rounded-xl text-gray-400 hover:bg-purple-600/20 hover:border-purple-500 hover:text-purple-400 transition-all"
+                  className="px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-slate-400 hover:text-blue-400 hover:border-blue-500 transition-all"
                 >
                   {viewMode === 'grid' ? 'List View' : 'Grid View'}
                 </button>
@@ -677,30 +661,30 @@ function DriversDashboard() {
             </div>
 
             {/* Quick Filters */}
-            <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-gray-700/50">
-              <span className="text-xs font-medium text-gray-500 py-1">Quick filters:</span>
+            <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-700">
+              <span className="text-xs font-medium text-slate-500 py-1">Quick filters:</span>
               <button
                 onClick={() => setFilterStatus('assigned')}
-                className="px-3 py-1 bg-emerald-950/50 text-emerald-400 rounded-lg text-xs font-medium hover:bg-emerald-900/50 transition-colors border border-emerald-800/50"
+                className="px-3 py-1 bg-emerald-950/50 text-emerald-400 rounded-lg text-xs font-medium hover:bg-emerald-900/50 transition-colors border border-emerald-800"
               >
                 Assigned ({stats.assignedDrivers})
               </button>
               <button
                 onClick={() => setFilterStatus('unassigned')}
-                className="px-3 py-1 bg-amber-950/50 text-amber-400 rounded-lg text-xs font-medium hover:bg-amber-900/50 transition-colors border border-amber-800/50"
+                className="px-3 py-1 bg-amber-950/50 text-amber-400 rounded-lg text-xs font-medium hover:bg-amber-900/50 transition-colors border border-amber-800"
               >
                 Unassigned ({stats.totalDrivers - stats.assignedDrivers})
               </button>
               <button
                 onClick={() => setFilterStatus('experienced')}
-                className="px-3 py-1 bg-purple-950/50 text-purple-400 rounded-lg text-xs font-medium hover:bg-purple-900/50 transition-colors border border-purple-800/50"
+                className="px-3 py-1 bg-blue-950/50 text-blue-400 rounded-lg text-xs font-medium hover:bg-blue-900/50 transition-colors border border-blue-800"
               >
                 Experienced ({stats.experiencedDrivers})
               </button>
               {selectedDrivers.length > 0 && (
                 <button
                   onClick={deleteSelectedDrivers}
-                  className="px-3 py-1 bg-rose-950/50 text-rose-400 rounded-lg text-xs font-medium hover:bg-rose-900/50 transition-colors border border-rose-800/50 ml-auto"
+                  className="px-3 py-1 bg-red-950/50 text-red-400 rounded-lg text-xs font-medium hover:bg-red-900/50 transition-colors border border-red-800 ml-auto"
                 >
                   Delete Selected ({selectedDrivers.length})
                 </button>
@@ -717,35 +701,31 @@ function DriversDashboard() {
                   return (
                     <div
                       key={driver.id}
-                      className="group relative bg-gray-800/50 backdrop-blur-xl rounded-2xl shadow-xl hover:shadow-2xl transition-all border border-gray-700/50 overflow-hidden"
+                      className="bg-slate-800/50 rounded-2xl border border-slate-700 hover:border-blue-500/30 transition-all overflow-hidden"
                     >
-                      <div className={`absolute top-0 left-0 w-1 h-full ${
-                        driver?.bus_id ? 'bg-gradient-to-b from-emerald-500 to-emerald-600' :
-                        'bg-gradient-to-b from-amber-500 to-amber-600'
-                      }`}></div>
-
-                      <div className="p-6 pl-7">
+                      <div className={`h-1 ${driver?.bus_id ? 'bg-emerald-500' : 'bg-amber-500'}`}></div>
+                      <div className="p-5">
                         <div className="flex justify-between items-start mb-4">
                           <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 bg-gradient-to-br from-purple-600 to-pink-600 rounded-xl flex items-center justify-center shadow-lg shadow-purple-600/20">
+                            <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg">
                               <UserCircle className="text-white" size={24} />
                             </div>
                             <div>
-                              <h3 className="font-semibold text-gray-200">{driver?.name || 'N/A'}</h3>
-                              <p className="text-xs text-gray-500">{driver?.driver_code || 'No Code'}</p>
+                              <h3 className="font-semibold text-white">{driver?.name || 'N/A'}</h3>
+                              <p className="text-xs text-slate-500">{driver?.driver_code || 'No Code'}</p>
                             </div>
                           </div>
                           <div className="flex gap-1">
                             <button 
                               onClick={() => openEditForm(driver)}
-                              className="p-1.5 text-purple-400 hover:bg-purple-600/20 rounded-lg transition-colors"
+                              className="p-1.5 text-blue-400 hover:bg-blue-600/20 rounded-lg transition-colors"
                               title="Edit Driver"
                             >
                               <Edit size={14} />
                             </button>
                             <button 
                               onClick={() => deleteDriver(driver.id)}
-                              className="p-1.5 text-rose-400 hover:bg-rose-600/20 rounded-lg transition-colors"
+                              className="p-1.5 text-red-400 hover:bg-red-600/20 rounded-lg transition-colors"
                               title="Delete Driver"
                             >
                               <Trash2 size={14} />
@@ -754,11 +734,11 @@ function DriversDashboard() {
                         </div>
 
                         {driver?.license_expiry && (
-                          <div className={`mb-3 inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs ${
-                            licenseStatus === 'valid' ? 'bg-emerald-950/50 text-emerald-400 border border-emerald-800/50' :
-                            licenseStatus === 'expiring' ? 'bg-amber-950/50 text-amber-400 border border-amber-800/50' :
-                            licenseStatus === 'expired' ? 'bg-rose-950/50 text-rose-400 border border-rose-800/50' :
-                            'bg-gray-800/50 text-gray-400 border border-gray-700'
+                          <div className={`mb-3 inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs border ${
+                            licenseStatus === 'valid' ? 'bg-emerald-950/50 text-emerald-400 border-emerald-800' :
+                            licenseStatus === 'expiring' ? 'bg-amber-950/50 text-amber-400 border-amber-800' :
+                            licenseStatus === 'expired' ? 'bg-red-950/50 text-red-400 border-red-800' :
+                            'bg-slate-800 text-slate-400 border-slate-700'
                           }`}>
                             <Shield size={10} />
                             License {licenseStatus === 'valid' ? 'Valid' : licenseStatus === 'expiring' ? 'Expiring Soon' : licenseStatus === 'expired' ? 'Expired' : 'Unknown'}
@@ -768,50 +748,50 @@ function DriversDashboard() {
                         <div className="space-y-3 mb-4">
                           <div className="grid grid-cols-2 gap-2">
                             <div className="flex items-center gap-2 text-sm">
-                              <IdCard size={14} className="text-gray-600" />
-                              <span className="text-gray-400">{driver?.license_no || 'No License'}</span>
+                              <IdCard size={14} className="text-slate-500" />
+                              <span className="text-slate-400">{driver?.license_no || 'No License'}</span>
                             </div>
                             <div className="flex items-center gap-2 text-sm">
-                              <Phone size={14} className="text-gray-600" />
-                              <span className="text-gray-400">{driver?.contact || 'N/A'}</span>
+                              <Phone size={14} className="text-slate-500" />
+                              <span className="text-slate-400">{driver?.contact || 'N/A'}</span>
                             </div>
                           </div>
 
                           {driver?.bus ? (
-                            <div className="flex items-center gap-2 text-sm p-2 bg-emerald-950/30 rounded-lg border border-emerald-800/50">
+                            <div className="flex items-center gap-2 text-sm p-2 bg-emerald-950/30 rounded-lg border border-emerald-800">
                               <Bus size={14} className="text-emerald-400" />
                               <span className="text-emerald-400 font-medium">{driver.bus.bus_number}</span>
-                              <span className="text-gray-400 text-xs ml-auto">{driver.bus.route_name || 'No Route'}</span>
+                              <span className="text-slate-400 text-xs ml-auto">{driver.bus.route_name || 'No Route'}</span>
                             </div>
                           ) : (
-                            <div className="flex items-center gap-2 text-sm p-2 bg-gray-900/50 rounded-lg border border-gray-700/50">
-                              <Bus size={14} className="text-gray-500" />
-                              <span className="text-gray-500">Not Assigned to Bus</span>
+                            <div className="flex items-center gap-2 text-sm p-2 bg-slate-900 rounded-lg border border-slate-700">
+                              <Bus size={14} className="text-slate-500" />
+                              <span className="text-slate-500">Not Assigned to Bus</span>
                             </div>
                           )}
 
                           {driver?.experience_years && (
                             <div className="flex items-center gap-2 text-sm">
-                              <Award size={14} className="text-gray-600" />
-                              <span className="text-gray-400">{driver.experience_years} years experience</span>
+                              <Award size={14} className="text-slate-500" />
+                              <span className="text-slate-400">{driver.experience_years} years experience</span>
                             </div>
                           )}
 
                           {driver?.address && (
                             <div className="flex items-center gap-2 text-sm">
-                              <Home size={14} className="text-gray-600" />
-                              <span className="text-gray-400 truncate">{driver.address}</span>
+                              <Home size={14} className="text-slate-500" />
+                              <span className="text-slate-400 truncate">{driver.address}</span>
                             </div>
                           )}
 
-                          <div className="flex items-center gap-2 text-sm pt-2 border-t border-gray-700/50">
-                            <Key size={14} className="text-gray-500" />
-                            <span className="text-gray-400">
+                          <div className="flex items-center gap-2 text-sm pt-2 border-t border-slate-700">
+                            <Key size={14} className="text-slate-500" />
+                            <span className="text-slate-400">
                               {showPassword[driver.id] ? driver.password || 'Not set' : '••••••••'}
                             </span>
                             <button
                               onClick={() => togglePasswordVisibility(driver.id)}
-                              className="ml-auto text-xs text-purple-400 hover:text-purple-300"
+                              className="ml-auto text-xs text-blue-400 hover:text-blue-300"
                             >
                               {showPassword[driver.id] ? 'Hide' : 'Show'}
                             </button>
@@ -822,18 +802,18 @@ function DriversDashboard() {
                   );
                 })
               ) : (
-                <div className="col-span-full text-center py-12 bg-gray-800/50 backdrop-blur-xl rounded-2xl border border-gray-700/50">
-                  <div className="w-20 h-20 bg-gradient-to-br from-purple-600/20 to-pink-600/20 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-purple-500/30">
-                    <Truck className="text-purple-400" size={32} />
+                <div className="col-span-full text-center py-12 bg-slate-800/50 rounded-2xl border border-slate-700">
+                  <div className="w-20 h-20 bg-slate-700/50 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-slate-600">
+                    <Truck className="text-slate-500" size={32} />
                   </div>
-                  <h3 className="text-lg font-semibold text-gray-200 mb-2">No Drivers Found</h3>
-                  <p className="text-gray-400 mb-4">Try adjusting your search or filter criteria</p>
+                  <h3 className="text-lg font-semibold text-white mb-2">No Drivers Found</h3>
+                  <p className="text-slate-400 mb-4">Try adjusting your search or filter criteria</p>
                   <button
                     onClick={() => {
                       setSearchTerm('');
                       setFilterStatus('all');
                     }}
-                    className="px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-colors shadow-lg shadow-purple-600/20"
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                   >
                     Clear Filters
                   </button>
@@ -842,113 +822,113 @@ function DriversDashboard() {
             </div>
           ) : (
             /* List View */
-            <div className="bg-gray-800/50 backdrop-blur-xl rounded-2xl shadow-xl border border-gray-700/50 overflow-hidden">
+            <div className="bg-slate-800/50 rounded-2xl border border-slate-700 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="bg-gray-900/50 border-b border-gray-700">
-                      <th className="px-6 py-4 text-left">
+                    <tr className="bg-slate-900 border-b border-slate-700">
+                      <th className="px-5 py-3 text-left">
                         <input
                           type="checkbox"
                           checked={selectedDrivers.length === filteredDrivers.length && filteredDrivers.length > 0}
                           onChange={selectAllDrivers}
                           disabled={!filteredDrivers || filteredDrivers.length === 0}
-                          className="rounded bg-gray-800 border-gray-600 text-purple-500 focus:ring-purple-500 focus:ring-offset-gray-800 disabled:opacity-50"
+                          className="rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-0 disabled:opacity-50"
                         />
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Driver</th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">License</th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Contact</th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Assigned Bus</th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Experience</th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Password</th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Actions</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Driver</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">License</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Contact</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Assigned Bus</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Experience</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Password</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-700/50">
+                  <tbody className="divide-y divide-slate-700">
                     {filteredDrivers && filteredDrivers.length > 0 ? (
                       filteredDrivers.map((driver) => {
                         const licenseStatus = getLicenseStatus(driver?.license_expiry);
                         return (
-                          <tr key={driver.id} className="hover:bg-gray-700/30 transition-colors">
-                            <td className="px-6 py-4">
+                          <tr key={driver.id} className="hover:bg-slate-700/30 transition-colors">
+                            <td className="px-5 py-3">
                               <input
                                 type="checkbox"
                                 checked={selectedDrivers.includes(driver.id)}
                                 onChange={() => toggleDriverSelection(driver.id)}
-                                className="rounded bg-gray-800 border-gray-600 text-purple-500 focus:ring-purple-500 focus:ring-offset-gray-800"
+                                className="rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-0"
                               />
                             </td>
-                            <td className="px-6 py-4">
+                            <td className="px-5 py-3">
                               <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 bg-gradient-to-br from-purple-600 to-pink-600 rounded-lg flex items-center justify-center">
+                                <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
                                   <User className="text-white" size={14} />
                                 </div>
                                 <div>
-                                  <p className="font-medium text-gray-200">{driver?.name || 'N/A'}</p>
-                                  <p className="text-xs text-gray-500">{driver?.driver_code || 'No Code'}</p>
+                                  <p className="font-medium text-white">{driver?.name || 'N/A'}</p>
+                                  <p className="text-xs text-slate-500">{driver?.driver_code || 'No Code'}</p>
                                 </div>
                               </div>
                             </td>
-                            <td className="px-6 py-4">
+                            <td className="px-5 py-3">
                               <div className="flex flex-col">
-                                <span className="text-sm text-gray-300">{driver?.license_no || 'N/A'}</span>
+                                <span className="text-sm text-slate-300">{driver?.license_no || 'N/A'}</span>
                                 {driver?.license_expiry && (
                                   <span className={`text-xs ${
                                     licenseStatus === 'valid' ? 'text-emerald-400' :
                                     licenseStatus === 'expiring' ? 'text-amber-400' :
-                                    licenseStatus === 'expired' ? 'text-rose-400' :
-                                    'text-gray-500'
+                                    licenseStatus === 'expired' ? 'text-red-400' :
+                                    'text-slate-500'
                                   }`}>
                                     Exp: {new Date(driver.license_expiry).toLocaleDateString()}
                                   </span>
                                 )}
                               </div>
                             </td>
-                            <td className="px-6 py-4">
-                              <div className="text-sm text-gray-300">{driver?.contact || 'N/A'}</div>
+                            <td className="px-5 py-3">
+                              <div className="text-sm text-slate-300">{driver?.contact || 'N/A'}</div>
                             </td>
-                            <td className="px-6 py-4">
+                            <td className="px-5 py-3">
                               {driver?.bus ? (
                                 <div className="flex items-center">
                                   <Bus size={14} className="mr-1 text-emerald-400" />
                                   <span className="text-sm font-medium text-emerald-400">{driver.bus.bus_number}</span>
                                 </div>
                               ) : (
-                                <span className="text-sm text-gray-500">Not Assigned</span>
+                                <span className="text-sm text-slate-500">Not Assigned</span>
                               )}
                             </td>
-                            <td className="px-6 py-4">
-                              <span className="text-sm text-gray-300">
+                            <td className="px-5 py-3">
+                              <span className="text-sm text-slate-300">
                                 {driver?.experience_years ? `${driver.experience_years} years` : 'N/A'}
                               </span>
                             </td>
-                            <td className="px-6 py-4">
+                            <td className="px-5 py-3">
                               <div className="flex items-center gap-2">
-                                <Key size={14} className="text-gray-500" />
-                                <span className="text-sm text-gray-300">
+                                <Key size={14} className="text-slate-500" />
+                                <span className="text-sm text-slate-300">
                                   {showPassword[driver.id] ? driver.password || 'Not set' : '••••••••'}
                                 </span>
                                 <button
                                   onClick={() => togglePasswordVisibility(driver.id)}
-                                  className="text-xs text-purple-400 hover:text-purple-300"
+                                  className="text-xs text-blue-400 hover:text-blue-300"
                                 >
                                   {showPassword[driver.id] ? 'Hide' : 'Show'}
                                 </button>
                               </div>
                             </td>
-                            <td className="px-6 py-4">
+                            <td className="px-5 py-3">
                               <div className="flex gap-2">
                                 <button 
                                   onClick={() => openEditForm(driver)}
-                                  className="p-1.5 text-purple-400 hover:bg-purple-600/20 rounded-lg transition-colors"
+                                  className="p-1.5 text-blue-400 hover:bg-blue-600/20 rounded-lg transition-colors"
                                   title="Edit"
                                 >
                                   <Edit size={14} />
                                 </button>
                                 <button 
                                   onClick={() => deleteDriver(driver.id)}
-                                  className="p-1.5 text-rose-400 hover:bg-rose-600/20 rounded-lg transition-colors"
+                                  className="p-1.5 text-red-400 hover:bg-red-600/20 rounded-lg transition-colors"
                                   title="Delete"
                                 >
                                   <Trash2 size={14} />
@@ -960,10 +940,10 @@ function DriversDashboard() {
                       })
                     ) : (
                       <tr>
-                        <td colSpan="8" className="px-6 py-12 text-center">
+                        <td colSpan="8" className="px-5 py-12 text-center">
                           <div className="flex flex-col items-center justify-center">
-                            <Truck className="text-gray-600 mb-3" size={40} />
-                            <p className="text-gray-400">No drivers found</p>
+                            <Truck className="text-slate-600 mb-3" size={40} />
+                            <p className="text-slate-400">No drivers found</p>
                           </div>
                         </td>
                       </tr>
@@ -979,13 +959,13 @@ function DriversDashboard() {
       {/* Add/Edit Driver Modal */}
       {(showAddForm || editingDriver) && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-800 rounded-2xl shadow-2xl border border-gray-700 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-gray-800 border-b border-gray-700 px-6 py-4 flex justify-between items-center">
+          <div className="bg-slate-800 rounded-2xl border border-slate-700 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-slate-800 border-b border-slate-700 px-6 py-4 flex justify-between items-center">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-gradient-to-br from-purple-600 to-pink-600 rounded-xl">
+                <div className="p-2 bg-blue-600 rounded-xl">
                   {editingDriver ? <Edit className="text-white" size={20} /> : <UserPlus className="text-white" size={20} />}
                 </div>
-                <h3 className="text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+                <h3 className="text-xl font-bold text-white">
                   {editingDriver ? 'Edit Driver' : 'Add New Driver'}
                 </h3>
               </div>
@@ -995,7 +975,7 @@ function DriversDashboard() {
                   setEditingDriver(null);
                   resetForm();
                 }}
-                className="p-2 text-gray-400 hover:text-gray-300 hover:bg-gray-700 rounded-lg transition-all"
+                className="p-2 text-slate-400 hover:text-slate-300 hover:bg-slate-700 rounded-lg transition-all"
               >
                 <X size={20} />
               </button>
@@ -1004,93 +984,93 @@ function DriversDashboard() {
             <form onSubmit={editingDriver ? handleEditDriver : handleAddDriver} className="p-6 space-y-5">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Full Name *</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Full Name *</label>
                   <input
                     type="text"
                     required
                     value={newDriver.name}
                     onChange={(e) => setNewDriver(prev => ({ ...prev, name: e.target.value }))}
-                    className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-gray-200 placeholder-gray-500 transition-all"
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 placeholder-slate-500"
                     placeholder="Enter driver's full name"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Driver Code *</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Driver Code *</label>
                   <input
                     type="text"
                     required
                     value={newDriver.driver_code}
                     onChange={(e) => setNewDriver(prev => ({ ...prev, driver_code: e.target.value }))}
-                    className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-gray-200 placeholder-gray-500 transition-all"
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 placeholder-slate-500"
                     placeholder="e.g., DRV001"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Must be unique</p>
+                  <p className="text-xs text-slate-500 mt-1">Must be unique</p>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">License Number</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">License Number</label>
                   <input
                     type="text"
                     value={newDriver.license_no}
                     onChange={(e) => setNewDriver(prev => ({ ...prev, license_no: e.target.value }))}
-                    className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-gray-200 placeholder-gray-500 transition-all"
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 placeholder-slate-500"
                     placeholder="Enter license number"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Contact Number</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Contact Number</label>
                   <input
                     type="tel"
                     value={newDriver.contact}
                     onChange={(e) => setNewDriver(prev => ({ ...prev, contact: e.target.value }))}
-                    className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-gray-200 placeholder-gray-500 transition-all"
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 placeholder-slate-500"
                     placeholder="Enter phone number"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Experience (Years)</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Experience (Years)</label>
                   <input
                     type="number"
                     value={newDriver.experience_years}
                     onChange={(e) => setNewDriver(prev => ({ ...prev, experience_years: e.target.value }))}
-                    className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-gray-200 placeholder-gray-500 transition-all"
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 placeholder-slate-500"
                     placeholder="Years of experience"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">License Expiry Date</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">License Expiry Date</label>
                   <input
                     type="date"
                     value={newDriver.license_expiry}
                     onChange={(e) => setNewDriver(prev => ({ ...prev, license_expiry: e.target.value }))}
-                    className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-gray-200 transition-all"
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200"
                   />
                 </div>
 
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Address</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Address</label>
                   <textarea
                     value={newDriver.address}
                     onChange={(e) => setNewDriver(prev => ({ ...prev, address: e.target.value }))}
                     rows="2"
-                    className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-gray-200 placeholder-gray-500 transition-all"
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 placeholder-slate-500"
                     placeholder="Enter complete address"
                   />
                 </div>
                 
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    <Bus size={16} className="inline mr-1 text-purple-400" />
+                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                    <Bus size={16} className="inline mr-1 text-blue-400" />
                     Assign Bus (Optional)
                   </label>
                   <select
                     value={newDriver.bus_id}
                     onChange={(e) => setNewDriver(prev => ({ ...prev, bus_id: e.target.value }))}
-                    className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-gray-200 transition-all"
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200"
                   >
                     <option value="">No Bus Assigned</option>
                     {buses && buses.map(bus => {
@@ -1103,7 +1083,7 @@ function DriversDashboard() {
                           key={bus.id} 
                           value={bus.id}
                           disabled={isAssigned}
-                          className={isAssigned ? 'text-gray-500' : ''}
+                          className={isAssigned ? 'text-slate-500' : ''}
                         >
                           {bus.bus_number} - {bus.route_name || 'No Route'} {bus.status ? `(${bus.status})` : ''}
                           {isAssigned ? ' (Already Assigned)' : ''}
@@ -1111,29 +1091,29 @@ function DriversDashboard() {
                       );
                     })}
                   </select>
-                  <p className="text-xs text-gray-500 mt-1">Each bus can be assigned to only one driver</p>
+                  <p className="text-xs text-slate-500 mt-1">Each bus can be assigned to only one driver</p>
                 </div>
 
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-300 mb-2">
                     Password {!editingDriver && '*'}
-                    {editingDriver && <span className="text-xs text-gray-500 ml-2">(Leave blank to keep current)</span>}
+                    {editingDriver && <span className="text-xs text-slate-500 ml-2">(Leave blank to keep current)</span>}
                   </label>
                   <div className="relative">
-                    <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500" size={16} />
+                    <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500" size={16} />
                     <input
                       type="password"
                       required={!editingDriver}
                       value={newDriver.password}
                       onChange={(e) => setNewDriver(prev => ({ ...prev, password: e.target.value }))}
-                      className="w-full pl-10 pr-4 py-3 bg-gray-900/50 border border-gray-600 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-gray-200 placeholder-gray-500 transition-all"
+                      className="w-full pl-10 pr-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 placeholder-slate-500"
                       placeholder={editingDriver ? "Enter new password (optional)" : "Enter driver password"}
                     />
                   </div>
                 </div>
               </div>
 
-              <div className="flex justify-end gap-3 pt-6 border-t border-gray-700">
+              <div className="flex justify-end gap-3 pt-6 border-t border-slate-700">
                 <button
                   type="button"
                   onClick={() => {
@@ -1141,13 +1121,13 @@ function DriversDashboard() {
                     setEditingDriver(null);
                     resetForm();
                   }}
-                  className="px-6 py-3 text-gray-300 bg-gray-700 rounded-xl hover:bg-gray-600 transition-all font-medium"
+                  className="px-6 py-3 text-slate-300 bg-slate-700 rounded-xl hover:bg-slate-600 transition-all font-medium"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl hover:from-purple-700 hover:to-pink-700 transition-all font-medium shadow-lg shadow-purple-600/20"
+                  className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all font-medium"
                 >
                   <Save size={16} className="inline mr-2" />
                   {editingDriver ? 'Update Driver' : 'Add Driver'}
@@ -1162,7 +1142,7 @@ function DriversDashboard() {
       <div className="fixed bottom-6 right-6 z-40 sm:hidden">
         <button
           onClick={() => setShowAddForm(true)}
-          className="bg-gradient-to-r from-purple-600 to-pink-600 text-white p-4 rounded-full shadow-lg hover:from-purple-700 hover:to-pink-700 transition-all shadow-purple-600/20"
+          className="bg-blue-600 text-white p-4 rounded-full shadow-lg hover:bg-blue-700 transition-all"
           title="Add Driver"
         >
           <Plus size={24} />
@@ -1175,12 +1155,12 @@ function DriversDashboard() {
           <div className={`flex items-center gap-3 px-5 py-3 rounded-xl shadow-2xl border-l-4 ${
             toast.type === 'success' 
               ? 'bg-emerald-900/95 border-emerald-500 text-emerald-200' 
-              : 'bg-rose-900/95 border-rose-500 text-rose-200'
+              : 'bg-red-900/95 border-red-500 text-red-200'
           } backdrop-blur-sm`}>
             {toast.type === 'success' ? (
               <CheckCircle className="text-emerald-400" size={20} />
             ) : (
-              <AlertCircle className="text-rose-400" size={20} />
+              <AlertCircle className="text-red-400" size={20} />
             )}
             <span className="font-medium">{toast.message}</span>
             <button
