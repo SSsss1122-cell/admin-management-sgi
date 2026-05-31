@@ -26,8 +26,8 @@ export default function StudentsStopsPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [mapCenter, setMapCenter] = useState([17.289382, 76.869064])
   const [mapReady, setMapReady] = useState(false)
-const [busColors, setBusColors] = useState({})
-const [institutionId, setInstitutionId] = useState(null)
+  const [busColors, setBusColors] = useState({})
+  const [institutionId, setInstitutionId] = useState(null)
   const mapRef = useRef(null)
 
   const routeColors = ['#2563eb', '#059669', '#d97706', '#7c3aed', '#dc2626', '#0891b2']
@@ -46,22 +46,23 @@ const [institutionId, setInstitutionId] = useState(null)
       setL(leaflet)
 
       const storedInstitutionId = localStorage.getItem('institutionId')
+      
+      if (!storedInstitutionId) {
+        console.error('No institutionId found in localStorage')
+        setLoading(false)
+        return
+      }
 
-if (!storedInstitutionId) {
-  console.error('No institutionId found in localStorage')
-  return
-}
+      setInstitutionId(storedInstitutionId)
 
-setInstitutionId(storedInstitutionId)
-
-const { createClient } = await import('@supabase/supabase-js')
+      const { createClient } = await import('@supabase/supabase-js')
       const url = process.env.NEXT_PUBLIC_SUPABASE_URL
       const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
       if (url && key) {
         const client = createClient(url, key)
         setSupabase(client)
-        await loadBuses(client)
+        await loadBuses(client, storedInstitutionId)
       } else {
         loadDemoData()
       }
@@ -73,46 +74,43 @@ const { createClient } = await import('@supabase/supabase-js')
     }
   }
 
-  const loadBuses = async (client) => {
-  try {
-    const storedInstitutionId = localStorage.getItem('institutionId')
+  const loadBuses = async (client, instId = null) => {
+    try {
+      const institutionIdToUse = instId || localStorage.getItem('institutionId')
 
-    if (!storedInstitutionId) {
-      console.error('No institutionId found')
-      return
+      if (!institutionIdToUse) {
+        console.error('No institutionId found')
+        return
+      }
+
+      const { data, error } = await client
+        .from('buses')
+        .select('*')
+        .eq('institution_id', institutionIdToUse)
+        .eq('is_active', true)
+        .order('bus_number')
+
+      if (error) throw error
+
+      if (data?.length) {
+        const colors = {}
+        data.forEach((bus, i) => {
+          colors[bus.id] = routeColors[i % routeColors.length]
+        })
+        setBusColors(colors)
+        setBuses(data)
+        await selectBus(data[0], 'morning', client, institutionIdToUse)
+      } else {
+        setBuses([])
+        setBusStops([])
+        setRoutePositions([])
+      }
+    } catch (err) {
+      console.error('Load buses error:', err)
     }
-
-    const { data, error } = await client
-      .from('buses')
-      .select('*')
-      .eq('institution_id', storedInstitutionId)
-      .eq('is_active', true)
-      .order('bus_number')
-
-    if (error) throw error
-
-    if (data?.length) {
-      const colors = {}
-
-      data.forEach((bus, i) => {
-        colors[bus.id] = routeColors[i % routeColors.length]
-      })
-
-      setBusColors(colors)
-      setBuses(data)
-
-      await selectBus(data[0], 'morning', client)
-    } else {
-      setBuses([])
-      setBusStops([])
-      setRoutePositions([])
-    }
-  } catch (err) {
-    console.error('Load buses error:', err)
   }
-}
 
-  const selectBus = async (bus, dir = 'morning', client = supabase) => {
+  const selectBus = async (bus, dir = 'morning', client = supabase, instId = null) => {
     setSelectedBus(bus)
     setDirection(dir)
     setSelectedStop(null)
@@ -121,28 +119,35 @@ const { createClient } = await import('@supabase/supabase-js')
     setRoutePositions([])
 
     if (!client) return
-    if (!institutionId) {
-  console.error('institutionId missing')
-  return
-}
+    
+    const institutionIdToUse = instId || institutionId || localStorage.getItem('institutionId')
+    
+    if (!institutionIdToUse) {
+      console.error('institutionId missing')
+      return
+    }
 
     try {
       const { data: stops, error: stopsErr } = await client
         .from('bus_stops')
-.select('*')
-.eq('institution_id', institutionId)
-.eq('bus_id', bus.id)
-.eq('direction', dir)
-.order('sequence')
+        .select('*')
+        .eq('institution_id', institutionIdToUse)
+        .eq('bus_id', bus.id)
+        .eq('direction', dir)
+        .order('sequence')
 
       if (stopsErr) throw stopsErr
-      if (!stops?.length) { setBusStops([]); setRoutePositions([]); return }
+      if (!stops?.length) { 
+        setBusStops([])
+        setRoutePositions([])
+        return 
+      }
 
       const stopIds = stops.map(s => s.id)
       const { data: studentStopsData } = await client
         .from('students_stops')
         .select('stop_id, student_id')
-        .eq('institution_id', institutionId)
+        .eq('institution_id', institutionIdToUse)
         .in('stop_id', stopIds)
 
       const stopCountMap = {}
@@ -163,9 +168,13 @@ const { createClient } = await import('@supabase/supabase-js')
           const { data: studentsData } = await client
             .from('students')
             .select('*')
-            .eq('institution_id', institutionId)
+            .eq('institution_id', institutionIdToUse)
             .in('id', chunk)
-          if (studentsData) studentsData.forEach(s => { studentsMap[s.id] = s })
+          if (studentsData) {
+            studentsData.forEach(s => { 
+              studentsMap[s.id] = s 
+            })
+          }
         }
       }
 
@@ -173,7 +182,9 @@ const { createClient } = await import('@supabase/supabase-js')
       if (studentStopsData) {
         studentStopsData.forEach(ss => {
           if (!stopStudentsMap[ss.stop_id]) stopStudentsMap[ss.stop_id] = []
-          if (studentsMap[ss.student_id]) stopStudentsMap[ss.stop_id].push(studentsMap[ss.student_id])
+          if (studentsMap[ss.student_id]) {
+            stopStudentsMap[ss.stop_id].push(studentsMap[ss.student_id])
+          }
         })
       }
 
@@ -190,7 +201,9 @@ const { createClient } = await import('@supabase/supabase-js')
         .map(s => [parseFloat(s.latitude), parseFloat(s.longitude)])
 
       if (positions.length >= 2) setRoutePositions(positions)
-      if (enrichedStops.length > 0) setMapCenter([parseFloat(enrichedStops[0].latitude), parseFloat(enrichedStops[0].longitude)])
+      if (enrichedStops.length > 0) {
+        setMapCenter([parseFloat(enrichedStops[0].latitude), parseFloat(enrichedStops[0].longitude)])
+      }
 
     } catch (err) {
       console.error('Select bus error:', err)
@@ -212,12 +225,14 @@ const { createClient } = await import('@supabase/supabase-js')
       return
     }
     
-    if (supabase && stop.id) {
+    const institutionIdToUse = institutionId || localStorage.getItem('institutionId')
+    
+    if (supabase && stop.id && institutionIdToUse) {
       try {
         const { data: ssData } = await supabase
           .from('students_stops')
           .select('student_id')
-          .eq('institution_id', institutionId)
+          .eq('institution_id', institutionIdToUse)
           .eq('stop_id', stop.id)
 
         if (ssData && ssData.length > 0) {
@@ -225,7 +240,7 @@ const { createClient } = await import('@supabase/supabase-js')
           const { data: students } = await supabase
             .from('students')
             .select('*')
-            .eq('institution_id', institutionId)
+            .eq('institution_id', institutionIdToUse)
             .in('id', studentIds)
           setStopStudents(students || [])
         } else {
@@ -243,30 +258,31 @@ const { createClient } = await import('@supabase/supabase-js')
     setStudentDetails(student)
     setSidebarOpen(true)
 
-    // Fetch more details from Supabase in background
-    if (supabase && student.id && !String(student.id).startsWith('s')) {
+    const institutionIdToUse = institutionId || localStorage.getItem('institutionId')
+
+    if (supabase && student.id && !String(student.id).startsWith('s') && institutionIdToUse) {
       supabase
-  .from('students')
-  .select('*')
-  .eq('institution_id', institutionId)
-  .eq('id', student.id)
-  .single()
+        .from('students')
+        .select('*')
+        .eq('institution_id', institutionIdToUse)
+        .eq('id', student.id)
+        .single()
         .then(({ data: fullStudent, error }) => {
           if (!error && fullStudent) {
             supabase
-  .from('students_stops')
-  .select('stop_id, assigned_at')
-  .eq('institution_id', institutionId)
-  .eq('student_id', student.id)
-  .single()
+              .from('students_stops')
+              .select('stop_id, assigned_at')
+              .eq('institution_id', institutionIdToUse)
+              .eq('student_id', student.id)
+              .single()
               .then(({ data: ssData }) => {
                 if (ssData?.stop_id) {
                   supabase
-  .from('bus_stops')
-  .select('id, stop_name')
-  .eq('institution_id', institutionId)
-  .eq('id', ssData.stop_id)
-  .single()
+                    .from('bus_stops')
+                    .select('id, stop_name')
+                    .eq('institution_id', institutionIdToUse)
+                    .eq('id', ssData.stop_id)
+                    .single()
                     .then(({ data: bs }) => {
                       setStudentDetails({ ...fullStudent, assigned_stop: bs, assigned_at: ssData?.assigned_at })
                     })
