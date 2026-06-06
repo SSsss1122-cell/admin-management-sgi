@@ -214,4 +214,4 @@ async function sendWhatsAppMessage(to, message) {
   } catch (error) {
     console.error("Send error:", error);
   }
-}s
+}
