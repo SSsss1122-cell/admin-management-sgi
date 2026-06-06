@@ -39,6 +39,8 @@ export async function POST(request) {
     if (cleanNumber.startsWith('91')) cleanNumber = cleanNumber.substring(2);
     cleanNumber = cleanNumber.replace(/^0+/, '');
     
+    console.log(`📞 Clean Number: ${cleanNumber}`);
+    
     // Check if admin from DATABASE and get their role
     const { data: adminData, error: adminError } = await supabase
       .from('admins')
@@ -46,8 +48,36 @@ export async function POST(request) {
       .eq('mobile_number', cleanNumber)
       .maybeSingle();
     
+    if (adminError) {
+      console.error('Admin fetch error:', adminError);
+    }
+    
     const isAdmin = adminData !== null;
-    const adminRole = adminData?.role || null;
+    let adminRole = adminData?.role || null;
+    
+    // If role is null or empty, assign default based on number or set as super_admin
+    if (isAdmin && (!adminRole || adminRole === '')) {
+      // You can set default roles based on phone numbers here
+      // For example, let's set some known numbers
+      const defaultRoles = {
+        '9480072737': 'super_admin',  // Your number
+        // Add other numbers with their roles
+      };
+      
+      adminRole = defaultRoles[cleanNumber] || 'bus_admin'; // Default to bus_admin
+      
+      // Update the database with the role
+      const { error: updateError } = await supabase
+        .from('admins')
+        .update({ role: adminRole })
+        .eq('mobile_number', cleanNumber);
+      
+      if (updateError) {
+        console.error('Failed to update role:', updateError);
+      } else {
+        console.log(`✅ Updated role for ${cleanNumber} to: ${adminRole}`);
+      }
+    }
     
     console.log(`👑 Is Admin: ${isAdmin}`);
     console.log(`📋 Admin Role: ${adminRole}`);
@@ -60,11 +90,12 @@ export async function POST(request) {
       
       console.log(`📍 Current Mode: ${currentMode || 'none'}`);
       console.log(`📍 Message: ${upperMsg}`);
+      console.log(`📍 Role: ${adminRole}`);
       
       // ============ SUPER ADMIN - Full Access ============
       if (adminRole === 'super_admin') {
         // Show mode selection menu for super admin
-        if (['HI', 'HELLO', 'HEY', 'START', 'MENU', 'H'].includes(upperMsg) || 
+        if (['HI', 'HELLO', 'HEY', 'START', 'MENU', 'H', ''].includes(upperMsg) || 
             (upperMsg !== 'BUS' && upperMsg !== 'HOSTEL' && upperMsg !== 'EXIT' && upperMsg !== 'BACK' && !currentMode)) {
           replyMessage = getSuperAdminMenu();
           adminSessions.delete(cleanNumber);
@@ -110,15 +141,10 @@ export async function POST(request) {
         if (upperMsg === 'HOSTEL') {
           replyMessage = `❌ *ACCESS DENIED*\n\nYou are a Bus Admin. You only have access to Bus Administration.\n\nType *MENU* to see Bus Admin options.`;
         }
-        // Auto-route to bus mode
-        else if (['HI', 'HELLO', 'HEY', 'START', 'MENU', 'H'].includes(upperMsg) || !currentMode) {
-          replyMessage = `🚌 *BUS ADMIN MODE*\n\n${await handleAdminCommands('MENU', cleanNumber)}`;
-          adminSessions.set(cleanNumber, 'bus');
-        }
-        else if (upperMsg === 'EXIT' || upperMsg === 'BACK') {
-          replyMessage = `🚌 *BUS ADMIN MODE*\n\n${await handleAdminCommands('MENU', cleanNumber)}`;
-        }
+        // Auto-route to bus mode for any message
         else {
+          // Always stay in bus mode
+          adminSessions.set(cleanNumber, 'bus');
           replyMessage = await handleAdminCommands(userMessage, cleanNumber);
         }
       }
@@ -129,22 +155,20 @@ export async function POST(request) {
         if (upperMsg === 'BUS') {
           replyMessage = `❌ *ACCESS DENIED*\n\nYou are a Hostel Admin. You only have access to Hostel Administration.\n\nType *MENU* to see Hostel Admin options.`;
         }
-        // Auto-route to hostel mode
-        else if (['HI', 'HELLO', 'HEY', 'START', 'MENU', 'H'].includes(upperMsg) || !currentMode) {
-          replyMessage = `🏨 *HOSTEL ADMIN MODE*\n\n${await handleHostelAdminCommands('MENU', cleanNumber)}`;
-          adminSessions.set(cleanNumber, 'hostel');
-        }
-        else if (upperMsg === 'EXIT' || upperMsg === 'BACK') {
-          replyMessage = `🏨 *HOSTEL ADMIN MODE*\n\n${await handleHostelAdminCommands('MENU', cleanNumber)}`;
-        }
+        // Auto-route to hostel mode for any message
         else {
+          // Always stay in hostel mode
+          adminSessions.set(cleanNumber, 'hostel');
           replyMessage = await handleHostelAdminCommands(userMessage, cleanNumber);
         }
       }
       
       // ============ DEFAULT - Unknown role ============
       else {
-        replyMessage = `❌ *Unknown Admin Role*\n\nPlease contact system administrator.`;
+        // If role is not recognized, treat as bus admin by default
+        console.log(`⚠️ Unknown role "${adminRole}", defaulting to bus_admin`);
+        adminSessions.set(cleanNumber, 'bus');
+        replyMessage = await handleAdminCommands(userMessage, cleanNumber);
       }
     } else {
       console.log(`🔄 Routing to STUDENT handler`);
