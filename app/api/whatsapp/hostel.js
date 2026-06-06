@@ -72,6 +72,9 @@ export async function handleHostelAdminCommands(userMessage, cleanNumber) {
   else if (['SHORTCUT', 'SHORTCUTS'].includes(upperMsg)) {
     replyMessage = getHostelShortcutGuide();
   }
+  else if (['EXIT', 'BACK', 'MAIN MENU'].includes(upperMsg)) {
+    replyMessage = `👋 *Exiting Hostel Admin Mode*\n\nType *MENU* to see main admin menu or *HOSTEL ADMIN* to return.`;
+  }
   
   // ============ SEARCH WITH ARGS ============
   else if (userMessage?.match(/^search\s/i)) {
@@ -113,7 +116,7 @@ export async function handleHostelAdminCommands(userMessage, cleanNumber) {
   
   // ============ DEFAULT ============
   else if (userMessage && userMessage !== '') {
-    replyMessage = `🏨 *WELCOME HOSTEL ADMIN*\n\n${getHostelMainMenu()}`;
+    replyMessage = `🏨 *HOSTEL ADMIN MODE*\n\nType *MENU* for options or *EXIT* to leave hostel mode.\n\n${getHostelMainMenu()}`;
   }
   
   return replyMessage;
@@ -179,65 +182,66 @@ function getHostelMainMenu() {
 • MOVE <prn>|<new_room>
 
 ⚡ *Shortcuts:* SHORTCUTS
+🔙 *Exit:* EXIT
 
-👑 *Hostel Admin:* ${process.env.HOSTEL_ADMIN_NUMBER || '9480072737'}`;
+🏨 *Hostel Admin Mode Active*`;
 }
-function getHostelMainMenu() {
-  return `
-╔════════════════════════════╗
-║   🏨 *HOSTEL ADMIN PANEL*    ║
+
+function getHostelShortcutGuide() {
+  return `╔════════════════════════════╗
+║   ⚡ *QUICK COMMANDS*    ║
 ╚════════════════════════════╝
 
-  👥 *RESIDENT MENU*          
-─────────────────────────
- 1️⃣  RESIDENT LIST           
- 2️⃣  SEARCH RESIDENT          
- 3️⃣  RESIDENT COUNT (Course)  
-─────────────────────────
-
-  🚪 *ROOM MENU*              
-─────────────────────────
- 4️⃣  ROOM LIST               
- 5️⃣  ROOM DETAILS            
- 6️⃣  VACANT ROOMS            
-─────────────────────────
-
-  💰 *FEES MENU*              
-─────────────────────────
- 7️⃣  HOSTEL FEE CHECK        
- 8️⃣  FEE DUE LIST            
- 9️⃣  FEE SUMMARY             
-─────────────────────────
-
-  📚 *COURSE & BATCH*         
-─────────────────────────
- 🔟  COURSE WISE LIST         
- 1️⃣1️⃣  BATCH WISE LIST         
-─────────────────────────
-
-  📅 *ADMISSIONS*             
-─────────────────────────
- 1️⃣2️⃣  RECENT ADMISSIONS      
- 1️⃣3️⃣  FEES EXPIRING SOON     
-─────────────────────────
-
-  📊 *UTILITIES*              
-─────────────────────────
- 1️⃣4️⃣  EXPORT CSV             
- 1️⃣5️⃣  STATISTICS             
-─────────────────────────
-
-💡 *Quick Commands:* 
-• SEARCH <PRN/Name>
-• ROOM <room_no>
-• FEE <PRN/Name>
-• COURSE <course>
-• BATCH <year>
-
-🔙 *Type EXIT or BACK to return to main admin menu*
-
-👑 *Hostel Admin Mode Active*`;
+ADD <name>|<prn>|<course>|<room>
+DELETE <prn>
+SEARCH <prn or name>
+FEE <prn>
+UPDATE <prn>|<amount>
+ROOM <room_no>
+MOVE <prn>|<new_room>
+COURSE <course_name>
+BATCH <year>
+EXPORT - Get CSV file
+STATS - View statistics
+EXIT - Exit hostel mode`;
 }
+
+function getSearchResidentFormat() {
+  return `🔍 *SEARCH RESIDENT*
+Format: SEARCH <PRN or Name>
+Example: SEARCH 8857090461
+
+You can search by:
+- PRN/Mobile Number (full or partial)
+- Resident name (full or partial)
+- Course name
+- Room number`;
+}
+
+function getRoomDetailsFormat() {
+  return `🚪 *ROOM DETAILS*
+Format: ROOM <room_number>
+Example: ROOM 26
+
+Shows:
+• Current occupants
+• Room sharing capacity
+• Occupancy status
+• Resident details`;
+}
+
+function getHostelFeeFormat() {
+  return `💰 *HOSTEL FEE CHECK*
+Format: FEE <PRN or Name>
+Example: FEE 8857090461 or FEE Dharati
+
+Shows:
+• Installment amount
+• Due date
+• Payment status
+• Room and sharing details`;
+}
+
 // ============================================
 // RESIDENT FUNCTIONS
 // ============================================
@@ -263,7 +267,6 @@ async function getResidentList() {
     let message = `🏨 *RESIDENT LIST* (${residents.length})\n`;
     message += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
     
-    // Show first 30 residents to avoid message length limit
     const displayResidents = residents.slice(0, 30);
     displayResidents.forEach((r, i) => {
       message += `${i+1}. 👤 ${r["Resident Name"]}\n`;
@@ -368,8 +371,7 @@ async function getRoomList() {
   try {
     const { data: rooms, error } = await supabase
       .from('hostel')
-      .select('"Room", "Sharing", count:"Resident Name"')
-      .order('"Room"');
+      .select('"Room", "Sharing"');
     
     if (error) {
       console.error('Room fetch error:', error);
@@ -380,7 +382,6 @@ async function getRoomList() {
       return '🚪 *No rooms found*';
     }
     
-    // Group by room
     const roomMap = new Map();
     rooms.forEach(r => {
       const roomNo = r["Room"];
@@ -915,4 +916,373 @@ async function getResidentsByBatch(batchYear) {
   }
 }
 
-// =
+// ============================================
+// ADMISSION FUNCTIONS
+// ============================================
+
+async function getRecentAdmissions() {
+  try {
+    const { data: residents, error } = await supabase
+      .from('hostel')
+      .select('*')
+      .order('"Admission Date"', { ascending: false })
+      .limit(20);
+    
+    if (error) {
+      console.error('Recent admissions error:', error);
+      return '❌ *Database Error*';
+    }
+    
+    if (!residents || residents.length === 0) {
+      return '📅 *No admissions found*';
+    }
+    
+    let message = `📅 *RECENT ADMISSIONS* (Last 20)\n`;
+    message += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+    
+    residents.forEach((r, i) => {
+      message += `${i+1}. *${r["Resident Name"]}*\n`;
+      message += `   📅 Admission: ${r["Admission Date"]}\n`;
+      message += `   📚 ${r["Course"]} (${r["Batch"]})\n`;
+      message += `   🚪 Room ${r["Room"]}\n\n`;
+    });
+    
+    return message;
+  } catch (error) {
+    console.error('Exception:', error);
+    return `❌ *Error*: ${error.message}`;
+  }
+}
+
+// ============================================
+// CRUD OPERATIONS
+// ============================================
+
+async function addResident(data) {
+  if (!data || data.length < 4) {
+    return `❌ *Invalid Format*\n\nCorrect format:\nADD <resident name>|<prn/mobile>|<course>|<room>\n\nExample:\nADD John Doe|9876543210|BAMS|26\n\nOptional: ADD <name>|<prn>|<course>|<room>|<batch>|<amount>|<due_date>|<sharing>`;
+  }
+  
+  const [name, prn, course, room, batch, amount, dueDate, sharing] = data;
+  
+  try {
+    // Check if resident already exists
+    const { data: existing } = await supabase
+      .from('hostel')
+      .select('"PRN/Mobile  Number"')
+      .eq('"PRN/Mobile  Number"', prn)
+      .maybeSingle();
+    
+    if (existing) {
+      return `❌ *Resident already exists*\n\nPRN: ${prn}\nUse UPDATE to modify or DELETE to remove.`;
+    }
+    
+    const insertData = {
+      "PRN/Mobile  Number": prn?.trim(),
+      "Resident Name": name?.trim(),
+      "Course": course?.trim(),
+      "Room": room?.trim(),
+      "Batch": batch ? parseInt(batch) : new Date().getFullYear(),
+      "Install Ment Name(Amount)": amount ? parseFloat(amount) : 0,
+      "Fees Due Date(DD-MM-YY)": dueDate || null,
+      "Sharing": sharing ? parseInt(sharing) : 4,
+      "Admission Date": new Date().toLocaleDateString('en-GB')
+    };
+    
+    const { error } = await supabase
+      .from('hostel')
+      .insert(insertData);
+    
+    if (error) {
+      console.error('Add resident error:', error);
+      return `❌ *Failed to add resident*\n\nError: ${error.message}`;
+    }
+    
+    let message = `✅ *RESIDENT ADDED SUCCESSFULLY*
+━━━━━━━━━━━━━━━━━━━━━━
+
+👤 *Name:* ${name}
+📱 *PRN:* ${prn}
+📚 *Course:* ${course}
+🚪 *Room:* ${room}
+📅 *Batch:* ${batch || new Date().getFullYear()}`;
+    
+    if (amount) message += `\n💰 *Installment:* ₹${parseFloat(amount).toLocaleString()}`;
+    if (dueDate) message += `\n📅 *Due Date:* ${dueDate}`;
+    
+    message += `\n\n💡 Use UPDATE ${prn}|<amount> to update fees`;
+    
+    return message;
+  } catch (error) {
+    console.error('Exception in addResident:', error);
+    return `❌ *Error*: ${error.message}`;
+  }
+}
+
+async function updateResidentFee(prn, amount) {
+  if (!prn || !amount) {
+    return `❌ *Invalid Format*\n\nCorrect format:\nUPDATE <prn>|<amount>\n\nExample:\nUPDATE 8857090461|50000`;
+  }
+  
+  try {
+    const { data: resident, error: fetchError } = await supabase
+      .from('hostel')
+      .select('*')
+      .eq('"PRN/Mobile  Number"', prn)
+      .single();
+    
+    if (fetchError || !resident) {
+      return `❌ *Resident not found:* ${prn}`;
+    }
+    
+    const currentAmount = Number(resident["Install Ment Name(Amount)"]) || 0;
+    const newAmount = currentAmount + Number(amount);
+    
+    const { error: updateError } = await supabase
+      .from('hostel')
+      .update({
+        "Install Ment Name(Amount)": newAmount
+      })
+      .eq('"PRN/Mobile  Number"', prn);
+    
+    if (updateError) {
+      console.error('Update error:', updateError);
+      return `❌ *Failed to update fees*\n\nError: ${updateError.message}`;
+    }
+    
+    return `✅ *FEES UPDATED SUCCESSFULLY*
+━━━━━━━━━━━━━━━━━━━━━━
+
+👤 *Resident:* ${resident["Resident Name"]}
+📱 *PRN:* ${prn}
+
+💰 *Previous Installment:* ₹${currentAmount.toLocaleString()}
+💵 *Amount Added:* ₹${Number(amount).toLocaleString()}
+✅ *New Installment Amount:* ₹${newAmount.toLocaleString()}`;
+  } catch (error) {
+    console.error('Exception in updateResidentFee:', error);
+    return `❌ *Error*: ${error.message}`;
+  }
+}
+
+async function deleteResident(prn) {
+  if (!prn || prn.trim() === '') {
+    return `❌ *Invalid Format*\n\nCorrect format:\nDELETE <prn>\n\nExample:\nDELETE 8857090461`;
+  }
+  
+  try {
+    const { data: resident } = await supabase
+      .from('hostel')
+      .select('"Resident Name"')
+      .eq('"PRN/Mobile  Number"', prn)
+      .single();
+    
+    const { error } = await supabase
+      .from('hostel')
+      .delete()
+      .eq('"PRN/Mobile  Number"', prn);
+    
+    if (error) {
+      console.error('Delete error:', error);
+      return `❌ *Failed to delete resident*\n\nError: ${error.message}`;
+    }
+    
+    return `✅ *RESIDENT DELETED*
+━━━━━━━━━━━━━━━━━━━━━━
+
+👤 *Name:* ${resident?.["Resident Name"] || 'Unknown'}
+📱 *PRN:* ${prn}
+
+⚠️ This action cannot be undone.`;
+  } catch (error) {
+    console.error('Exception in deleteResident:', error);
+    return `❌ *Error*: ${error.message}`;
+  }
+}
+
+async function moveResidentRoom(prn, newRoom) {
+  if (!prn || !newRoom) {
+    return `❌ *Invalid Format*\n\nCorrect format:\nMOVE <prn>|<new_room>\n\nExample:\nMOVE 8857090461|30`;
+  }
+  
+  try {
+    // Check if resident exists
+    const { data: resident, error: fetchError } = await supabase
+      .from('hostel')
+      .select('"Resident Name", "Room"')
+      .eq('"PRN/Mobile  Number"', prn)
+      .single();
+    
+    if (fetchError || !resident) {
+      return `❌ *Resident not found:* ${prn}`;
+    }
+    
+    const oldRoom = resident["Room"];
+    
+    const { error: updateError } = await supabase
+      .from('hostel')
+      .update({ "Room": newRoom })
+      .eq('"PRN/Mobile  Number"', prn);
+    
+    if (updateError) {
+      console.error('Move error:', updateError);
+      return `❌ *Failed to move resident*\n\nError: ${updateError.message}`;
+    }
+    
+    return `✅ *ROOM CHANGED SUCCESSFULLY*
+━━━━━━━━━━━━━━━━━━━━━━
+
+👤 *Resident:* ${resident["Resident Name"]}
+📱 *PRN:* ${prn}
+🚪 *Old Room:* ${oldRoom}
+🚪 *New Room:* ${newRoom}`;
+  } catch (error) {
+    console.error('Exception in moveResidentRoom:', error);
+    return `❌ *Error*: ${error.message}`;
+  }
+}
+
+// ============================================
+// UTILITY FUNCTIONS
+// ============================================
+
+async function exportHostelData() {
+  try {
+    const { data: residents, error } = await supabase
+      .from('hostel')
+      .select('*')
+      .order('"Resident Name"');
+    
+    if (error) {
+      console.error('Export error:', error);
+      return '❌ *Database Error*';
+    }
+    
+    if (!residents || residents.length === 0) {
+      return '📭 *No data to export*';
+    }
+    
+    // Create CSV content
+    const headers = ['PRN/Mobile Number', 'Resident Name', 'Course', 'Batch', 'Installment Amount', 'Fees Due Date', 'Room', 'Sharing', 'Admission Date'];
+    const csvRows = [headers.join(',')];
+    
+    residents.forEach(r => {
+      const row = [
+        r["PRN/Mobile  Number"] || '',
+        `"${r["Resident Name"] || ''}"`,
+        r["Course"] || '',
+        r["Batch"] || '',
+        r["Install Ment Name(Amount)"] || 0,
+        r["Fees Due Date(DD-MM-YY)"] || '',
+        r["Room"] || '',
+        r["Sharing"] || '',
+        r["Admission Date"] || ''
+      ];
+      csvRows.push(row.join(','));
+    });
+    
+    const csvContent = csvRows.join('\n');
+    
+    // Note: In a real implementation, you would upload this to storage and send a link
+    // For now, return summary
+    return `📊 *EXPORT READY*
+━━━━━━━━━━━━━━━━━━━━━━
+
+📋 *Total Records:* ${residents.length}
+
+📁 *Data includes:*
+• Resident Names
+• PRN/Mobile Numbers
+• Course & Batch
+• Room & Sharing
+• Fee Installments
+• Due Dates
+• Admission Dates
+
+💡 *To get CSV file:* Contact system administrator to enable file export feature.
+
+📊 *Quick Stats:*
+• Total Residents: ${residents.length}
+• Unique Rooms: ${new Set(residents.map(r => r["Room"])).size}
+• Courses: ${new Set(residents.map(r => r["Course"])).size}`;
+  } catch (error) {
+    console.error('Exception in exportHostelData:', error);
+    return `❌ *Error*: ${error.message}`;
+  }
+}
+
+async function getHostelStatistics() {
+  try {
+    const { data: residents, error } = await supabase
+      .from('hostel')
+      .select('*');
+    
+    if (error) {
+      console.error('Statistics error:', error);
+      return '❌ *Database Error*';
+    }
+    
+    if (!residents || residents.length === 0) {
+      return '📭 *No data available*';
+    }
+    
+    const totalResidents = residents.length;
+    const uniqueRooms = new Set(residents.map(r => r["Room"])).size;
+    const uniqueCourses = new Set(residents.map(r => r["Course"])).size;
+    const uniqueBatches = new Set(residents.map(r => r["Batch"])).size;
+    
+    let totalInstallments = 0;
+    residents.forEach(r => {
+      totalInstallments += Number(r["Install Ment Name(Amount)"]) || 0;
+    });
+    
+    // Room occupancy stats
+    const roomMap = new Map();
+    residents.forEach(r => {
+      const room = r["Room"];
+      if (!roomMap.has(room)) {
+        roomMap.set(room, { count: 0, sharing: r["Sharing"] });
+      }
+      roomMap.get(room).count++;
+    });
+    
+    let fullRooms = 0;
+    let availableRooms = 0;
+    for (const [_, data] of roomMap.entries()) {
+      if (data.count === data.sharing) {
+        fullRooms++;
+      } else {
+        availableRooms++;
+      }
+    }
+    
+    let message = `📊 *HOSTEL STATISTICS*
+━━━━━━━━━━━━━━━━━━━━━━
+
+👥 *Residents:* ${totalResidents}
+🚪 *Rooms:* ${uniqueRooms}
+📚 *Courses:* ${uniqueCourses}
+🎓 *Batches:* ${uniqueBatches}
+
+━━━━━━━━━━━━━━━━━━━━━━
+🚪 *ROOM OCCUPANCY*
+• 🟢 Full Rooms: ${fullRooms}
+• 🟡 Available Rooms: ${availableRooms}
+• 📊 Avg per Room: ${(totalResidents / uniqueRooms).toFixed(1)}
+
+━━━━━━━━━━━━━━━━━━━━━━
+💰 *FINANCIALS*
+• Total Installments: ₹${totalInstallments.toLocaleString()}
+• Avg per Resident: ₹${Math.round(totalInstallments / totalResidents).toLocaleString()}
+
+━━━━━━━━━━━━━━━━━━━━━━
+📅 *ADMISSIONS*
+• Latest: ${residents[0]?.["Admission Date"] || 'N/A'}
+• Earliest: ${residents[residents.length - 1]?.["Admission Date"] || 'N/A'}`;
+    
+    return message;
+  } catch (error) {
+    console.error('Exception:', error);
+    return `❌ *Error*: ${error.message}`;
+  }
+}
