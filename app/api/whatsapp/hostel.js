@@ -182,61 +182,62 @@ function getHostelMainMenu() {
 
 👑 *Hostel Admin:* ${process.env.HOSTEL_ADMIN_NUMBER || '9480072737'}`;
 }
-
-function getHostelShortcutGuide() {
-  return `╔════════════════════════════╗
-║   ⚡ *QUICK COMMANDS*    ║
+function getHostelMainMenu() {
+  return `
+╔════════════════════════════╗
+║   🏨 *HOSTEL ADMIN PANEL*    ║
 ╚════════════════════════════╝
 
-ADD <name>|<prn>|<course>|<room>
-DELETE <prn>
-SEARCH <prn or name>
-FEE <prn>
-UPDATE <prn>|<amount>
-ROOM <room_no>
-MOVE <prn>|<new_room>
-COURSE <course_name>
-BATCH <year>
-EXPORT - Get CSV file
-STATS - View statistics`;
+  👥 *RESIDENT MENU*          
+─────────────────────────
+ 1️⃣  RESIDENT LIST           
+ 2️⃣  SEARCH RESIDENT          
+ 3️⃣  RESIDENT COUNT (Course)  
+─────────────────────────
+
+  🚪 *ROOM MENU*              
+─────────────────────────
+ 4️⃣  ROOM LIST               
+ 5️⃣  ROOM DETAILS            
+ 6️⃣  VACANT ROOMS            
+─────────────────────────
+
+  💰 *FEES MENU*              
+─────────────────────────
+ 7️⃣  HOSTEL FEE CHECK        
+ 8️⃣  FEE DUE LIST            
+ 9️⃣  FEE SUMMARY             
+─────────────────────────
+
+  📚 *COURSE & BATCH*         
+─────────────────────────
+ 🔟  COURSE WISE LIST         
+ 1️⃣1️⃣  BATCH WISE LIST         
+─────────────────────────
+
+  📅 *ADMISSIONS*             
+─────────────────────────
+ 1️⃣2️⃣  RECENT ADMISSIONS      
+ 1️⃣3️⃣  FEES EXPIRING SOON     
+─────────────────────────
+
+  📊 *UTILITIES*              
+─────────────────────────
+ 1️⃣4️⃣  EXPORT CSV             
+ 1️⃣5️⃣  STATISTICS             
+─────────────────────────
+
+💡 *Quick Commands:* 
+• SEARCH <PRN/Name>
+• ROOM <room_no>
+• FEE <PRN/Name>
+• COURSE <course>
+• BATCH <year>
+
+🔙 *Type EXIT or BACK to return to main admin menu*
+
+👑 *Hostel Admin Mode Active*`;
 }
-
-function getSearchResidentFormat() {
-  return `🔍 *SEARCH RESIDENT*
-Format: SEARCH <PRN or Name>
-Example: SEARCH 8857090461
-
-You can search by:
-- PRN/Mobile Number (full or partial)
-- Resident name (full or partial)
-- Course name
-- Room number`;
-}
-
-function getRoomDetailsFormat() {
-  return `🚪 *ROOM DETAILS*
-Format: ROOM <room_number>
-Example: ROOM 26
-
-Shows:
-• Current occupants
-• Room sharing capacity
-• Occupancy status
-• Resident details`;
-}
-
-function getHostelFeeFormat() {
-  return `💰 *HOSTEL FEE CHECK*
-Format: FEE <PRN or Name>
-Example: FEE 8857090461 or FEE Dharati
-
-Shows:
-• Installment amount
-• Due date
-• Payment status
-• Room and sharing details`;
-}
-
 // ============================================
 // RESIDENT FUNCTIONS
 // ============================================

@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server';
 import { handleAdminCommands } from './admin';
 import { handleStudentCommands } from './student';
-import { handleHostelAdminCommands } from './hostel'; // Import hostel admin handler
+import { handleHostelAdminCommands } from './hostelAdmin';
 import { supabase } from '@/lib/supabase';
+
+// Simple in-memory session store for hostel admin mode
+// In production, use Redis or database
+const hostelAdminSessions = new Map();
 
 export async function POST(request) {
   try {
@@ -49,14 +53,29 @@ export async function POST(request) {
     
     let replyMessage;
     
-    // Route to appropriate handler
     if (isAdmin) {
-      // Check if admin wants hostel admin menu
       const upperMsg = userMessage?.toUpperCase().trim() || '';
+      const isInHostelMode = hostelAdminSessions.get(cleanNumber) === true;
+      
+      // Check if user wants to switch to hostel admin
       if (upperMsg === 'HOSTEL ADMIN') {
-        console.log(`🏨 Routing to HOSTEL ADMIN handler`);
+        console.log(`🏨 Switching to HOSTEL ADMIN mode`);
+        hostelAdminSessions.set(cleanNumber, true);
         replyMessage = await handleHostelAdminCommands(userMessage, cleanNumber);
-      } else {
+      }
+      // Check if user wants to exit hostel admin mode
+      else if (upperMsg === 'EXIT' || upperMsg === 'BACK' || upperMsg === 'MAIN MENU') {
+        console.log(`🔙 Exiting HOSTEL ADMIN mode`);
+        hostelAdminSessions.delete(cleanNumber);
+        replyMessage = await handleAdminCommands(userMessage, cleanNumber);
+      }
+      // If in hostel admin mode, route to hostel handler
+      else if (isInHostelMode) {
+        console.log(`🏨 Routing to HOSTEL ADMIN handler (in session)`);
+        replyMessage = await handleHostelAdminCommands(userMessage, cleanNumber);
+      }
+      // Otherwise route to regular admin
+      else {
         console.log(`🔄 Routing to ADMIN handler`);
         replyMessage = await handleAdminCommands(userMessage, cleanNumber);
       }
@@ -70,7 +89,7 @@ export async function POST(request) {
       await sendWhatsAppMessage(senderNumber, replyMessage);
     }
     
-    return NextResponse.json({ success: true, role: isAdmin ? 'admin' : 'student' });
+    return NextResponse.json({ success: true });
     
   } catch (error) {
     console.error("🔥 Error:", error);
