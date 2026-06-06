@@ -1,12 +1,11 @@
 import { NextResponse } from 'next/server';
 import { handleAdminCommands } from './admin';
 import { handleStudentCommands } from './student';
-import { handleHostelAdminCommands } from './hostel';
+import { handleHostelAdminCommands } from './hostelAdmin';
 import { supabase } from '@/lib/supabase';
 
-// Simple in-memory session store for hostel admin mode
-// In production, use Redis or database
-const hostelAdminSessions = new Map();
+// Simple in-memory session store for admin modes
+const adminSessions = new Map(); // Stores mode: 'bus' or 'hostel'
 
 export async function POST(request) {
   try {
@@ -51,33 +50,56 @@ export async function POST(request) {
     
     console.log(`👑 Is Admin: ${isAdmin}`);
     
-    let replyMessage;
+    let replyMessage = '';
     
     if (isAdmin) {
       const upperMsg = userMessage?.toUpperCase().trim() || '';
-      const isInHostelMode = hostelAdminSessions.get(cleanNumber) === true;
+      const currentMode = adminSessions.get(cleanNumber); // 'bus', 'hostel', or undefined
       
-      // Check if user wants to switch to hostel admin
-      if (upperMsg === 'HOSTEL ADMIN') {
+      console.log(`📍 Current Mode: ${currentMode || 'none'}`);
+      console.log(`📍 Message: ${upperMsg}`);
+      
+      // ============ SHOW MODE SELECTION MENU ============
+      // If user sends hi, hello, hey, or any greeting
+      if (['HI', 'HELLO', 'HEY', 'START', 'MENU', 'H'].includes(upperMsg) || 
+          (upperMsg !== 'BUS' && upperMsg !== 'HOSTEL' && upperMsg !== 'EXIT' && upperMsg !== 'BACK' && !currentMode)) {
+        replyMessage = getModeSelectionMenu();
+        // Clear any existing mode
+        adminSessions.delete(cleanNumber);
+      }
+      // ============ SWITCH TO BUS MODE ============
+      else if (upperMsg === 'BUS') {
+        console.log(`🚌 Switching to BUS ADMIN mode`);
+        adminSessions.set(cleanNumber, 'bus');
+        const busMenu = await handleAdminCommands('MENU', cleanNumber);
+        replyMessage = `🚌 *BUS ADMIN MODE ACTIVATED*\n\n${busMenu}`;
+      }
+      // ============ SWITCH TO HOSTEL MODE ============
+      else if (upperMsg === 'HOSTEL') {
         console.log(`🏨 Switching to HOSTEL ADMIN mode`);
-        hostelAdminSessions.set(cleanNumber, true);
-        replyMessage = await handleHostelAdminCommands(userMessage, cleanNumber);
+        adminSessions.set(cleanNumber, 'hostel');
+        const hostelMenu = await handleHostelAdminCommands('MENU', cleanNumber);
+        replyMessage = `🏨 *HOSTEL ADMIN MODE ACTIVATED*\n\n${hostelMenu}`;
       }
-      // Check if user wants to exit hostel admin mode
+      // ============ EXIT CURRENT MODE ============
       else if (upperMsg === 'EXIT' || upperMsg === 'BACK' || upperMsg === 'MAIN MENU') {
-        console.log(`🔙 Exiting HOSTEL ADMIN mode`);
-        hostelAdminSessions.delete(cleanNumber);
+        console.log(`🔙 Exiting ${currentMode} mode`);
+        adminSessions.delete(cleanNumber);
+        replyMessage = getModeSelectionMenu();
+      }
+      // ============ ROUTE TO BUS MODE HANDLER ============
+      else if (currentMode === 'bus') {
+        console.log(`🚌 Routing to BUS ADMIN handler`);
         replyMessage = await handleAdminCommands(userMessage, cleanNumber);
       }
-      // If in hostel admin mode, route to hostel handler
-      else if (isInHostelMode) {
-        console.log(`🏨 Routing to HOSTEL ADMIN handler (in session)`);
+      // ============ ROUTE TO HOSTEL MODE HANDLER ============
+      else if (currentMode === 'hostel') {
+        console.log(`🏨 Routing to HOSTEL ADMIN handler`);
         replyMessage = await handleHostelAdminCommands(userMessage, cleanNumber);
       }
-      // Otherwise route to regular admin
+      // ============ DEFAULT - SHOW MODE SELECTION ============
       else {
-        console.log(`🔄 Routing to ADMIN handler`);
-        replyMessage = await handleAdminCommands(userMessage, cleanNumber);
+        replyMessage = getModeSelectionMenu();
       }
     } else {
       console.log(`🔄 Routing to STUDENT handler`);
@@ -95,6 +117,45 @@ export async function POST(request) {
     console.error("🔥 Error:", error);
     return NextResponse.json({ error: "Failed" }, { status: 200 });
   }
+}
+
+// Mode selection menu function
+function getModeSelectionMenu() {
+  return `
+╔════════════════════════════╗
+║   👑 *ADMIN ACCESS*          ║
+╚════════════════════════════╝
+
+Welcome Admin! Please select a module:
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🚌 *BUS ADMIN*
+• Manage bus routes
+• Track bus stops
+• Driver management
+• Bus maintenance
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🏨 *HOSTEL ADMIN*
+• Resident management
+• Room allocation
+• Fee tracking
+• Admission records
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💡 *Type one of the following:*
+
+• *BUS* - Enter Bus Admin Mode
+• *HOSTEL* - Enter Hostel Admin Mode
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📝 *Example:* Type *BUS* or *HOSTEL*
+
+⚡ *Once inside a mode, type EXIT to return here*`;
 }
 
 // Send WhatsApp message function with PHONE_NUMBER_ID from env

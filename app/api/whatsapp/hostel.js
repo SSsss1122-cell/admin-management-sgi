@@ -3,11 +3,12 @@ import { supabase } from '@/lib/supabase';
 // ============================================
 // MAIN HOSTEL ADMIN HANDLER
 // ============================================
-
 export async function handleHostelAdminCommands(userMessage, cleanNumber) {
   const upperMsg = userMessage?.toUpperCase().trim() || '';
   const lowerMsg = userMessage?.toLowerCase().trim() || '';
   let replyMessage = '';
+  
+  console.log(`🏨 Hostel Admin received: "${userMessage}"`);
   
   // ============ MAIN MENU ============
   if (['HOSTEL ADMIN', 'HOSTEL', 'MENU', 'START', 'HELP', 'H'].includes(upperMsg)) {
