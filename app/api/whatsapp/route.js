@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { handleAdminCommands } from './admin';
 import { handleStudentCommands } from './student';
-import { handleHostelAdminCommands } from './hostelAdmin';
+import { handleHostelAdminCommands } from './hostel';
 import { supabase } from '@/lib/supabase';
 
 // Simple in-memory session store for hostel admin mode
