@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { handleAdminCommands } from './admin';
 import { handleStudentCommands } from './student';
+import { handleHostelAdminCommands } from './hostelAdmin'; // Import hostel admin handler
 import { supabase } from '@/lib/supabase';
 
 export async function POST(request) {
@@ -35,24 +36,32 @@ export async function POST(request) {
     if (cleanNumber.startsWith('91')) cleanNumber = cleanNumber.substring(2);
     cleanNumber = cleanNumber.replace(/^0+/, '');
     
-    // Check if admin from DATABASE (using regular supabase client with RLS)
+    // Check if admin from DATABASE
     const { data: adminData, error: adminError } = await supabase
       .from('admins')
       .select('mobile_number')
       .eq('mobile_number', cleanNumber)
-      .maybeSingle(); // Changed from .single() to .maybeSingle() to avoid errors
+      .maybeSingle();
     
     const isAdmin = adminData !== null;
     
     console.log(`👑 Is Admin: ${isAdmin}`);
-    console.log(`🔄 Routing to: ${isAdmin ? 'ADMIN' : 'STUDENT'}`);
     
     let replyMessage;
     
     // Route to appropriate handler
     if (isAdmin) {
-      replyMessage = await handleAdminCommands(userMessage, cleanNumber);
+      // Check if admin wants hostel admin menu
+      const upperMsg = userMessage?.toUpperCase().trim() || '';
+      if (upperMsg === 'HOSTEL ADMIN') {
+        console.log(`🏨 Routing to HOSTEL ADMIN handler`);
+        replyMessage = await handleHostelAdminCommands(userMessage, cleanNumber);
+      } else {
+        console.log(`🔄 Routing to ADMIN handler`);
+        replyMessage = await handleAdminCommands(userMessage, cleanNumber);
+      }
     } else {
+      console.log(`🔄 Routing to STUDENT handler`);
       replyMessage = await handleStudentCommands(userMessage, cleanNumber);
     }
     
@@ -93,7 +102,7 @@ async function sendWhatsAppMessage(to, message) {
       },
       body: JSON.stringify({
         to: to,
-        phoneNoId: phoneNoId, // Using from environment variable
+        phoneNoId: phoneNoId,
         type: "text",
         text: message
       })
