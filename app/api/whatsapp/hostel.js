@@ -6,117 +6,139 @@ import { supabase } from '@/lib/supabase';
 
 export async function handleHostelAdminCommands(userMessage, cleanNumber) {
   const upperMsg = userMessage?.toUpperCase().trim() || '';
+  const lowerMsg = userMessage?.toLowerCase().trim() || '';
   let replyMessage = '';
   
   // ============ MAIN MENU ============
-  if (['HOSTEL ADMIN', 'HOSTEL', 'MENU', 'START', 'HELP'].includes(upperMsg)) {
+  if (['HOSTEL ADMIN', 'HOSTEL', 'MENU', 'START', 'HELP', 'H'].includes(upperMsg)) {
     replyMessage = getHostelMainMenu();
   }
   
   // ============ RESIDENT MENU ============
-  else if (['RESIDENTS', 'RESIDENT LIST', '1'].includes(upperMsg)) {
+  else if (['RESIDENTS', 'RESIDENT LIST', 'A'].includes(upperMsg)) {
     replyMessage = await getResidentList();
   }
-  else if (['SEARCH', 'SEARCH RESIDENT', '2'].includes(upperMsg)) {
+  else if (['SEARCH', 'SEARCH RESIDENT', 'B'].includes(upperMsg)) {
     replyMessage = getSearchResidentFormat();
   }
-  else if (['COUNT', 'RESIDENT COUNT', '3'].includes(upperMsg)) {
+  else if (['COUNT', 'RESIDENT COUNT', 'C'].includes(upperMsg)) {
     replyMessage = await getResidentCountWithCourse();
   }
   
   // ============ ROOM MENU ============
-  else if (['ROOMS', 'ROOM LIST', '4'].includes(upperMsg)) {
+  else if (['ROOMS', 'ROOM LIST', 'D'].includes(upperMsg)) {
     replyMessage = await getRoomList();
   }
-  else if (['ROOM DETAILS', '5'].includes(upperMsg)) {
+  else if (['ROOM DETAILS', 'E'].includes(upperMsg)) {
     replyMessage = getRoomDetailsFormat();
   }
-  else if (['VACANT ROOMS', '6'].includes(upperMsg)) {
+  else if (['VACANT ROOMS', 'F'].includes(upperMsg)) {
     replyMessage = await getVacantRooms();
   }
   
   // ============ FEES MENU ============
-  else if (['HOSTEL FEE', 'FEE CHECK', '7'].includes(upperMsg)) {
+  else if (['HOSTEL FEE', 'FEE CHECK', 'G'].includes(upperMsg)) {
     replyMessage = getHostelFeeFormat();
   }
-  else if (['FEE DUE', '8', 'DUE LIST'].includes(upperMsg)) {
+  else if (['FEE DUE', 'DUE LIST', 'H'].includes(upperMsg)) {
     replyMessage = await getHostelDueFeesList();
   }
-  else if (['FEE SUMMARY', '9'].includes(upperMsg)) {
+  else if (['FEE SUMMARY', 'I'].includes(upperMsg)) {
     replyMessage = await getHostelFeesSummary();
   }
   
   // ============ COURSE MENU ============
-  else if (['COURSES', 'COURSE LIST', '10'].includes(upperMsg)) {
+  else if (['COURSES', 'COURSE LIST', 'J'].includes(upperMsg)) {
     replyMessage = await getCourseWiseList();
   }
-  else if (['BATCH', 'BATCH LIST', '11'].includes(upperMsg)) {
+  else if (['BATCH', 'BATCH LIST', 'K'].includes(upperMsg)) {
     replyMessage = await getBatchWiseList();
   }
   
   // ============ ADMISSION MENU ============
-  else if (['ADMISSIONS', '12'].includes(upperMsg)) {
+  else if (['ADMISSIONS', 'L'].includes(upperMsg)) {
     replyMessage = await getRecentAdmissions();
   }
-  else if (['EXPIRING SOON', '13'].includes(upperMsg)) {
+  else if (['EXPIRING SOON', 'M'].includes(upperMsg)) {
     replyMessage = await getFeesExpiringSoon();
   }
   
   // ============ OTHER ============
-  else if (['EXPORT', 'EXPORT CSV', '14'].includes(upperMsg)) {
+  else if (['EXPORT', 'EXPORT CSV', 'N'].includes(upperMsg)) {
     replyMessage = await exportHostelData();
   }
-  else if (['STATS', 'STATISTICS', '15'].includes(upperMsg)) {
+  else if (['STATS', 'STATISTICS', 'O'].includes(upperMsg)) {
     replyMessage = await getHostelStatistics();
   }
-  else if (['SHORTCUT', 'SHORTCUTS'].includes(upperMsg)) {
+  else if (['SHORTCUT', 'SHORTCUTS', 'P'].includes(upperMsg)) {
     replyMessage = getHostelShortcutGuide();
   }
-  else if (['EXIT', 'BACK', 'MAIN MENU'].includes(upperMsg)) {
+  else if (['EXIT', 'BACK', 'MAIN MENU', 'Q'].includes(upperMsg)) {
     replyMessage = `👋 *Exiting Hostel Admin Mode*\n\nType *MENU* to see main admin menu or *HOSTEL ADMIN* to return.`;
   }
   
   // ============ SEARCH WITH ARGS ============
-  else if (userMessage?.match(/^search\s/i)) {
-    const query = userMessage.replace(/^search\s/i, '');
+  else if (lowerMsg.startsWith('search ') || lowerMsg.startsWith('b ')) {
+    let query = lowerMsg;
+    if (lowerMsg.startsWith('search ')) query = userMessage.replace(/^search\s/i, '');
+    if (lowerMsg.startsWith('b ')) query = userMessage.replace(/^b\s/i, '');
     replyMessage = await searchResident(query);
   }
-  else if (userMessage?.match(/^room\s/i)) {
-    const roomNo = userMessage.replace(/^room\s/i, '');
+  else if (lowerMsg.startsWith('room ') || lowerMsg.startsWith('e ')) {
+    let roomNo = lowerMsg;
+    if (lowerMsg.startsWith('room ')) roomNo = userMessage.replace(/^room\s/i, '');
+    if (lowerMsg.startsWith('e ')) roomNo = userMessage.replace(/^e\s/i, '');
     replyMessage = await getRoomOccupants(roomNo);
   }
-  else if (userMessage?.match(/^fee\s/i)) {
-    const prn = userMessage.replace(/^fee\s/i, '');
+  else if (lowerMsg.startsWith('fee ') || lowerMsg.startsWith('g ')) {
+    let prn = lowerMsg;
+    if (lowerMsg.startsWith('fee ')) prn = userMessage.replace(/^fee\s/i, '');
+    if (lowerMsg.startsWith('g ')) prn = userMessage.replace(/^g\s/i, '');
     replyMessage = await getResidentFeeDetails(prn);
   }
-  else if (userMessage?.match(/^course\s/i)) {
-    const courseName = userMessage.replace(/^course\s/i, '');
+  else if (lowerMsg.startsWith('course ') || lowerMsg.startsWith('j ')) {
+    let courseName = lowerMsg;
+    if (lowerMsg.startsWith('course ')) courseName = userMessage.replace(/^course\s/i, '');
+    if (lowerMsg.startsWith('j ')) courseName = userMessage.replace(/^j\s/i, '');
     replyMessage = await getResidentsByCourse(courseName);
   }
-  else if (userMessage?.match(/^batch\s/i)) {
-    const batchYear = userMessage.replace(/^batch\s/i, '');
+  else if (lowerMsg.startsWith('batch ') || lowerMsg.startsWith('k ')) {
+    let batchYear = lowerMsg;
+    if (lowerMsg.startsWith('batch ')) batchYear = userMessage.replace(/^batch\s/i, '');
+    if (lowerMsg.startsWith('k ')) batchYear = userMessage.replace(/^k\s/i, '');
     replyMessage = await getResidentsByBatch(batchYear);
   }
-  else if (userMessage?.match(/^add\s/i)) {
-    const data = userMessage.replace(/^add\s/i, '').split('|');
-    replyMessage = await addResident(data);
+  else if (lowerMsg.startsWith('add ') || lowerMsg.startsWith('a ')) {
+    let data = lowerMsg;
+    if (lowerMsg.startsWith('add ')) data = userMessage.replace(/^add\s/i, '');
+    if (lowerMsg.startsWith('a ')) data = userMessage.replace(/^a\s/i, '');
+    const parts = data.split('|');
+    replyMessage = await addResident(parts);
   }
-  else if (userMessage?.match(/^update\s/i)) {
-    const parts = userMessage.replace(/^update\s/i, '').split('|');
-    replyMessage = await updateResidentFee(parts[0], parts[1]);
+  else if (lowerMsg.startsWith('update ') || lowerMsg.startsWith('h ')) {
+    let parts = lowerMsg;
+    if (lowerMsg.startsWith('update ')) parts = userMessage.replace(/^update\s/i, '');
+    if (lowerMsg.startsWith('h ')) parts = userMessage.replace(/^h\s/i, '');
+    const updateParts = parts.split('|');
+    replyMessage = await updateResidentFee(updateParts[0], updateParts[1]);
   }
-  else if (userMessage?.match(/^delete\s/i)) {
-    const prn = userMessage.replace(/^delete\s/i, '');
+  else if (lowerMsg.startsWith('delete ') || lowerMsg.startsWith('c ')) {
+    let prn = lowerMsg;
+    if (lowerMsg.startsWith('delete ')) prn = userMessage.replace(/^delete\s/i, '');
+    if (lowerMsg.startsWith('c ')) prn = userMessage.replace(/^c\s/i, '');
     replyMessage = await deleteResident(prn);
   }
-  else if (userMessage?.match(/^move\s/i)) {
-    const parts = userMessage.replace(/^move\s/i, '').split('|');
-    replyMessage = await moveResidentRoom(parts[0], parts[1]);
+  else if (lowerMsg.startsWith('move ') || lowerMsg.startsWith('f ')) {
+    let parts = lowerMsg;
+    if (lowerMsg.startsWith('move ')) parts = userMessage.replace(/^move\s/i, '');
+    if (lowerMsg.startsWith('f ')) parts = userMessage.replace(/^f\s/i, '');
+    const moveParts = parts.split('|');
+    replyMessage = await moveResidentRoom(moveParts[0], moveParts[1]);
   }
   
   // ============ DEFAULT ============
   else if (userMessage && userMessage !== '') {
-    replyMessage = `🏨 *HOSTEL ADMIN MODE*\n\nType *MENU* for options or *EXIT* to leave hostel mode.\n\n${getHostelMainMenu()}`;
+    replyMessage = `🏨 *HOSTEL ADMIN MODE*\n\n❌ Command not recognized.\n\nType *H* for menu or *Q* to exit.\n\n${getHostelMainMenu()}`;
   }
   
   return replyMessage;
@@ -134,57 +156,67 @@ function getHostelMainMenu() {
 
   👥 *RESIDENT MENU*          
 ─────────────────────────
- 1️⃣  RESIDENT LIST           
- 2️⃣  SEARCH RESIDENT          
- 3️⃣  RESIDENT COUNT (Course)  
+ A 🔹 RESIDENT LIST           
+ B 🔹 SEARCH RESIDENT          
+ C 🔹 RESIDENT COUNT          
 ─────────────────────────
 
   🚪 *ROOM MENU*              
 ─────────────────────────
- 4️⃣  ROOM LIST               
- 5️⃣  ROOM DETAILS            
- 6️⃣  VACANT ROOMS            
+ D 🔹 ROOM LIST               
+ E 🔹 ROOM DETAILS            
+ F 🔹 VACANT ROOMS            
 ─────────────────────────
 
   💰 *FEES MENU*              
 ─────────────────────────
- 7️⃣  HOSTEL FEE CHECK        
- 8️⃣  FEE DUE LIST            
- 9️⃣  FEE SUMMARY             
+ G 🔹 HOSTEL FEE CHECK        
+ H 🔹 FEE DUE LIST            
+ I 🔹 FEE SUMMARY             
 ─────────────────────────
 
   📚 *COURSE & BATCH*         
 ─────────────────────────
- 🔟  COURSE WISE LIST         
- 1️⃣1️⃣  BATCH WISE LIST         
+ J 🔹 COURSE WISE LIST         
+ K 🔹 BATCH WISE LIST         
 ─────────────────────────
 
   📅 *ADMISSIONS*             
 ─────────────────────────
- 1️⃣2️⃣  RECENT ADMISSIONS      
- 1️⃣3️⃣  FEES EXPIRING SOON     
+ L 🔹 RECENT ADMISSIONS      
+ M 🔹 FEES EXPIRING SOON     
 ─────────────────────────
 
   📊 *UTILITIES*              
 ─────────────────────────
- 1️⃣4️⃣  EXPORT CSV             
- 1️⃣5️⃣  STATISTICS             
+ N 🔹 EXPORT CSV             
+ O 🔹 STATISTICS             
+ P 🔹 SHORTCUTS              
+─────────────────────────
+
+ Q 🔹 EXIT HOSTEL MODE
+
 ─────────────────────────
 
 💡 *Quick Commands:* 
-• SEARCH <PRN/Name>
-• ROOM <room_no>
-• FEE <PRN/Name>
-• COURSE <course>
-• BATCH <year>
-• ADD <name>|<prn>|<course>|<room>
-• UPDATE <prn>|<amount>
-• MOVE <prn>|<new_room>
+• A <name|prn|course|room> - Add resident
+• B <prn/name> - Search
+• C <prn> - Delete resident
+• E <room_no> - Room details
+• F <prn>|<new_room> - Move resident
+• G <prn/name> - Check fee
+• H <prn>|<amount> - Update fee
+• J <course> - Course wise list
+• K <year> - Batch wise list
 
-⚡ *Shortcuts:* SHORTCUTS
-🔙 *Exit:* EXIT
+📝 *Examples:*
+• A John|9876543210|BAMS|26
+• B 8857090461
+• E 26
+• G Dharati
+• H 8857090461|50000
 
-🏨 *Hostel Admin Mode Active*`;
+🏨 *Type any letter to execute command*`;
 }
 
 function getHostelShortcutGuide() {
@@ -192,36 +224,49 @@ function getHostelShortcutGuide() {
 ║   ⚡ *QUICK COMMANDS*    ║
 ╚════════════════════════════╝
 
-ADD <name>|<prn>|<course>|<room>
-DELETE <prn>
-SEARCH <prn or name>
-FEE <prn>
-UPDATE <prn>|<amount>
-ROOM <room_no>
-MOVE <prn>|<new_room>
-COURSE <course_name>
-BATCH <year>
-EXPORT - Get CSV file
-STATS - View statistics
-EXIT - Exit hostel mode`;
+🔹 *A* - ADD <name>|<prn>|<course>|<room>
+🔹 *B* - SEARCH <prn or name>
+🔹 *C* - DELETE <prn>
+🔹 *D* - ROOM LIST
+🔹 *E* - ROOM DETAILS <room_no>
+🔹 *F* - MOVE <prn>|<new_room>
+🔹 *G* - FEE CHECK <prn or name>
+🔹 *H* - UPDATE <prn>|<amount>
+🔹 *I* - FEE SUMMARY
+🔹 *J* - COURSE WISE <course>
+🔹 *K* - BATCH WISE <year>
+🔹 *L* - RECENT ADMISSIONS
+🔹 *M* - EXPIRING SOON
+🔹 *N* - EXPORT CSV
+🔹 *O* - STATISTICS
+🔹 *P* - SHORTCUTS
+🔹 *Q* - EXIT
+
+📝 *Examples:*
+A John|9876543210|BAMS|26
+B 8857090461
+E 26
+G Dharati
+H 8857090461|50000
+F 8857090461|30`;
 }
 
 function getSearchResidentFormat() {
   return `🔍 *SEARCH RESIDENT*
-Format: SEARCH <PRN or Name>
-Example: SEARCH 8857090461
+Format: B <PRN or Name>
+Example: B 8857090461 or B Dharati
 
 You can search by:
-- PRN/Mobile Number (full or partial)
-- Resident name (full or partial)
+- PRN/Mobile Number
+- Resident name
 - Course name
 - Room number`;
 }
 
 function getRoomDetailsFormat() {
   return `🚪 *ROOM DETAILS*
-Format: ROOM <room_number>
-Example: ROOM 26
+Format: E <room_number>
+Example: E 26
 
 Shows:
 • Current occupants
@@ -232,8 +277,8 @@ Shows:
 
 function getHostelFeeFormat() {
   return `💰 *HOSTEL FEE CHECK*
-Format: FEE <PRN or Name>
-Example: FEE 8857090461 or FEE Dharati
+Format: G <PRN or Name>
+Example: G 8857090461 or G Dharati
 
 Shows:
 • Installment amount
@@ -275,7 +320,7 @@ async function getResidentList() {
     
     if (residents.length > 30) {
       message += `📊 *Showing 30 of ${residents.length} residents*\n`;
-      message += `💡 Use SEARCH to find specific resident`;
+      message += `💡 Use B to search for specific resident`;
     }
     
     return message;
@@ -409,8 +454,8 @@ async function getRoomList() {
     });
     
     message += `\n💡 *Commands:*\n`;
-    message += `• ROOM <room_no> - View occupants\n`;
-    message += `• VACANT ROOMS - View available rooms`;
+    message += `• E <room_no> - View occupants\n`;
+    message += `• F - View vacant rooms`;
     
     return message;
   } catch (error) {
@@ -506,7 +551,7 @@ async function getVacantRooms() {
       message += `${i+1}. Room *${r.room}* - ${r.vacant}/${r.sharing} seats vacant\n`;
     });
     
-    message += `\n💡 Use MOVE <prn>|<new_room> to change room assignment`;
+    message += `\n💡 Use F <prn>|<new_room> to change room assignment`;
     
     return message;
   } catch (error) {
@@ -571,7 +616,7 @@ async function getResidentFeeDetails(searchQuery) {
 📅 *Due Date:* ${r["Fees Due Date(DD-MM-YY)"]}
 ⚠️ *Status:* ${isOverdue ? '🔴 OVERDUE' : '🟡 PENDING'}
 
-💡 To update: UPDATE ${r["PRN/Mobile  Number"]}|<amount>`;
+💡 To update: H ${r["PRN/Mobile  Number"]}|<amount>`;
     
     return message;
   } catch (error) {
@@ -698,7 +743,7 @@ async function getHostelFeesSummary() {
     }
     
     message += `\n\n━━━━━━━━━━━━━━━━━━━━━━\n`;
-    message += `💡 Use FEE DUE to see pending list`;
+    message += `💡 Use H to see pending list`;
     
     return message;
   } catch (error) {
@@ -781,7 +826,7 @@ async function getCourseWiseList() {
       message += `\n`;
     }
     
-    message += `💡 Use COURSE <course_name> for complete list`;
+    message += `💡 Use J <course_name> for complete list`;
     
     return message;
   } catch (error) {
@@ -792,7 +837,7 @@ async function getCourseWiseList() {
 
 async function getResidentsByCourse(courseName) {
   if (!courseName || courseName.trim() === '') {
-    return `❌ *Please specify a course*\n\nExample: COURSE BAMS`;
+    return `❌ *Please specify a course*\n\nExample: J BAMS`;
   }
   
   try {
@@ -870,7 +915,7 @@ async function getBatchWiseList() {
       message += `\n`;
     }
     
-    message += `💡 Use BATCH <year> for complete list`;
+    message += `💡 Use K <year> for complete list`;
     
     return message;
   } catch (error) {
@@ -881,7 +926,7 @@ async function getBatchWiseList() {
 
 async function getResidentsByBatch(batchYear) {
   if (!batchYear || batchYear.trim() === '') {
-    return `❌ *Please specify a batch year*\n\nExample: BATCH 2023`;
+    return `❌ *Please specify a batch year*\n\nExample: K 2023`;
   }
   
   try {
@@ -960,13 +1005,12 @@ async function getRecentAdmissions() {
 
 async function addResident(data) {
   if (!data || data.length < 4) {
-    return `❌ *Invalid Format*\n\nCorrect format:\nADD <resident name>|<prn/mobile>|<course>|<room>\n\nExample:\nADD John Doe|9876543210|BAMS|26\n\nOptional: ADD <name>|<prn>|<course>|<room>|<batch>|<amount>|<due_date>|<sharing>`;
+    return `❌ *Invalid Format*\n\nCorrect format:\nA <resident name>|<prn/mobile>|<course>|<room>\n\nExample:\nA John Doe|9876543210|BAMS|26\n\nOptional: A <name>|<prn>|<course>|<room>|<batch>|<amount>|<due_date>|<sharing>`;
   }
   
   const [name, prn, course, room, batch, amount, dueDate, sharing] = data;
   
   try {
-    // Check if resident already exists
     const { data: existing } = await supabase
       .from('hostel')
       .select('"PRN/Mobile  Number"')
@@ -974,7 +1018,7 @@ async function addResident(data) {
       .maybeSingle();
     
     if (existing) {
-      return `❌ *Resident already exists*\n\nPRN: ${prn}\nUse UPDATE to modify or DELETE to remove.`;
+      return `❌ *Resident already exists*\n\nPRN: ${prn}\nUse H to update or C to delete.`;
     }
     
     const insertData = {
@@ -1010,7 +1054,7 @@ async function addResident(data) {
     if (amount) message += `\n💰 *Installment:* ₹${parseFloat(amount).toLocaleString()}`;
     if (dueDate) message += `\n📅 *Due Date:* ${dueDate}`;
     
-    message += `\n\n💡 Use UPDATE ${prn}|<amount> to update fees`;
+    message += `\n\n💡 Use H ${prn}|<amount> to update fees`;
     
     return message;
   } catch (error) {
@@ -1021,7 +1065,7 @@ async function addResident(data) {
 
 async function updateResidentFee(prn, amount) {
   if (!prn || !amount) {
-    return `❌ *Invalid Format*\n\nCorrect format:\nUPDATE <prn>|<amount>\n\nExample:\nUPDATE 8857090461|50000`;
+    return `❌ *Invalid Format*\n\nCorrect format:\nH <prn>|<amount>\n\nExample:\nH 8857090461|50000`;
   }
   
   try {
@@ -1067,7 +1111,7 @@ async function updateResidentFee(prn, amount) {
 
 async function deleteResident(prn) {
   if (!prn || prn.trim() === '') {
-    return `❌ *Invalid Format*\n\nCorrect format:\nDELETE <prn>\n\nExample:\nDELETE 8857090461`;
+    return `❌ *Invalid Format*\n\nCorrect format:\nC <prn>\n\nExample:\nC 8857090461`;
   }
   
   try {
@@ -1102,11 +1146,10 @@ async function deleteResident(prn) {
 
 async function moveResidentRoom(prn, newRoom) {
   if (!prn || !newRoom) {
-    return `❌ *Invalid Format*\n\nCorrect format:\nMOVE <prn>|<new_room>\n\nExample:\nMOVE 8857090461|30`;
+    return `❌ *Invalid Format*\n\nCorrect format:\nF <prn>|<new_room>\n\nExample:\nF 8857090461|30`;
   }
   
   try {
-    // Check if resident exists
     const { data: resident, error: fetchError } = await supabase
       .from('hostel')
       .select('"Resident Name", "Room"')
@@ -1162,29 +1205,6 @@ async function exportHostelData() {
       return '📭 *No data to export*';
     }
     
-    // Create CSV content
-    const headers = ['PRN/Mobile Number', 'Resident Name', 'Course', 'Batch', 'Installment Amount', 'Fees Due Date', 'Room', 'Sharing', 'Admission Date'];
-    const csvRows = [headers.join(',')];
-    
-    residents.forEach(r => {
-      const row = [
-        r["PRN/Mobile  Number"] || '',
-        `"${r["Resident Name"] || ''}"`,
-        r["Course"] || '',
-        r["Batch"] || '',
-        r["Install Ment Name(Amount)"] || 0,
-        r["Fees Due Date(DD-MM-YY)"] || '',
-        r["Room"] || '',
-        r["Sharing"] || '',
-        r["Admission Date"] || ''
-      ];
-      csvRows.push(row.join(','));
-    });
-    
-    const csvContent = csvRows.join('\n');
-    
-    // Note: In a real implementation, you would upload this to storage and send a link
-    // For now, return summary
     return `📊 *EXPORT READY*
 ━━━━━━━━━━━━━━━━━━━━━━
 
@@ -1236,7 +1256,6 @@ async function getHostelStatistics() {
       totalInstallments += Number(r["Install Ment Name(Amount)"]) || 0;
     });
     
-    // Room occupancy stats
     const roomMap = new Map();
     residents.forEach(r => {
       const room = r["Room"];
