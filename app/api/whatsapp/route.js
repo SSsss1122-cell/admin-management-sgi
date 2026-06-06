@@ -120,43 +120,16 @@ export async function POST(request) {
 }
 
 // Mode selection menu function
-function getModeSelectionMenu() {
-  return `
-╔════════════════════════════╗
-║   👑 *ADMIN ACCESS*          ║
-╚════════════════════════════╝
+function getModeSelectionMenu() {return `
+👑 *ADMIN ACCESS*
 
-Welcome Admin! Please select a module:
+Please select a module:
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🚌 *BUS* - Bus Administration
+🏨 *HOSTEL* - Hostel Administration
 
-🚌 *BUS ADMIN*
-• Manage bus routes
-• Track bus stops
-• Driver management
-• Bus maintenance
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-🏨 *HOSTEL ADMIN*
-• Resident management
-• Room allocation
-• Fee tracking
-• Admission records
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-💡 *Type one of the following:*
-
-• *BUS* - Enter Bus Admin Mode
-• *HOSTEL* - Enter Hostel Admin Mode
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-📝 *Example:* Type *BUS* or *HOSTEL*
-
-⚡ *Once inside a mode, type EXIT to return here*`;
-}
+👉 Type *BUS* or *HOSTEL* to continue.
+`;}
 
 // Send WhatsApp message function with PHONE_NUMBER_ID from env
 async function sendWhatsAppMessage(to, message) {
