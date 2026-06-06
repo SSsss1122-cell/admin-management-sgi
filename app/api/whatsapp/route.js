@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { handleAdminCommands } from './admin';
 import { handleStudentCommands } from './student';
-import { handleHostelAdminCommands } from './hostelAdmin'; // Import hostel admin handler
+import { handleHostelAdminCommands } from './hostel'; // Import hostel admin handler
 import { supabase } from '@/lib/supabase';
 
 export async function POST(request) {
