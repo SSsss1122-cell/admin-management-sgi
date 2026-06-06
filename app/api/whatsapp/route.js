@@ -39,67 +39,112 @@ export async function POST(request) {
     if (cleanNumber.startsWith('91')) cleanNumber = cleanNumber.substring(2);
     cleanNumber = cleanNumber.replace(/^0+/, '');
     
-    // Check if admin from DATABASE
+    // Check if admin from DATABASE and get their role
     const { data: adminData, error: adminError } = await supabase
       .from('admins')
-      .select('mobile_number')
+      .select('mobile_number, role')
       .eq('mobile_number', cleanNumber)
       .maybeSingle();
     
     const isAdmin = adminData !== null;
+    const adminRole = adminData?.role || null;
     
     console.log(`👑 Is Admin: ${isAdmin}`);
+    console.log(`📋 Admin Role: ${adminRole}`);
     
     let replyMessage = '';
     
     if (isAdmin) {
       const upperMsg = userMessage?.toUpperCase().trim() || '';
-      const currentMode = adminSessions.get(cleanNumber); // 'bus', 'hostel', or undefined
+      const currentMode = adminSessions.get(cleanNumber);
       
       console.log(`📍 Current Mode: ${currentMode || 'none'}`);
       console.log(`📍 Message: ${upperMsg}`);
       
-      // ============ SHOW MODE SELECTION MENU ============
-      // If user sends hi, hello, hey, or any greeting
-      if (['HI', 'HELLO', 'HEY', 'START', 'MENU', 'H'].includes(upperMsg) || 
-          (upperMsg !== 'BUS' && upperMsg !== 'HOSTEL' && upperMsg !== 'EXIT' && upperMsg !== 'BACK' && !currentMode)) {
-        replyMessage = getModeSelectionMenu();
-        // Clear any existing mode
-        adminSessions.delete(cleanNumber);
+      // ============ SUPER ADMIN - Full Access ============
+      if (adminRole === 'super_admin') {
+        // Show mode selection menu for super admin
+        if (['HI', 'HELLO', 'HEY', 'START', 'MENU', 'H'].includes(upperMsg) || 
+            (upperMsg !== 'BUS' && upperMsg !== 'HOSTEL' && upperMsg !== 'EXIT' && upperMsg !== 'BACK' && !currentMode)) {
+          replyMessage = getSuperAdminMenu();
+          adminSessions.delete(cleanNumber);
+        }
+        // SWITCH TO BUS MODE
+        else if (upperMsg === 'BUS') {
+          console.log(`🚌 Super Admin switching to BUS mode`);
+          adminSessions.set(cleanNumber, 'bus');
+          const busMenu = await handleAdminCommands('MENU', cleanNumber);
+          replyMessage = `🚌 *BUS ADMIN MODE ACTIVATED*\n\n${busMenu}`;
+        }
+        // SWITCH TO HOSTEL MODE
+        else if (upperMsg === 'HOSTEL') {
+          console.log(`🏨 Super Admin switching to HOSTEL mode`);
+          adminSessions.set(cleanNumber, 'hostel');
+          const hostelMenu = await handleHostelAdminCommands('MENU', cleanNumber);
+          replyMessage = `🏨 *HOSTEL ADMIN MODE ACTIVATED*\n\n${hostelMenu}`;
+        }
+        // EXIT CURRENT MODE
+        else if (upperMsg === 'EXIT' || upperMsg === 'BACK' || upperMsg === 'MAIN MENU') {
+          console.log(`🔙 Exiting ${currentMode} mode`);
+          adminSessions.delete(cleanNumber);
+          replyMessage = getSuperAdminMenu();
+        }
+        // ROUTE TO BUS MODE HANDLER
+        else if (currentMode === 'bus') {
+          console.log(`🚌 Routing to BUS handler`);
+          replyMessage = await handleAdminCommands(userMessage, cleanNumber);
+        }
+        // ROUTE TO HOSTEL MODE HANDLER
+        else if (currentMode === 'hostel') {
+          console.log(`🏨 Routing to HOSTEL handler`);
+          replyMessage = await handleHostelAdminCommands(userMessage, cleanNumber);
+        }
+        else {
+          replyMessage = getSuperAdminMenu();
+        }
       }
-      // ============ SWITCH TO BUS MODE ============
-      else if (upperMsg === 'BUS') {
-        console.log(`🚌 Switching to BUS ADMIN mode`);
-        adminSessions.set(cleanNumber, 'bus');
-        const busMenu = await handleAdminCommands('MENU', cleanNumber);
-        replyMessage = `🚌 *BUS ADMIN MODE ACTIVATED*\n\n${busMenu}`;
+      
+      // ============ BUS ADMIN - Only Bus Access ============
+      else if (adminRole === 'bus_admin') {
+        // BLOCK any attempt to access hostel
+        if (upperMsg === 'HOSTEL') {
+          replyMessage = `❌ *ACCESS DENIED*\n\nYou are a Bus Admin. You only have access to Bus Administration.\n\nType *MENU* to see Bus Admin options.`;
+        }
+        // Auto-route to bus mode
+        else if (['HI', 'HELLO', 'HEY', 'START', 'MENU', 'H'].includes(upperMsg) || !currentMode) {
+          replyMessage = `🚌 *BUS ADMIN MODE*\n\n${await handleAdminCommands('MENU', cleanNumber)}`;
+          adminSessions.set(cleanNumber, 'bus');
+        }
+        else if (upperMsg === 'EXIT' || upperMsg === 'BACK') {
+          replyMessage = `🚌 *BUS ADMIN MODE*\n\n${await handleAdminCommands('MENU', cleanNumber)}`;
+        }
+        else {
+          replyMessage = await handleAdminCommands(userMessage, cleanNumber);
+        }
       }
-      // ============ SWITCH TO HOSTEL MODE ============
-      else if (upperMsg === 'HOSTEL') {
-        console.log(`🏨 Switching to HOSTEL ADMIN mode`);
-        adminSessions.set(cleanNumber, 'hostel');
-        const hostelMenu = await handleHostelAdminCommands('MENU', cleanNumber);
-        replyMessage = `🏨 *HOSTEL ADMIN MODE ACTIVATED*\n\n${hostelMenu}`;
+      
+      // ============ HOSTEL ADMIN - Only Hostel Access ============
+      else if (adminRole === 'hostel_admin') {
+        // BLOCK any attempt to access bus
+        if (upperMsg === 'BUS') {
+          replyMessage = `❌ *ACCESS DENIED*\n\nYou are a Hostel Admin. You only have access to Hostel Administration.\n\nType *MENU* to see Hostel Admin options.`;
+        }
+        // Auto-route to hostel mode
+        else if (['HI', 'HELLO', 'HEY', 'START', 'MENU', 'H'].includes(upperMsg) || !currentMode) {
+          replyMessage = `🏨 *HOSTEL ADMIN MODE*\n\n${await handleHostelAdminCommands('MENU', cleanNumber)}`;
+          adminSessions.set(cleanNumber, 'hostel');
+        }
+        else if (upperMsg === 'EXIT' || upperMsg === 'BACK') {
+          replyMessage = `🏨 *HOSTEL ADMIN MODE*\n\n${await handleHostelAdminCommands('MENU', cleanNumber)}`;
+        }
+        else {
+          replyMessage = await handleHostelAdminCommands(userMessage, cleanNumber);
+        }
       }
-      // ============ EXIT CURRENT MODE ============
-      else if (upperMsg === 'EXIT' || upperMsg === 'BACK' || upperMsg === 'MAIN MENU') {
-        console.log(`🔙 Exiting ${currentMode} mode`);
-        adminSessions.delete(cleanNumber);
-        replyMessage = getModeSelectionMenu();
-      }
-      // ============ ROUTE TO BUS MODE HANDLER ============
-      else if (currentMode === 'bus') {
-        console.log(`🚌 Routing to BUS ADMIN handler`);
-        replyMessage = await handleAdminCommands(userMessage, cleanNumber);
-      }
-      // ============ ROUTE TO HOSTEL MODE HANDLER ============
-      else if (currentMode === 'hostel') {
-        console.log(`🏨 Routing to HOSTEL ADMIN handler`);
-        replyMessage = await handleHostelAdminCommands(userMessage, cleanNumber);
-      }
-      // ============ DEFAULT - SHOW MODE SELECTION ============
+      
+      // ============ DEFAULT - Unknown role ============
       else {
-        replyMessage = getModeSelectionMenu();
+        replyMessage = `❌ *Unknown Admin Role*\n\nPlease contact system administrator.`;
       }
     } else {
       console.log(`🔄 Routing to STUDENT handler`);
@@ -119,9 +164,10 @@ export async function POST(request) {
   }
 }
 
-// Mode selection menu function
-function getModeSelectionMenu() {return `
-👑 *ADMIN ACCESS*
+// Super Admin Menu - Can choose between Bus and Hostel
+function getSuperAdminMenu() {
+  return `
+👑 *SUPER ADMIN ACCESS*
 
 Please select a module:
 
@@ -129,9 +175,10 @@ Please select a module:
 🏨 *HOSTEL* - Hostel Administration
 
 👉 Type *BUS* or *HOSTEL* to continue.
-`;}
+`;
+}
 
-// Send WhatsApp message function with PHONE_NUMBER_ID from env
+// Send WhatsApp message function
 async function sendWhatsAppMessage(to, message) {
   const apiKey = process.env.VIRALBOOSTUP_API_KEY;
   const phoneNoId = process.env.PHONE_NUMBER_ID;
@@ -167,4 +214,4 @@ async function sendWhatsAppMessage(to, message) {
   } catch (error) {
     console.error("Send error:", error);
   }
-}
+}s
