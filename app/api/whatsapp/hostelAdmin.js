@@ -42,6 +42,9 @@ export async function handleHostelAdminCommands(userMessage, cleanNumber) {
   else if (upperMsg === 'G' || upperMsg === 'HOSTEL FEE' || upperMsg === 'FEE CHECK') {
     replyMessage = getHostelFeeFormat();
   }
+  else if (upperMsg === 'H' || upperMsg === 'FEE DUE' || upperMsg === 'DUE LIST') {
+    replyMessage = await getHostelDueFeesList();
+  }
   else if (upperMsg === 'I' || upperMsg === 'FEE SUMMARY') {
     replyMessage = await getHostelFeesSummary();
   }
@@ -96,7 +99,7 @@ export async function handleHostelAdminCommands(userMessage, cleanNumber) {
     const batchYear = userMessage.substring(2).trim();
     replyMessage = await getResidentsByBatch(batchYear);
   }
-  // ADD RESIDENT - A command with arguments (format: A Name|PRN|Course|Room)
+  // ADD RESIDENT - A command with arguments
   else if (lowerMsg.startsWith('a ')) {
     const data = userMessage.substring(2).trim().split('|');
     replyMessage = await addResident(data);
@@ -106,19 +109,15 @@ export async function handleHostelAdminCommands(userMessage, cleanNumber) {
     const prn = userMessage.substring(2).trim();
     replyMessage = await deleteResident(prn);
   }
-  // MOVE RESIDENT - F command with arguments (format: F PRN|NewRoom)
+  // MOVE RESIDENT - F command with arguments
   else if (lowerMsg.startsWith('f ')) {
     const parts = userMessage.substring(2).trim().split('|');
     replyMessage = await moveResidentRoom(parts[0], parts[1]);
   }
-  // UPDATE FEE - H command with arguments (format: H PRN|Amount)
+  // UPDATE FEE - H command with arguments
   else if (lowerMsg.startsWith('h ')) {
     const parts = userMessage.substring(2).trim().split('|');
     replyMessage = await updateResidentFee(parts[0], parts[1]);
-  }
-  // FEE DUE LIST - Just H (no argument) is handled above, but we also need direct command
-  else if (upperMsg === 'H' || upperMsg === 'FEE DUE' || upperMsg === 'DUE LIST') {
-    replyMessage = await getHostelDueFeesList();
   }
   
   // ============ DEFAULT ============
@@ -179,11 +178,11 @@ function getHostelMainMenu() {
 ─────────────────────────
 
 💡 *Quick Commands:* 
-• A Name|PRN|Course|Room - Add resident
+• A Name|PRN|Course|Room - Add
 • B Name/PRN - Search
 • C PRN - Delete
 • E RoomNo - Room details
-• F PRN|NewRoom - Move resident
+• F PRN|NewRoom - Move
 • G Name/PRN - Fee check
 • H PRN|Amount - Update fee
 • J Course - Course list
@@ -195,10 +194,8 @@ function getHostelMainMenu() {
 • E 26
 • G Suhani
 • H 8857090461|50000
-• J BAMS
-• K 2023
 
-🏨 *Type H for help | EXIT to leave mode*`;
+🏨 *Type H for help*`;
 }
 
 function getHostelShortcutGuide() {
@@ -207,33 +204,28 @@ function getHostelShortcutGuide() {
 ║   ⚡ *QUICK COMMANDS*        ║
 ╚════════════════════════════╝
 
-🔹 *A* - ADD <name>|<prn>|<course>|<room>
-🔹 *B* - SEARCH <prn or name>
-🔹 *C* - DELETE <prn>
-🔹 *D* - ROOM LIST
-🔹 *E* - ROOM DETAILS <room_no>
-🔹 *F* - MOVE <prn>|<new_room>
-🔹 *G* - FEE CHECK <prn or name>
-🔹 *H* - UPDATE <prn>|<amount>
-🔹 *I* - FEE SUMMARY
-🔹 *J* - COURSE WISE <course>
-🔹 *K* - BATCH WISE <year>
-🔹 *L* - RECENT ADMISSIONS
-🔹 *M* - EXPIRING SOON
-🔹 *N* - STATISTICS
-🔹 *O* - SHORTCUTS
+🔹 A - ADD <name>|<prn>|<course>|<room>
+🔹 B - SEARCH <prn or name>
+🔹 C - DELETE <prn>
+🔹 D - ROOM LIST
+🔹 E - ROOM DETAILS <room_no>
+🔹 F - MOVE <prn>|<new_room>
+🔹 G - FEE CHECK <prn or name>
+🔹 H - UPDATE <prn>|<amount>
+🔹 I - FEE SUMMARY
+🔹 J - COURSE WISE <course>
+🔹 K - BATCH WISE <year>
+🔹 L - RECENT ADMISSIONS
+🔹 M - EXPIRING SOON
+🔹 N - STATISTICS
+🔹 O - SHORTCUTS
 
 📝 *Examples:*
-A John|9876543210|BAMS|26
 B Suhani
-E 26
 G Dharati
-H 8857090461|50000
-F 8857090461|30
+E 26
 J BAMS
-K 2023
-
-⚡ *Type H for main menu*`;
+K 2023`;
 }
 
 function getSearchResidentFormat() {
@@ -284,7 +276,7 @@ async function getResidentList() {
     
     const { data: residents, error } = await supabase
       .from('hostel')
-      .select('"Resident Name", "Course", "Room"')
+      .select('"Resident Name", Course, Room')
       .order('"Resident Name"', { ascending: true });
     
     if (error) {
@@ -302,7 +294,7 @@ async function getResidentList() {
     const displayResidents = residents.slice(0, 30);
     displayResidents.forEach((r, i) => {
       message += `${i+1}. 👤 ${r["Resident Name"]}\n`;
-      message += `   📚 ${r["Course"]} | 🚪 Room ${r["Room"]}\n\n`;
+      message += `   📚 ${r.Course} | 🚪 Room ${r.Room}\n\n`;
     });
     
     if (residents.length > 30) {
@@ -321,7 +313,7 @@ async function getResidentCountWithCourse() {
   try {
     const { data: residents, error } = await supabase
       .from('hostel')
-      .select('"Course"');
+      .select('Course');
     
     if (error) {
       console.error('Count fetch error:', error);
@@ -334,7 +326,7 @@ async function getResidentCountWithCourse() {
     
     const courseCount = {};
     residents.forEach(r => {
-      const course = r["Course"] || 'Unknown';
+      const course = r.Course || 'Unknown';
       courseCount[course] = (courseCount[course] || 0) + 1;
     });
     
@@ -360,30 +352,70 @@ async function searchResident(query) {
   }
   
   try {
-    // Fix: Proper SQL syntax for OR condition
-    const { data: residents, error } = await supabase
-      .from('hostel')
-      .select('*')
-      .or(`"PRN/Mobile  Number"::text.ilike.%${query}%,"Resident Name".ilike.%${query}%,"Course".ilike.%${query}%,"Room".ilike.%${query}%`);
+    // Use separate queries instead of OR for columns with spaces
+    let allResidents = [];
     
-    if (error) {
-      console.error('Search error:', error);
-      return `❌ *Database Error*: ${error.message}`;
+    // Search by PRN/Mobile Number (bigint)
+    if (!isNaN(query) && query.length > 0) {
+      const { data: byPrn, error: prnError } = await supabase
+        .from('hostel')
+        .select('*')
+        .eq('"PRN/Mobile  Number"', parseInt(query));
+      
+      if (!prnError && byPrn && byPrn.length > 0) {
+        allResidents = [...allResidents, ...byPrn];
+      }
     }
     
-    if (!residents || residents.length === 0) {
+    // Search by Resident Name (if no results yet or partial match)
+    if (allResidents.length === 0) {
+      const { data: byName, error: nameError } = await supabase
+        .from('hostel')
+        .select('*')
+        .ilike('"Resident Name"', `%${query}%`);
+      
+      if (!nameError && byName && byName.length > 0) {
+        allResidents = [...allResidents, ...byName];
+      }
+    }
+    
+    // Search by Course
+    if (allResidents.length === 0) {
+      const { data: byCourse, error: courseError } = await supabase
+        .from('hostel')
+        .select('*')
+        .ilike('Course', `%${query}%`);
+      
+      if (!courseError && byCourse && byCourse.length > 0) {
+        allResidents = [...allResidents, ...byCourse];
+      }
+    }
+    
+    // Search by Room
+    if (allResidents.length === 0) {
+      const { data: byRoom, error: roomError } = await supabase
+        .from('hostel')
+        .select('*')
+        .ilike('Room', `%${query}%`);
+      
+      if (!roomError && byRoom && byRoom.length > 0) {
+        allResidents = [...allResidents, ...byRoom];
+      }
+    }
+    
+    if (allResidents.length === 0) {
       return `❌ *No resident found for:* ${query}`;
     }
     
-    let message = `🔍 *SEARCH RESULTS* (${residents.length})\n`;
+    let message = `🔍 *SEARCH RESULTS* (${allResidents.length})\n`;
     message += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
     
-    for (const r of residents) {
+    for (const r of allResidents) {
       message += `👤 *${r["Resident Name"]}*\n`;
       message += `📱 PRN: ${r["PRN/Mobile  Number"] || 'N/A'}\n`;
-      message += `📚 Course: ${r["Course"] || 'N/A'}\n`;
-      message += `📅 Batch: ${r["Batch"] || 'N/A'}\n`;
-      message += `🚪 Room: ${r["Room"] || 'N/A'} (${r["Sharing"] || 'N/A'}-sharing)\n`;
+      message += `📚 Course: ${r.Course || 'N/A'}\n`;
+      message += `📅 Batch: ${r.Batch || 'N/A'}\n`;
+      message += `🚪 Room: ${r.Room || 'N/A'} (${r.Sharing || 'N/A'}-sharing)\n`;
       message += `💰 Installment: ₹${(r["Install Ment Name(Amount)"] || 0).toLocaleString()}\n`;
       message += `📅 Due Date: ${r["Fees Due Date(DD-MM-YY)"] || 'N/A'}\n`;
       message += `📅 Admission: ${r["Admission Date"] || 'N/A'}\n\n`;
@@ -404,7 +436,7 @@ async function getRoomList() {
   try {
     const { data: rooms, error } = await supabase
       .from('hostel')
-      .select('"Room", "Sharing"');
+      .select('Room, Sharing');
     
     if (error) {
       console.error('Room fetch error:', error);
@@ -417,11 +449,11 @@ async function getRoomList() {
     
     const roomMap = new Map();
     rooms.forEach(r => {
-      const roomNo = r["Room"];
+      const roomNo = r.Room;
       if (!roomMap.has(roomNo)) {
         roomMap.set(roomNo, { 
           room: roomNo, 
-          sharing: r["Sharing"], 
+          sharing: r.Sharing, 
           count: 0 
         });
       }
@@ -461,7 +493,7 @@ async function getRoomOccupants(roomNo) {
     const { data: occupants, error } = await supabase
       .from('hostel')
       .select('*')
-      .eq('"Room"', roomNo);
+      .eq('Room', roomNo);
     
     if (error) {
       console.error('Room occupants error:', error);
@@ -472,7 +504,7 @@ async function getRoomOccupants(roomNo) {
       return `🚪 *Room ${roomNo} is currently vacant*`;
     }
     
-    const sharing = occupants[0]["Sharing"] || 'N/A';
+    const sharing = occupants[0].Sharing || 'N/A';
     const available = sharing - occupants.length;
     
     let message = `🚪 *ROOM ${roomNo} DETAILS*\n`;
@@ -485,7 +517,7 @@ async function getRoomOccupants(roomNo) {
     occupants.forEach((r, i) => {
       message += `\n${i+1}. *${r["Resident Name"]}*\n`;
       message += `   📱 PRN: ${r["PRN/Mobile  Number"]}\n`;
-      message += `   📚 ${r["Course"]} (${r["Batch"]})\n`;
+      message += `   📚 ${r.Course} (${r.Batch})\n`;
       message += `   💰 Installment: ₹${(r["Install Ment Name(Amount)"] || 0).toLocaleString()}\n`;
       message += `   📅 Due: ${r["Fees Due Date(DD-MM-YY)"] || 'N/A'}\n`;
     });
@@ -501,7 +533,7 @@ async function getVacantRooms() {
   try {
     const { data: rooms, error } = await supabase
       .from('hostel')
-      .select('"Room", "Sharing"');
+      .select('Room, Sharing');
     
     if (error) {
       console.error('Vacant rooms error:', error);
@@ -510,9 +542,9 @@ async function getVacantRooms() {
     
     const roomMap = new Map();
     rooms.forEach(r => {
-      const roomNo = r["Room"];
+      const roomNo = r.Room;
       if (!roomMap.has(roomNo)) {
-        roomMap.set(roomNo, { count: 0, sharing: r["Sharing"] });
+        roomMap.set(roomNo, { count: 0, sharing: r.Sharing });
       }
       roomMap.get(roomNo).count++;
     });
@@ -558,49 +590,51 @@ async function getResidentFeeDetails(searchQuery) {
   }
   
   try {
-    // Fix: Proper SQL syntax for OR condition
-    const { data: residents, error } = await supabase
-      .from('hostel')
-      .select('*')
-      .or(`"PRN/Mobile  Number"::text.ilike.%${searchQuery}%,"Resident Name".ilike.%${searchQuery}%`);
+    let resident = null;
     
-    if (error) {
-      console.error('Fee search error:', error);
-      return `❌ *Database Error*: ${error.message}`;
-    }
-    
-    if (!residents || residents.length === 0) {
-      return `❌ *No resident found for:* ${searchQuery}`;
-    }
-    
-    if (residents.length > 1) {
-      let message = `🔍 *MULTIPLE RESIDENTS FOUND* (${residents.length})\n`;
-      message += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-      message += `Please use exact PRN:\n\n`;
+    // Search by PRN (if numeric)
+    if (!isNaN(searchQuery) && searchQuery.length > 0) {
+      const { data: byPrn, error: prnError } = await supabase
+        .from('hostel')
+        .select('*')
+        .eq('"PRN/Mobile  Number"', parseInt(searchQuery))
+        .maybeSingle();
       
-      residents.slice(0, 5).forEach((r, i) => {
-        message += `${i+1}. 👤 *${r["Resident Name"]}*\n`;
-        message += `   📱 PRN: ${r["PRN/Mobile  Number"]}\n`;
-        message += `   🚪 Room ${r["Room"]}\n\n`;
-      });
-      
-      return message;
+      if (!prnError && byPrn) {
+        resident = byPrn;
+      }
     }
     
-    const r = residents[0];
-    const message = `💰 *HOSTEL FEE DETAILS*
+    // Search by Name
+    if (!resident) {
+      const { data: byName, error: nameError } = await supabase
+        .from('hostel')
+        .select('*')
+        .ilike('"Resident Name"', `%${searchQuery}%`)
+        .maybeSingle();
+      
+      if (!nameError && byName) {
+        resident = byName;
+      }
+    }
+    
+    if (!resident) {
+      return `❌ *No resident found for:* ${searchQuery}\n\nTry using exact PRN or full name.`;
+    }
+    
+    let message = `💰 *HOSTEL FEE DETAILS*
 ━━━━━━━━━━━━━━━━━━━━━━
 
-👤 *Resident:* ${r["Resident Name"]}
-📱 *PRN:* ${r["PRN/Mobile  Number"]}
-📚 *Course:* ${r["Course"]} (${r["Batch"]})
-🚪 *Room:* ${r["Room"]} (${r["Sharing"]}-sharing)
-📅 *Admission:* ${r["Admission Date"]}
+👤 *Resident:* ${resident["Resident Name"]}
+📱 *PRN:* ${resident["PRN/Mobile  Number"]}
+📚 *Course:* ${resident.Course} (${resident.Batch})
+🚪 *Room:* ${resident.Room} (${resident.Sharing}-sharing)
+📅 *Admission:* ${resident["Admission Date"]}
 
-💵 *Installment Amount:* ₹${(r["Install Ment Name(Amount)"] || 0).toLocaleString()}
-📅 *Due Date:* ${r["Fees Due Date(DD-MM-YY)"] || 'N/A'}
+💵 *Installment Amount:* ₹${(resident["Install Ment Name(Amount)"] || 0).toLocaleString()}
+📅 *Due Date:* ${resident["Fees Due Date(DD-MM-YY)"] || 'N/A'}
 
-💡 To update: H ${r["PRN/Mobile  Number"]}|<amount>`;
+💡 To update: H ${resident["PRN/Mobile  Number"]}|<amount>`;
     
     return message;
   } catch (error) {
@@ -635,7 +669,7 @@ async function getHostelDueFeesList() {
       message += `${i+1}. *${r["Resident Name"]}*\n`;
       message += `   📅 Due: ${r["Fees Due Date(DD-MM-YY)"]}\n`;
       message += `   💰 Amount: ₹${(r["Install Ment Name(Amount)"] || 0).toLocaleString()}\n`;
-      message += `   🚪 Room ${r["Room"]}\n\n`;
+      message += `   🚪 Room ${r.Room}\n\n`;
     });
     
     if (residents.length > 15) {
@@ -653,7 +687,7 @@ async function getHostelFeesSummary() {
   try {
     const { data: residents, error } = await supabase
       .from('hostel')
-      .select('"Install Ment Name(Amount)", "Course", "Batch"');
+      .select('"Install Ment Name(Amount)", Course, Batch');
     
     if (error) {
       console.error('Summary error:', error);
@@ -671,7 +705,7 @@ async function getHostelFeesSummary() {
       const amount = Number(r["Install Ment Name(Amount)"]) || 0;
       totalInstallments += amount;
       
-      const course = r["Course"] || 'Unknown';
+      const course = r.Course || 'Unknown';
       if (!courseStats[course]) {
         courseStats[course] = { total: 0, count: 0 };
       }
@@ -727,7 +761,7 @@ async function getFeesExpiringSoon() {
       message += `${i+1}. *${r["Resident Name"]}*\n`;
       message += `   📅 Due: ${r["Fees Due Date(DD-MM-YY)"]}\n`;
       message += `   💰 Amount: ₹${(r["Install Ment Name(Amount)"] || 0).toLocaleString()}\n`;
-      message += `   🚪 Room ${r["Room"]}\n\n`;
+      message += `   🚪 Room ${r.Room}\n\n`;
     });
     
     return message;
@@ -745,8 +779,8 @@ async function getCourseWiseList() {
   try {
     const { data: residents, error } = await supabase
       .from('hostel')
-      .select('"Course", "Resident Name", "Room"')
-      .order('"Course"');
+      .select('Course, "Resident Name", Room')
+      .order('Course');
     
     if (error) {
       console.error('Course list error:', error);
@@ -755,7 +789,7 @@ async function getCourseWiseList() {
     
     const courseMap = new Map();
     residents.forEach(r => {
-      const course = r["Course"] || 'Unknown';
+      const course = r.Course || 'Unknown';
       if (!courseMap.has(course)) {
         courseMap.set(course, []);
       }
@@ -768,7 +802,7 @@ async function getCourseWiseList() {
     for (const [course, students] of courseMap.entries()) {
       message += `📖 *${course}* (${students.length})\n`;
       students.slice(0, 5).forEach(s => {
-        message += `   👤 ${s["Resident Name"]} - Room ${s["Room"]}\n`;
+        message += `   👤 ${s["Resident Name"]} - Room ${s.Room}\n`;
       });
       if (students.length > 5) {
         message += `   📊 +${students.length - 5} more\n`;
@@ -794,7 +828,7 @@ async function getResidentsByCourse(courseName) {
     const { data: residents, error } = await supabase
       .from('hostel')
       .select('*')
-      .ilike('"Course"', `%${courseName}%`)
+      .ilike('Course', `%${courseName}%`)
       .order('"Resident Name"');
     
     if (error) {
@@ -812,8 +846,8 @@ async function getResidentsByCourse(courseName) {
     residents.forEach((r, i) => {
       message += `${i+1}. ${r["Resident Name"]}\n`;
       message += `   📱 ${r["PRN/Mobile  Number"]}\n`;
-      message += `   🚪 Room ${r["Room"]} (${r["Sharing"]}-sharing)\n`;
-      message += `   📅 Batch ${r["Batch"]}\n\n`;
+      message += `   🚪 Room ${r.Room} (${r.Sharing}-sharing)\n`;
+      message += `   📅 Batch ${r.Batch}\n\n`;
     });
     
     return message;
@@ -827,8 +861,8 @@ async function getBatchWiseList() {
   try {
     const { data: residents, error } = await supabase
       .from('hostel')
-      .select('"Batch", "Resident Name", "Course"')
-      .order('"Batch"', { ascending: false });
+      .select('Batch, "Resident Name", Course')
+      .order('Batch', { ascending: false });
     
     if (error) {
       console.error('Batch list error:', error);
@@ -837,7 +871,7 @@ async function getBatchWiseList() {
     
     const batchMap = new Map();
     residents.forEach(r => {
-      const batch = r["Batch"] || 'Unknown';
+      const batch = r.Batch || 'Unknown';
       if (!batchMap.has(batch)) {
         batchMap.set(batch, []);
       }
@@ -857,7 +891,7 @@ async function getBatchWiseList() {
       const students = batchMap.get(batch);
       message += `🎓 *Batch ${batch}* (${students.length})\n`;
       students.slice(0, 5).forEach(s => {
-        message += `   👤 ${s["Resident Name"]} (${s["Course"]})\n`;
+        message += `   👤 ${s["Resident Name"]} (${s.Course})\n`;
       });
       if (students.length > 5) {
         message += `   📊 +${students.length - 5} more\n`;
@@ -883,7 +917,7 @@ async function getResidentsByBatch(batchYear) {
     const { data: residents, error } = await supabase
       .from('hostel')
       .select('*')
-      .eq('"Batch"', parseInt(batchYear))
+      .eq('Batch', parseInt(batchYear))
       .order('"Resident Name"');
     
     if (error) {
@@ -900,8 +934,8 @@ async function getResidentsByBatch(batchYear) {
     
     residents.forEach((r, i) => {
       message += `${i+1}. ${r["Resident Name"]}\n`;
-      message += `   📚 ${r["Course"]}\n`;
-      message += `   🚪 Room ${r["Room"]}\n\n`;
+      message += `   📚 ${r.Course}\n`;
+      message += `   🚪 Room ${r.Room}\n\n`;
     });
     
     return message;
@@ -938,8 +972,8 @@ async function getRecentAdmissions() {
     residents.forEach((r, i) => {
       message += `${i+1}. *${r["Resident Name"]}*\n`;
       message += `   📅 Admission: ${r["Admission Date"]}\n`;
-      message += `   📚 ${r["Course"]} (${r["Batch"]})\n`;
-      message += `   🚪 Room ${r["Room"]}\n\n`;
+      message += `   📚 ${r.Course} (${r.Batch})\n`;
+      message += `   🚪 Room ${r.Room}\n\n`;
     });
     
     return message;
@@ -1093,7 +1127,7 @@ async function moveResidentRoom(prn, newRoom) {
   try {
     const { data: resident, error: fetchError } = await supabase
       .from('hostel')
-      .select('"Resident Name", "Room"')
+      .select('"Resident Name", Room')
       .eq('"PRN/Mobile  Number"', prn)
       .single();
     
@@ -1101,11 +1135,11 @@ async function moveResidentRoom(prn, newRoom) {
       return `❌ *Resident not found:* ${prn}`;
     }
     
-    const oldRoom = resident["Room"];
+    const oldRoom = resident.Room;
     
     const { error: updateError } = await supabase
       .from('hostel')
-      .update({ "Room": newRoom })
+      .update({ Room: newRoom })
       .eq('"PRN/Mobile  Number"', prn);
     
     if (updateError) {
@@ -1146,9 +1180,9 @@ async function getHostelStatistics() {
     }
     
     const totalResidents = residents.length;
-    const uniqueRooms = new Set(residents.map(r => r["Room"])).size;
-    const uniqueCourses = new Set(residents.map(r => r["Course"])).size;
-    const uniqueBatches = new Set(residents.map(r => r["Batch"])).size;
+    const uniqueRooms = new Set(residents.map(r => r.Room)).size;
+    const uniqueCourses = new Set(residents.map(r => r.Course)).size;
+    const uniqueBatches = new Set(residents.map(r => r.Batch)).size;
     
     let totalInstallments = 0;
     residents.forEach(r => {
@@ -1157,9 +1191,9 @@ async function getHostelStatistics() {
     
     const roomMap = new Map();
     residents.forEach(r => {
-      const room = r["Room"];
+      const room = r.Room;
       if (!roomMap.has(room)) {
-        roomMap.set(room, { count: 0, sharing: r["Sharing"] });
+        roomMap.set(room, { count: 0, sharing: r.Sharing });
       }
       roomMap.get(room).count++;
     });
