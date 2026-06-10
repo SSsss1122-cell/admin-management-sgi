@@ -1,6 +1,4 @@
-import { supabase } from '@/lib/supabase';
-
-const TABLE = '"Hostel new"';
+import { supabase } from '@/lib/supabaseClient';
 
 export async function handleHostelAdminCommands(userMessage, cleanNumber) {
   const upper = userMessage?.toUpperCase().trim() || '';
@@ -8,62 +6,63 @@ export async function handleHostelAdminCommands(userMessage, cleanNumber) {
 
   console.log(`🏨 Hostel Admin: "${userMessage}"`);
 
-  // Menu / Help
+  // Single-letter commands
   if (['HOSTEL', 'MENU', 'START', 'HELP'].includes(upper)) return getMenu();
-
-  // Single-letter view commands
   if (upper === 'A') return await getResidentList();
-  if (upper === 'B') return '🔍 Format: B <name or PRN>\nExample: B Suhani';
+  if (upper === 'B') return '🔍 *SEARCH*\nFormat: B <name or PRN>\nExample: B Suhani';
   if (upper === 'C') return await getResidentCountWithCourse();
   if (upper === 'D') return await getRoomList();
-  if (upper === 'E') return '🚪 Format: E <room_no>\nExample: E 26';
+  if (upper === 'E') return '🚪 *ROOM DETAILS*\nFormat: E <room_no>\nExample: E 26';
   if (upper === 'F') return await getVacantRooms();
-  if (upper === 'G') return '💰 Format: G <name or PRN>\nExample: G Suhani';
-  if (upper === 'I') return await getFeeSummary();
-  if (upper === 'N') return await getStatistics();
+  if (upper === 'G') return '💰 *FEE CHECK*\nFormat: G <name or PRN>\nExample: G Suhani';
+  if (upper === 'I') return await getHostelFeesSummary();
+  if (upper === 'N') return await getHostelStatistics();
 
   // Commands with arguments
   if (lower.startsWith('b ')) return await searchResident(userMessage.substring(2).trim());
   if (lower.startsWith('e ')) return await getRoomOccupants(userMessage.substring(2).trim());
   if (lower.startsWith('g ')) return await getResidentFeeDetails(userMessage.substring(2).trim());
-  if (lower.startsWith('h ')) {
-    const [prn, amount, paidDate] = userMessage.substring(2).trim().split('|');
-    return await updateResidentFee(prn, amount, paidDate);
-  }
+  if (lower.startsWith('h ')) return await updateResidentFee(userMessage.substring(2).trim().split('|'));
   if (lower.startsWith('add ')) return await addResident(userMessage.substring(4).trim().split('|'));
   if (lower.startsWith('del ')) return await deleteResident(userMessage.substring(4).trim());
-  if (lower.startsWith('move ')) return await moveResidentRoom(...userMessage.substring(5).trim().split('|'));
+  if (lower.startsWith('move ')) return await moveResidentRoom(userMessage.substring(5).trim().split('|'));
+  if (lower.startsWith('due ')) return await getDueResidents();
+  if (lower.startsWith('pay ')) return await recordFeePayment(userMessage.substring(4).trim().split('|'));
 
-  return `❓ Command samajh nahi aaya.\nType *MENU* for help.`;
+  return `❓ Command samajh nahi aaya.\n\nType *MENU* for help.`;
 }
 
 // ─── MENU ──────────────────────────────────────────────
 
 function getMenu() {
-  return `🏨 *HOSTEL ADMIN*
+  return `🏨 *HOSTEL ADMIN PANEL*
 ━━━━━━━━━━━━━━━━━━━━
 
 👥 *RESIDENTS*
  A → Resident list
- B → Search  _(B Suhani)_
+ B → Search resident (B Suhani)
  C → Count by course
 
 🚪 *ROOMS*
  D → Room list
- E → Room details  _(E 26)_
+ E → Room details (E 26)
  F → Vacant rooms
 
 💰 *FEES*
- G → Fee details  _(G Suhani)_
- H → Pay / Update  _(H PRN|amount|date)_
+ G → Fee check (G Suhani)
+ H → Update fee (H PRN|amount)
  I → Fee summary
+ DUE → Due payments list
+ PAY → Record payment (PAY PRN|amount)
 
-📊 N → Statistics
+📊 *OTHER*
+ N → Statistics
+ ADD → ADD name|PRN|course|room
+ DEL → DEL PRN
+ MOVE → MOVE PRN|newRoom
 
 ━━━━━━━━━━━━━━━━━━━━
-➕ *ADD* name|PRN|course|room|batch|total|sharing
-🗑 *DEL* PRN
-🔄 *MOVE* PRN|newRoom`;
+💡 Example: ADD John|9876543210|BAMS|26`;
 }
 
 // ─── RESIDENTS ─────────────────────────────────────────
@@ -72,17 +71,18 @@ async function getResidentList() {
   try {
     const { data, error } = await supabase
       .from('Hostel new')
-      .select('"Resident Name", "Course", "Room", "Due amount"')
+      .select('"Resident Name", Course, Room')
       .order('"Resident Name"');
 
     if (error) return `❌ DB Error: ${error.message}`;
-    if (!data?.length) return '📭 No residents found.';
+    if (!data || data.length === 0) return '📭 No residents found.';
 
     let msg = `👥 *RESIDENT LIST* (${data.length})\n━━━━━━━━━━━━━━━━━━━━\n\n`;
-    data.slice(0, 30).forEach((r, i) => {
-      const due = r["Due amount"] > 0 ? ` ⚠️ Due: ₹${r["Due amount"].toLocaleString()}` : '';
-      msg += `${i + 1}. *${r["Resident Name"]}*\n   ${r.Course} | Room ${r.Room}${due}\n\n`;
-    });
+    const displayData = data.slice(0, 30);
+    for (let i = 0; i < displayData.length; i++) {
+      const r = displayData[i];
+      msg += `${i + 1}. *${r["Resident Name"]}*\n   ${r.Course} | Room ${r.Room}\n\n`;
+    }
     if (data.length > 30) msg += `_...${data.length - 30} more. Use B to search._`;
     return msg;
   } catch (e) {
@@ -92,22 +92,20 @@ async function getResidentList() {
 
 async function getResidentCountWithCourse() {
   try {
-    const { data, error } = await supabase
-      .from('Hostel new')
-      .select('"Course"');
-
+    const { data, error } = await supabase.from('Hostel new').select('Course');
     if (error) return `❌ DB Error: ${error.message}`;
-    if (!data?.length) return '📭 No residents found.';
+    if (!data || data.length === 0) return '📭 No residents found.';
 
     const counts = {};
-    data.forEach(r => {
+    for (const r of data) {
       const c = r.Course || 'Unknown';
       counts[c] = (counts[c] || 0) + 1;
-    });
+    }
 
     let msg = `📊 *RESIDENTS BY COURSE*\n━━━━━━━━━━━━━━━━━━━━\n\n`;
-    for (const [course, count] of Object.entries(counts).sort()) {
-      msg += `• ${course}: *${count}*\n`;
+    const sortedCourses = Object.keys(counts).sort();
+    for (const course of sortedCourses) {
+      msg += `• ${course}: *${counts[course]}*\n`;
     }
     msg += `\n🏨 Total: *${data.length}*`;
     return msg;
@@ -122,34 +120,33 @@ async function searchResident(query) {
     let results = [];
 
     // Search by PRN
-    const { data: byPrn } = await supabase
+    const { data: prnData } = await supabase
       .from('Hostel new')
       .select('*')
       .ilike('"PRN/Mobile  Number"', `%${query}%`);
-    if (byPrn?.length) results = byPrn;
+    
+    if (prnData && prnData.length > 0) results = prnData;
 
-    // Search by Name
-    if (!results.length) {
-      const { data: byName } = await supabase
+    // Search by name if no PRN results
+    if (results.length === 0) {
+      const { data: nameData } = await supabase
         .from('Hostel new')
         .select('*')
         .ilike('"Resident Name"', `%${query}%`);
-      if (byName?.length) results = byName;
+      if (nameData && nameData.length > 0) results = nameData;
     }
 
-    if (!results.length) return `❌ No resident found: *${query}*`;
+    if (results.length === 0) return `❌ No resident found for: *${query}*`;
 
-    let msg = `🔍 *"${query}"* (${results.length})\n━━━━━━━━━━━━━━━━━━━━\n\n`;
+    let msg = `🔍 *SEARCH: "${query}"* (${results.length})\n━━━━━━━━━━━━━━━━━━━━\n\n`;
     for (const r of results) {
-      const dueAmt = r["Due amount"] || 0;
-      const dueFlag = dueAmt > 0 ? `⚠️ Due: ₹${dueAmt.toLocaleString()}` : '✅ Clear';
       msg += `👤 *${r["Resident Name"]}*\n`;
       msg += `📱 PRN: ${r["PRN/Mobile  Number"] || 'N/A'}\n`;
       msg += `📚 ${r.Course || 'N/A'} | Batch ${r.Batch || 'N/A'}\n`;
       msg += `🚪 Room ${r.Room || 'N/A'} (${r.Sharing || 'N/A'}-sharing)\n`;
-      msg += `💰 Total: ₹${(r["Total Amount"] || 0).toLocaleString()} | ${dueFlag}\n`;
-      msg += `📅 Due Date: ${r["Fees Due Date(DD-MM-YY)"] || 'N/A'}\n`;
-      msg += `📅 Paid: ${r["Fees Paid Date"] || 'N/A'}\n\n`;
+      msg += `💰 Total: ₹${(r["Total Amount"] || 0).toLocaleString()}\n`;
+      msg += `💵 Due: ₹${(r["Due amount"] || 0).toLocaleString()}\n`;
+      msg += `📅 Due Date: ${r["Fees Due Date(DD-MM-YY)"] || 'N/A'}\n\n`;
     }
     return msg;
   } catch (e) {
@@ -161,26 +158,26 @@ async function searchResident(query) {
 
 async function getRoomList() {
   try {
-    const { data, error } = await supabase
-      .from('Hostel new')
-      .select('"Room", "Sharing"');
-
+    const { data, error } = await supabase.from('Hostel new').select('Room, Sharing');
     if (error) return `❌ DB Error: ${error.message}`;
-    if (!data?.length) return '🚪 No rooms found.';
+    if (!data || data.length === 0) return '🚪 No rooms found.';
 
-    const map = new Map();
-    data.forEach(r => {
-      if (!map.has(r.Room)) map.set(r.Room, { sharing: r.Sharing, count: 0 });
-      map.get(r.Room).count++;
-    });
+    const roomMap = new Map();
+    for (const r of data) {
+      const roomNum = r.Room;
+      if (!roomMap.has(roomNum)) {
+        roomMap.set(roomNum, { sharing: r.Sharing, count: 0 });
+      }
+      roomMap.get(roomNum).count++;
+    }
 
-    const rooms = [...map.entries()].sort((a, b) => a[0] - b[0]);
+    const rooms = Array.from(roomMap.entries()).sort((a, b) => Number(a[0]) - Number(b[0]));
     let msg = `🚪 *ROOMS* (${rooms.length})\n━━━━━━━━━━━━━━━━━━━━\n\n`;
-    rooms.forEach(([room, d]) => {
+    for (const [room, d] of rooms) {
       const full = d.count >= d.sharing;
       msg += `${full ? '🔴' : '🟢'} Room *${room}* — ${d.count}/${d.sharing}\n`;
-    });
-    msg += `\n💡 E <room_no> for occupant details`;
+    }
+    msg += `\n💡 E <room_no> for details`;
     return msg;
   } catch (e) {
     return `❌ Error: ${e.message}`;
@@ -193,21 +190,22 @@ async function getRoomOccupants(roomNo) {
     const { data, error } = await supabase
       .from('Hostel new')
       .select('*')
-      .eq('"Room"', parseInt(roomNo));
-
+      .eq('Room', parseInt(roomNo));
+    
     if (error) return `❌ DB Error: ${error.message}`;
-    if (!data?.length) return `🚪 Room *${roomNo}* is vacant.`;
+    if (!data || data.length === 0) return `🚪 Room *${roomNo}* is vacant.`;
 
     const sharing = data[0].Sharing || '?';
     let msg = `🚪 *ROOM ${roomNo}* — ${data.length}/${sharing} occupied\n━━━━━━━━━━━━━━━━━━━━\n\n`;
-    data.forEach((r, i) => {
-      const dueAmt = r["Due amount"] || 0;
+    for (let i = 0; i < data.length; i++) {
+      const r = data[i];
       msg += `${i + 1}. *${r["Resident Name"]}*\n`;
       msg += `   📱 ${r["PRN/Mobile  Number"]}\n`;
       msg += `   📚 ${r.Course} (${r.Batch})\n`;
       msg += `   💰 Total: ₹${(r["Total Amount"] || 0).toLocaleString()}\n`;
-      msg += `   ${dueAmt > 0 ? `⚠️ Due: ₹${dueAmt.toLocaleString()} | 📅 ${r["Fees Due Date(DD-MM-YY)"] || 'N/A'}` : '✅ Fees Clear'}\n\n`;
-    });
+      msg += `   💵 Due: ₹${(r["Due amount"] || 0).toLocaleString()}\n`;
+      msg += `   📅 Due: ${r["Fees Due Date(DD-MM-YY)"] || 'N/A'}\n\n`;
+    }
     return msg;
   } catch (e) {
     return `❌ Error: ${e.message}`;
@@ -216,28 +214,28 @@ async function getRoomOccupants(roomNo) {
 
 async function getVacantRooms() {
   try {
-    const { data, error } = await supabase
-      .from('Hostel new')
-      .select('"Room", "Sharing"');
-
+    const { data, error } = await supabase.from('Hostel new').select('Room, Sharing');
     if (error) return `❌ DB Error: ${error.message}`;
 
-    const map = new Map();
-    data.forEach(r => {
-      if (!map.has(r.Room)) map.set(r.Room, { sharing: r.Sharing, count: 0 });
-      map.get(r.Room).count++;
-    });
+    const roomMap = new Map();
+    for (const r of data) {
+      const roomNum = r.Room;
+      if (!roomMap.has(roomNum)) {
+        roomMap.set(roomNum, { sharing: r.Sharing, count: 0 });
+      }
+      roomMap.get(roomNum).count++;
+    }
 
-    const vacant = [...map.entries()]
+    const vacant = Array.from(roomMap.entries())
       .filter(([_, d]) => d.count < d.sharing)
-      .sort((a, b) => a[0] - b[0]);
+      .sort((a, b) => Number(a[0]) - Number(b[0]));
 
-    if (!vacant.length) return '🏨 All rooms are full.';
+    if (vacant.length === 0) return '🏨 All rooms are full.';
 
     let msg = `🟢 *VACANT ROOMS* (${vacant.length})\n━━━━━━━━━━━━━━━━━━━━\n\n`;
-    vacant.forEach(([room, d]) => {
+    for (const [room, d] of vacant) {
       msg += `Room *${room}* — ${d.sharing - d.count} seat(s) free\n`;
-    });
+    }
     msg += `\n💡 MOVE PRN|newRoom to reassign`;
     return msg;
   } catch (e) {
@@ -252,27 +250,30 @@ async function getResidentFeeDetails(query) {
   try {
     let resident = null;
 
-    const { data: byPrn } = await supabase
+    // Search by PRN
+    const { data: prnData } = await supabase
       .from('Hostel new')
       .select('*')
       .ilike('"PRN/Mobile  Number"', `%${query}%`)
       .maybeSingle();
-    if (byPrn) resident = byPrn;
+    
+    if (prnData) resident = prnData;
 
+    // Search by name
     if (!resident) {
-      const { data: byName } = await supabase
+      const { data: nameData } = await supabase
         .from('Hostel new')
         .select('*')
         .ilike('"Resident Name"', `%${query}%`)
         .maybeSingle();
-      if (byName) resident = byName;
+      if (nameData) resident = nameData;
     }
 
     if (!resident) return `❌ No resident found: *${query}*`;
 
-    const dueAmt = resident["Due amount"] || 0;
-    const totalAmt = resident["Total Amount"] || 0;
-    const paidAmt = totalAmt - dueAmt;
+    const totalAmount = resident["Total Amount"] || 0;
+    const dueAmount = resident["Due amount"] || 0;
+    const paidAmount = totalAmount - dueAmount;
 
     return `💰 *FEE DETAILS*
 ━━━━━━━━━━━━━━━━━━━━
@@ -280,54 +281,68 @@ async function getResidentFeeDetails(query) {
 📱 PRN: ${resident["PRN/Mobile  Number"]}
 📚 ${resident.Course} | Batch ${resident.Batch}
 🚪 Room ${resident.Room} (${resident.Sharing}-sharing)
+
+💵 Total Fees: ₹${totalAmount.toLocaleString()}
+✅ Paid: ₹${paidAmount.toLocaleString()}
+⚠️ Due: ₹${dueAmount.toLocaleString()}
+📅 Due Date: ${resident["Fees Due Date(DD-MM-YY)"] || 'N/A'}
 📅 Admission: ${resident["Admission Date"] || 'N/A'}
 
-💵 Total Fees: ₹${totalAmt.toLocaleString()}
-✅ Paid: ₹${paidAmt.toLocaleString()}
-${dueAmt > 0 ? `⚠️ Due: ₹${dueAmt.toLocaleString()}` : '✅ No dues'}
-📅 Due Date: ${resident["Fees Due Date(DD-MM-YY)"] || 'N/A'}
-📅 Last Paid: ${resident["Fees Paid Date"] || 'N/A'}
-📋 Next: ${resident["Upcomming Fee Structure"] || 'N/A'}
-
-💡 Pay: H ${resident["PRN/Mobile  Number"]}|amount|DD-MM-YY`;
+💡 Update: H ${resident["PRN/Mobile  Number"]}|<amount>
+💡 Record Payment: PAY ${resident["PRN/Mobile  Number"]}|<amount>`;
   } catch (e) {
     return `❌ Error: ${e.message}`;
   }
 }
 
-async function getFeeSummary() {
+async function getHostelFeesSummary() {
   try {
-    const { data, error } = await supabase
-      .from('Hostel new')
-      .select('"Total Amount", "Due amount", "Course"');
-
+    const { data, error } = await supabase.from('Hostel new').select('"Total Amount", "Due amount", Course');
     if (error) return `❌ DB Error: ${error.message}`;
-    if (!data?.length) return '📭 No data.';
+    if (!data || data.length === 0) return '📭 No data.';
 
-    let totalAmt = 0, totalDue = 0;
+    let totalFees = 0;
+    let totalDue = 0;
     const stats = {};
-
-    data.forEach(r => {
-      const amt = Number(r["Total Amount"]) || 0;
+    
+    for (const r of data) {
+      const fees = Number(r["Total Amount"]) || 0;
       const due = Number(r["Due amount"]) || 0;
-      totalAmt += amt;
+      totalFees += fees;
       totalDue += due;
+      
       const c = r.Course || 'Unknown';
-      if (!stats[c]) stats[c] = { total: 0, due: 0, count: 0 };
-      stats[c].total += amt;
+      if (!stats[c]) {
+        stats[c] = { total: 0, due: 0, count: 0 };
+      }
+      stats[c].total += fees;
       stats[c].due += due;
       stats[c].count++;
-    });
+    }
 
-    let msg = `📊 *FEE SUMMARY*\n━━━━━━━━━━━━━━━━━━━━\n`;
-    msg += `Residents: *${data.length}*\n`;
-    msg += `💰 Total: ₹${totalAmt.toLocaleString()}\n`;
-    msg += `✅ Collected: ₹${(totalAmt - totalDue).toLocaleString()}\n`;
-    msg += `⚠️ Pending: ₹${totalDue.toLocaleString()}\n\n`;
+    const totalPaid = totalFees - totalDue;
+    const collectionRate = totalFees > 0 ? (totalPaid / totalFees) * 100 : 0;
 
-    for (const [course, s] of Object.entries(stats).sort()) {
-      msg += `📚 *${course}* (${s.count})\n`;
-      msg += `   Total ₹${s.total.toLocaleString()} | Due ₹${s.due.toLocaleString()}\n\n`;
+    let msg = `📊 *FEE SUMMARY*
+━━━━━━━━━━━━━━━━━━━━
+💰 Total Fees: ₹${totalFees.toLocaleString()}
+✅ Total Paid: ₹${totalPaid.toLocaleString()}
+⚠️ Total Due: ₹${totalDue.toLocaleString()}
+📈 Collection Rate: ${collectionRate.toFixed(1)}%
+👥 Residents: ${data.length}
+
+📚 *COURSE BREAKDOWN*
+━━━━━━━━━━━━━━━━━━━━\n`;
+
+    const sortedCourses = Object.keys(stats).sort();
+    for (const course of sortedCourses) {
+      const s = stats[course];
+      const coursePaid = s.total - s.due;
+      const rate = s.total > 0 ? (coursePaid / s.total) * 100 : 0;
+      msg += `\n*${course}* (${s.count} students)
+   Total: ₹${s.total.toLocaleString()}
+   Due: ₹${s.due.toLocaleString()}
+   Rate: ${rate.toFixed(1)}%`;
     }
     return msg;
   } catch (e) {
@@ -335,49 +350,119 @@ async function getFeeSummary() {
   }
 }
 
-async function updateResidentFee(prn, amount, paidDate) {
-  if (!prn || !amount) {
-    return `❌ Format: H <PRN>|<amount>|<paid_date>\nExample: H 9876543210|25000|15-06-25`;
-  }
+async function updateResidentFee(parts) {
+  const prn = parts[0];
+  const amount = parts[1];
+  
+  if (!prn || !amount) return '❌ Format: H <PRN>|<amount>\nExample: H 9876543210|50000';
   try {
-    const { data: r, error: fe } = await supabase
+    const { data: resident, error: fe } = await supabase
       .from('Hostel new')
       .select('*')
-      .ilike('"PRN/Mobile  Number"', prn.trim())
+      .ilike('"PRN/Mobile  Number"', `%${prn.trim()}%`)
       .single();
 
-    if (fe || !r) return `❌ Resident not found: ${prn}`;
+    if (fe || !resident) return `❌ Resident not found: ${prn}`;
 
-    const prevDue = Number(r["Due amount"]) || 0;
-    const paying  = Number(amount);
-
-    if (paying > prevDue) return `❌ Amount ₹${paying.toLocaleString()} exceeds due ₹${prevDue.toLocaleString()}`;
-
-    const newDue = prevDue - paying;
-    const updateData = {
-      "Due amount": newDue,
-      "Fees Paid Date": paidDate || new Date().toLocaleDateString('en-GB')
-    };
-
-    // If fully paid, clear due date
-    if (newDue === 0) updateData["Fees Due Date(DD-MM-YY)"] = null;
+    const prevDue = Number(resident["Due amount"]) || 0;
+    const addAmount = Number(amount);
+    const newDue = prevDue + addAmount;
+    const newTotal = Number(resident["Total Amount"] || 0) + addAmount;
 
     const { error: ue } = await supabase
       .from('Hostel new')
-      .update(updateData)
-      .ilike('"PRN/Mobile  Number"', prn.trim());
+      .update({ 
+        "Due amount": newDue,
+        "Total Amount": newTotal
+      })
+      .ilike('"PRN/Mobile  Number"', `%${prn.trim()}%`);
 
     if (ue) return `❌ Update failed: ${ue.message}`;
 
+    return `✅ *FEE UPDATED*
+━━━━━━━━━━━━━━━━━━━━
+👤 ${resident["Resident Name"]}
+💰 Previous Due: ₹${prevDue.toLocaleString()}
+➕ Added: ₹${addAmount.toLocaleString()}
+⚠️ New Due: ₹${newDue.toLocaleString()}
+💵 Total Fees: ₹${newTotal.toLocaleString()}`;
+  } catch (e) {
+    return `❌ Error: ${e.message}`;
+  }
+}
+
+async function recordFeePayment(parts) {
+  const prn = parts[0];
+  const amount = parts[1];
+  
+  if (!prn || !amount) return '❌ Format: PAY <PRN>|<amount>\nExample: PAY 9876543210|25000';
+  try {
+    const { data: resident, error: fe } = await supabase
+      .from('Hostel new')
+      .select('*')
+      .ilike('"PRN/Mobile  Number"', `%${prn.trim()}%`)
+      .single();
+
+    if (fe || !resident) return `❌ Resident not found: ${prn}`;
+
+    const currentDue = Number(resident["Due amount"]) || 0;
+    const paymentAmount = Number(amount);
+    const newDue = Math.max(0, currentDue - paymentAmount);
+    const paidDate = new Date().toLocaleDateString('en-GB');
+
+    const { error: ue } = await supabase
+      .from('Hostel new')
+      .update({ 
+        "Due amount": newDue,
+        "Fees Paid Date": paidDate
+      })
+      .ilike('"PRN/Mobile  Number"', `%${prn.trim()}%`);
+
+    if (ue) return `❌ Payment failed: ${ue.message}`;
+
     return `✅ *PAYMENT RECORDED*
 ━━━━━━━━━━━━━━━━━━━━
-👤 ${r["Resident Name"]}
-📱 PRN: ${prn}
-📅 Paid Date: ${updateData["Fees Paid Date"]}
+👤 ${resident["Resident Name"]}
+💰 Paid: ₹${paymentAmount.toLocaleString()}
+⚠️ Remaining Due: ₹${newDue.toLocaleString()}
+📅 Paid on: ${paidDate}
 
-💵 Amount Paid: ₹${paying.toLocaleString()}
-⚠️ Previous Due: ₹${prevDue.toLocaleString()}
-${newDue > 0 ? `📌 Remaining Due: ₹${newDue.toLocaleString()}` : '✅ All dues cleared!'}`;
+${newDue === 0 ? '🎉 All fees cleared!' : `💡 Still due: ₹${newDue.toLocaleString()}`}`;
+  } catch (e) {
+    return `❌ Error: ${e.message}`;
+  }
+}
+
+async function getDueResidents() {
+  try {
+    const { data, error } = await supabase
+      .from('Hostel new')
+      .select('"Resident Name", "PRN/Mobile  Number", "Due amount", "Fees Due Date(DD-MM-YY)", Course, Room')
+      .gt('"Due amount"', 0)
+      .order('"Due amount"', { ascending: false });
+
+    if (error) return `❌ DB Error: ${error.message}`;
+    if (!data || data.length === 0) return '✅ No due payments! All fees cleared.';
+
+    let msg = `⚠️ *DUE PAYMENTS* (${data.length})\n━━━━━━━━━━━━━━━━━━━━\n\n`;
+    let totalDue = 0;
+    
+    const displayData = data.slice(0, 20);
+    for (let i = 0; i < displayData.length; i++) {
+      const r = displayData[i];
+      const due = Number(r["Due amount"]) || 0;
+      totalDue += due;
+      msg += `${i + 1}. *${r["Resident Name"]}*\n`;
+      msg += `   📱 ${r["PRN/Mobile  Number"]}\n`;
+      msg += `   💰 Due: ₹${due.toLocaleString()}\n`;
+      msg += `   📅 Date: ${r["Fees Due Date(DD-MM-YY)"] || 'N/A'}\n\n`;
+    }
+    
+    msg += `━━━━━━━━━━━━━━━━━━━━\n`;
+    msg += `💰 Total Due: ₹${totalDue.toLocaleString()}`;
+    
+    if (data.length > 20) msg += `\n_...${data.length - 20} more students have dues._`;
+    return msg;
   } catch (e) {
     return `❌ Error: ${e.message}`;
   }
@@ -387,26 +472,45 @@ ${newDue > 0 ? `📌 Remaining Due: ₹${newDue.toLocaleString()}` : '✅ All du
 
 async function addResident(parts) {
   if (!parts || parts.length < 4) {
-    return `❌ Format: ADD name|PRN|course|room|batch|totalAmt|sharing\nExample: ADD Suhani|9876543210|BAMS|26|2023|120000|4`;
+    return `❌ Format: ADD name|PRN|course|room\nExample: ADD John|9876543210|BAMS|26\n\nOptional: |batch|totalAmount|dueAmount|dueDate|sharing`;
   }
-  const [name, prn, course, room, batch, totalAmt, sharing] = parts.map(p => p?.trim());
+  
+  const name = parts[0]?.trim();
+  const prn = parts[1]?.trim();
+  const course = parts[2]?.trim();
+  const room = parts[3]?.trim();
+  const batch = parts[4]?.trim();
+  const totalAmount = parts[5]?.trim();
+  const dueAmount = parts[6]?.trim();
+  const dueDate = parts[7]?.trim();
+  const sharing = parts[8]?.trim();
+  
+  if (!name || !prn || !course || !room) {
+    return `❌ Missing required fields. Format: ADD name|PRN|course|room`;
+  }
+  
   try {
+    // Check if PRN exists
     const { data: existing } = await supabase
       .from('Hostel new')
       .select('"PRN/Mobile  Number"')
-      .ilike('"PRN/Mobile  Number"', prn)
+      .ilike('"PRN/Mobile  Number"', `%${prn}%`)
       .maybeSingle();
-
+      
     if (existing) return `❌ PRN *${prn}* already exists.`;
+
+    const total = totalAmount ? parseFloat(totalAmount) : 0;
+    const due = dueAmount ? parseFloat(dueAmount) : total;
 
     const { error } = await supabase.from('Hostel new').insert({
       "PRN/Mobile  Number": prn,
       "Resident Name": name,
       "Course": course,
-      "Room": parseInt(room),
-      "Batch": batch || String(new Date().getFullYear()),
-      "Total Amount": totalAmt ? parseInt(totalAmt) : 0,
-      "Due amount": totalAmt ? parseInt(totalAmt) : 0,
+      "Room": room ? parseInt(room) : null,
+      "Batch": batch || new Date().getFullYear().toString(),
+      "Total Amount": total,
+      "Due amount": due,
+      "Fees Due Date(DD-MM-YY)": dueDate || null,
       "Sharing": sharing ? parseInt(sharing) : 4,
       "Admission Date": new Date().toLocaleDateString('en-GB')
     });
@@ -414,9 +518,12 @@ async function addResident(parts) {
     if (error) return `❌ Add failed: ${error.message}`;
 
     return `✅ *RESIDENT ADDED*
-👤 ${name} | 📱 ${prn}
-📚 ${course} | Room ${room} | Batch ${batch || new Date().getFullYear()}
-💰 Total Fees: ₹${parseInt(totalAmt || 0).toLocaleString()}`;
+━━━━━━━━━━━━━━━━━━━━
+👤 ${name}
+📱 ${prn}
+📚 ${course} | Room ${room}
+💰 Total: ₹${total.toLocaleString()}
+⚠️ Due: ₹${due.toLocaleString()}`;
   } catch (e) {
     return `❌ Error: ${e.message}`;
   }
@@ -428,41 +535,45 @@ async function deleteResident(prn) {
     const { data: r } = await supabase
       .from('Hostel new')
       .select('"Resident Name"')
-      .ilike('"PRN/Mobile  Number"', prn)
+      .ilike('"PRN/Mobile  Number"', `%${prn}%`)
       .single();
 
     const { error } = await supabase
       .from('Hostel new')
       .delete()
-      .ilike('"PRN/Mobile  Number"', prn);
-
+      .ilike('"PRN/Mobile  Number"', `%${prn}%`);
+      
     if (error) return `❌ Delete failed: ${error.message}`;
 
-    return `✅ *DELETED*\n👤 ${r?.["Resident Name"] || 'Unknown'} | 📱 ${prn}`;
+    const residentName = r ? r["Resident Name"] : 'Unknown';
+    return `✅ *DELETED*\n👤 ${residentName}\n📱 ${prn}`;
   } catch (e) {
     return `❌ Error: ${e.message}`;
   }
 }
 
-async function moveResidentRoom(prn, newRoom) {
+async function moveResidentRoom(parts) {
+  const prn = parts[0];
+  const newRoom = parts[1];
+  
   if (!prn || !newRoom) return '❌ Format: MOVE <PRN>|<newRoom>\nExample: MOVE 9876543210|30';
   try {
     const { data: r, error: fe } = await supabase
       .from('Hostel new')
-      .select('"Resident Name", "Room"')
-      .ilike('"PRN/Mobile  Number"', prn)
+      .select('"Resident Name", Room')
+      .ilike('"PRN/Mobile  Number"', `%${prn}%`)
       .single();
 
     if (fe || !r) return `❌ Resident not found: ${prn}`;
 
     const { error: ue } = await supabase
       .from('Hostel new')
-      .update({ "Room": parseInt(newRoom) })
-      .ilike('"PRN/Mobile  Number"', prn);
+      .update({ Room: parseInt(newRoom) })
+      .ilike('"PRN/Mobile  Number"', `%${prn}%`);
 
     if (ue) return `❌ Move failed: ${ue.message}`;
 
-    return `✅ *ROOM CHANGED*\n👤 ${r["Resident Name"]}\n🚪 Room ${r.Room} → ${newRoom}`;
+    return `✅ *ROOM CHANGED*\n👤 ${r["Resident Name"]}\n🚪 ${r.Room} → ${newRoom}`;
   } catch (e) {
     return `❌ Error: ${e.message}`;
   }
@@ -470,40 +581,58 @@ async function moveResidentRoom(prn, newRoom) {
 
 // ─── STATISTICS ────────────────────────────────────────
 
-async function getStatistics() {
+async function getHostelStatistics() {
   try {
     const { data, error } = await supabase.from('Hostel new').select('*');
     if (error) return `❌ DB Error: ${error.message}`;
-    if (!data?.length) return '📭 No data.';
+    if (!data || data.length === 0) return '📭 No data.';
 
     const rooms = new Map();
-    let totalAmt = 0, totalDue = 0;
-
-    data.forEach(r => {
-      totalAmt += Number(r["Total Amount"]) || 0;
+    let totalFees = 0;
+    let totalDue = 0;
+    
+    for (const r of data) {
+      totalFees += Number(r["Total Amount"]) || 0;
       totalDue += Number(r["Due amount"]) || 0;
-      if (!rooms.has(r.Room)) rooms.set(r.Room, { count: 0, sharing: r.Sharing });
-      rooms.get(r.Room).count++;
-    });
+      const roomNum = r.Room;
+      if (!rooms.has(roomNum)) {
+        rooms.set(roomNum, { count: 0, sharing: r.Sharing });
+      }
+      rooms.get(roomNum).count++;
+    }
 
     let full = 0, vacant = 0;
     for (const d of rooms.values()) {
-      d.count >= d.sharing ? full++ : vacant++;
+      if (d.count >= d.sharing) {
+        full++;
+      } else {
+        vacant++;
+      }
     }
 
-    const defaulters = data.filter(r => (r["Due amount"] || 0) > 0).length;
+    const totalPaid = totalFees - totalDue;
+    const collectionRate = totalFees > 0 ? (totalPaid / totalFees) * 100 : 0;
 
-    return `📊 *STATISTICS*
+    const uniqueCourses = new Set();
+    const uniqueBatches = new Set();
+    for (const r of data) {
+      if (r.Course) uniqueCourses.add(r.Course);
+      if (r.Batch) uniqueBatches.add(r.Batch);
+    }
+
+    return `📊 *HOSTEL STATISTICS*
 ━━━━━━━━━━━━━━━━━━━━
 👥 Residents: *${data.length}*
 🚪 Rooms: *${rooms.size}*  (🔴 ${full} full | 🟢 ${vacant} vacant)
-📚 Courses: *${new Set(data.map(r => r.Course)).size}*
-🎓 Batches: *${new Set(data.map(r => r.Batch)).size}*
+📚 Courses: *${uniqueCourses.size}*
+🎓 Batches: *${uniqueBatches.size}*
 
-💰 Total Fees: ₹${totalAmt.toLocaleString()}
-✅ Collected: ₹${(totalAmt - totalDue).toLocaleString()}
-⚠️ Pending: ₹${totalDue.toLocaleString()}
-🚨 Defaulters: *${defaulters}* residents`;
+💰 Total Fees: ₹${totalFees.toLocaleString()}
+✅ Total Paid: ₹${totalPaid.toLocaleString()}
+⚠️ Total Due: ₹${totalDue.toLocaleString()}
+📈 Collection Rate: ${collectionRate.toFixed(1)}%
+
+📊 Avg per Student: ₹${Math.round(totalFees / data.length).toLocaleString()}`;
   } catch (e) {
     return `❌ Error: ${e.message}`;
   }
