@@ -559,7 +559,7 @@ function BusStopsPage() {
                 ) : filteredStops.length === 0 ? (
                   <tr>
                     <td colSpan="7" className="px-5 py-12 text-center text-slate-400">
-                      No stops found. Click "Add Stop" to create one.
+                      No stops found. Click &quot;Add Stop&quot; to create one.
                     </td>
                   </tr>
                 ) : (

@@ -8,6 +8,7 @@ export function useInstitution() {
   useEffect(() => {
     const stored = localStorage.getItem('institutionId');
     if (stored) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setInstitutionId(stored);
     }
     setLoading(false);

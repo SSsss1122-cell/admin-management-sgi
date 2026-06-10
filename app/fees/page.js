@@ -2,13 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { 
-  CreditCard, Search, Filter, Download, CheckCircle, XCircle, 
-  IndianRupee, Edit, Mail, Phone, X, Calendar, ArrowLeft, Menu,
-  TrendingUp, PieChart, Clock, AlertCircle, ChevronDown, 
-  BarChart3, Users, Wallet, Receipt, Bell, DollarSign,
-  MoreVertical, Eye, Printer, Send, FileText, Shield,
-  Award, Target, BookOpen, GraduationCap, Layers,
-  Moon, Sun, Settings, LogOut, UserCircle
+  Search, Download, CheckCircle, XCircle, 
+  IndianRupee, Edit, X, Calendar, ArrowLeft,
+  TrendingUp, Clock, AlertCircle, ChevronDown, 
+  Users, Wallet, Receipt, Award, BookOpen, 
+  GraduationCap, Layers, Trash2, Plus, Eye, Save,
+  CalendarPlus, History, RefreshCw, CalendarDays
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useRouter } from 'next/navigation';
@@ -19,25 +18,38 @@ function FeesManagement() {
   const [filteredStudents, setFilteredStudents] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [feeFilter, setFeeFilter] = useState('all');
-  const [showFeeForm, setShowFeeForm] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [institutionId, setInstitutionId] = useState(null);
   const [toast, setToast] = useState({ show: false, type: '', message: '' });
-  const [feeData, setFeeData] = useState({
-    total_fees: '',
-    paid_amount: '',
-    due_amount: '',
-    last_payment_date: '',
-    next_payment_date: '',
-    payment_mode: ''
-  });
   const [loading, setLoading] = useState(true);
-  const [isFiltersOpen, setIsFiltersOpen] = useState(false);
-  const [selectedPeriod, setSelectedPeriod] = useState('all');
   const [viewMode, setViewMode] = useState('grid');
   const [selectedStudents, setSelectedStudents] = useState([]);
-  const [showBulkActions, setShowBulkActions] = useState(false);
-  const [darkMode, setDarkMode] = useState(true);
+  
+  // Date modal states
+  const [showDateModal, setShowDateModal] = useState(false);
+  const [dateModalData, setDateModalData] = useState({
+    student: null,
+    start_date: '',
+    end_date: '',
+    period_name: ''
+  });
+  
+  // Bulk assign modal
+  const [showBulkAssignModal, setShowBulkAssignModal] = useState(false);
+  const [bulkAssignData, setBulkAssignData] = useState({
+    start_date: '',
+    end_date: '',
+    period_name: '',
+    apply_to: 'all',
+    selected_branch: '',
+    selected_class: ''
+  });
+  
+  // Delete states
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [studentToDelete, setStudentToDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const router = useRouter();
 
@@ -51,13 +63,10 @@ function FeesManagement() {
   useEffect(() => {
     const instId = localStorage.getItem('institutionId') || localStorage.getItem('institution_id');
     
-    console.log("🏫 Fees Page Institution ID:", instId);
-    
     if (instId) {
       setInstitutionId(instId);
       fetchStudents(instId);
     } else {
-      console.error("❌ No institution_id found");
       setLoading(false);
       showToast('error', 'Institution not found. Please login again.');
     }
@@ -65,33 +74,20 @@ function FeesManagement() {
 
   useEffect(() => {
     filterStudents();
-  }, [students, searchTerm, feeFilter, selectedPeriod]);
+  }, [students, searchTerm, feeFilter]);
 
   const fetchStudents = async (instId) => {
     try {
-      console.log("📦 Fetching students for institution:", instId);
-      
-      if (!instId) {
-        console.error("No institution ID provided");
-        setLoading(false);
-        return;
-      }
-
       const { data, error } = await supabase
         .from('students')
         .select('*')
         .eq('institution_id', instId)
         .order('usn');
 
-      if (error) {
-        console.error("Supabase error:", error);
-        throw error;
-      }
-
-      console.log("✅ Students Loaded:", data?.length || 0, "students");
+      if (error) throw error;
       setStudents(data || []);
     } catch (error) {
-      console.error('❌ Error fetching students:', error);
+      console.error('Error fetching students:', error);
       showToast('error', 'Error fetching students: ' + error.message);
     } finally {
       setLoading(false);
@@ -107,178 +103,244 @@ function FeesManagement() {
         const fullName = student.full_name ? student.full_name.toLowerCase() : '';
         const usn = student.usn ? student.usn.toLowerCase() : '';
         const branch = student.branch ? student.branch.toLowerCase() : '';
-        const email = student.email ? student.email.toLowerCase() : '';
         
-        return fullName.includes(searchLower) ||
-               usn.includes(searchLower) ||
-               branch.includes(searchLower) ||
-               email.includes(searchLower);
+        return fullName.includes(searchLower) || usn.includes(searchLower) || branch.includes(searchLower);
       });
     }
 
-    if (feeFilter === 'paid') {
+    if (feeFilter === 'active') {
       filtered = filtered.filter(student => {
-        const total = parseFloat(student.total_fees) || 0;
-        const paid = parseFloat(student.paid_amount) || 0;
-        const due = parseFloat(student.due_amount) || 0;
-        return total > 0 && due === 0 && paid > 0;
+        const today = new Date().toISOString().split('T')[0];
+        return student.bus_subscription_start_date && 
+               student.bus_subscription_end_date &&
+               student.bus_subscription_start_date <= today &&
+               student.bus_subscription_end_date >= today;
       });
     } 
-    else if (feeFilter === 'partial') {
+    else if (feeFilter === 'expiring') {
       filtered = filtered.filter(student => {
-        const total = parseFloat(student.total_fees) || 0;
-        const paid = parseFloat(student.paid_amount) || 0;
-        const due = parseFloat(student.due_amount) || 0;
-        return total > 0 && paid > 0 && due > 0;
-      });
-    } 
-    else if (feeFilter === 'due') {
-      filtered = filtered.filter(student => {
-        const total = parseFloat(student.total_fees) || 0;
-        const paid = parseFloat(student.paid_amount) || 0;
-        const due = parseFloat(student.due_amount) || 0;
-        return total > 0 && paid === 0 && due > 0;
+        if (!student.bus_subscription_end_date) return false;
+        const today = new Date();
+        const endDate = new Date(student.bus_subscription_end_date);
+        const daysLeft = Math.ceil((endDate - today) / (1000 * 60 * 60 * 24));
+        return daysLeft <= 30 && daysLeft >= 0;
       });
     }
-    else if (feeFilter === 'not-set') {
+    else if (feeFilter === 'expired') {
       filtered = filtered.filter(student => {
-        const total = parseFloat(student.total_fees) || 0;
-        return total === 0;
+        if (!student.bus_subscription_end_date) return false;
+        const today = new Date().toISOString().split('T')[0];
+        return student.bus_subscription_end_date < today;
       });
     }
-
-    if (selectedPeriod === 'upcoming') {
-      filtered = filtered.filter(student => 
-        student.next_payment_date && isUpcomingPayment(student.next_payment_date)
-      );
-    } else if (selectedPeriod === 'overdue') {
+    else if (feeFilter === 'no-subscription') {
       filtered = filtered.filter(student => {
-        if (!student.next_payment_date) return false;
-        return new Date(student.next_payment_date) < new Date();
+        return !student.bus_subscription_start_date || !student.bus_subscription_end_date;
       });
     }
 
     setFilteredStudents(filtered);
   };
 
-  const handleFeeSubmit = async (e) => {
+  const handleAssignDate = async (e) => {
     e.preventDefault();
+    setSaving(true);
     
     try {
-      if (!institutionId) {
-        showToast('error', 'Institution ID not found. Please refresh the page.');
-        return;
-      }
-
-      const total = parseFloat(feeData.total_fees) || 0;
-      const paid = parseFloat(feeData.paid_amount) || 0;
-      const due = total - paid;
-
-      const updateData = {
-        total_fees: total,
-        paid_amount: paid,
-        due_amount: due > 0 ? due : 0,
-        fees_due: due > 0,
-        last_payment_date: feeData.last_payment_date || null,
-        next_payment_date: feeData.next_payment_date || null,
-        payment_mode: feeData.payment_mode || null,
-        last_updated: new Date().toISOString()
-      };
-
-      console.log("Updating student:", selectedStudent.id);
-      console.log("Update data:", updateData);
-
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('students')
-        .update(updateData)
-        .eq('id', selectedStudent.id)
-        .eq('institution_id', institutionId);
-
-      if (error) {
-        console.error("Supabase update error:", error);
-        throw error;
-      }
-
-      console.log("Update successful:", data);
-
-      showToast('success', `✅ Fee details updated successfully for ${selectedStudent.full_name}!`);
+        .update({
+          bus_subscription_start_date: dateModalData.start_date,
+          bus_subscription_end_date: dateModalData.end_date,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', dateModalData.student.id);
       
-      setShowFeeForm(false);
-      setSelectedStudent(null);
-      setFeeData({
-        total_fees: '',
-        paid_amount: '',
-        due_amount: '',
-        last_payment_date: '',
-        next_payment_date: '',
-        payment_mode: ''
+      if (error) throw error;
+      
+      showToast('success', `✅ Date period assigned to ${dateModalData.student.full_name}!`);
+      await fetchStudents(institutionId);
+      setShowDateModal(false);
+      setDateModalData({ student: null, start_date: '', end_date: '', period_name: '' });
+      
+    } catch (error) {
+      console.error('Error assigning date:', error);
+      showToast('error', '❌ Error assigning date: ' + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleBulkAssign = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    
+    try {
+      let updateQuery = supabase
+        .from('students')
+        .update({
+          bus_subscription_start_date: bulkAssignData.start_date,
+          bus_subscription_end_date: bulkAssignData.end_date,
+          updated_at: new Date().toISOString()
+        })
+        .eq('institution_id', institutionId)
+        .eq('role', 'student');
+      
+      if (bulkAssignData.apply_to === 'without_dates') {
+        updateQuery = updateQuery.is('bus_subscription_start_date', null);
+      } else if (bulkAssignData.apply_to === 'selected_branch' && bulkAssignData.selected_branch) {
+        updateQuery = updateQuery.eq('branch', bulkAssignData.selected_branch);
+      } else if (bulkAssignData.apply_to === 'selected_class' && bulkAssignData.selected_class) {
+        updateQuery = updateQuery.eq('class', bulkAssignData.selected_class);
+      }
+      
+      const { error } = await updateQuery;
+      
+      if (error) throw error;
+      
+      showToast('success', `✅ Bulk date assignment completed!`);
+      await fetchStudents(institutionId);
+      setShowBulkAssignModal(false);
+      setBulkAssignData({
+        start_date: '',
+        end_date: '',
+        period_name: '',
+        apply_to: 'all',
+        selected_branch: '',
+        selected_class: ''
       });
       
+    } catch (error) {
+      console.error('Error bulk assigning:', error);
+      showToast('error', '❌ Error bulk assigning: ' + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleClearDates = async (student) => {
+    if (!confirm(`Clear subscription dates for ${student.full_name}?`)) return;
+    
+    try {
+      const { error } = await supabase
+        .from('students')
+        .update({
+          bus_subscription_start_date: null,
+          bus_subscription_end_date: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', student.id);
+      
+      if (error) throw error;
+      
+      showToast('success', `✅ Dates cleared for ${student.full_name}`);
       await fetchStudents(institutionId);
       
     } catch (error) {
-      console.error('Error updating fee details:', error);
-      showToast('error', '❌ Error updating fee details: ' + error.message);
+      console.error('Error clearing dates:', error);
+      showToast('error', '❌ Error clearing dates: ' + error.message);
     }
   };
 
-  const openFeeForm = (student) => {
-    setSelectedStudent(student);
-    setFeeData({
-      total_fees: student.total_fees || '',
-      paid_amount: student.paid_amount || '',
-      due_amount: student.due_amount || '',
-      last_payment_date: student.last_payment_date || '',
-      next_payment_date: student.next_payment_date || '',
-      payment_mode: student.payment_mode || ''
+  const openDateModal = (student) => {
+    setDateModalData({
+      student: student,
+      start_date: student.bus_subscription_start_date || '',
+      end_date: student.bus_subscription_end_date || '',
+      period_name: ''
     });
-    setShowFeeForm(true);
+    setShowDateModal(true);
   };
 
-  const calculateDue = () => {
-    const total = parseFloat(feeData.total_fees) || 0;
-    const paid = parseFloat(feeData.paid_amount) || 0;
-    const due = total - paid;
-    setFeeData(prev => ({
-      ...prev,
-      due_amount: due > 0 ? due.toString() : '0'
-    }));
+  const handleDeleteStudent = async (student) => {
+    setStudentToDelete(student);
+    setShowDeleteConfirm(true);
   };
 
-  const getFeesStatusColor = (student) => {
-    const total = parseFloat(student.total_fees) || 0;
-    const paid = parseFloat(student.paid_amount) || 0;
-    const due = parseFloat(student.due_amount) || 0;
+  const confirmDelete = async () => {
+    if (!studentToDelete) return;
+    
+    setDeleting(true);
+    try {
+      const { error } = await supabase
+        .from('students')
+        .delete()
+        .eq('id', studentToDelete.id)
+        .eq('institution_id', institutionId);
 
-    if (total === 0) {
-      return 'bg-slate-800/50 text-slate-400 border-slate-700';
+      if (error) throw error;
+
+      showToast('success', `✅ Student ${studentToDelete.full_name} deleted successfully!`);
+      await fetchStudents(institutionId);
+      setSelectedStudents(prev => prev.filter(id => id !== studentToDelete.id));
+      
+    } catch (error) {
+      console.error('Error deleting student:', error);
+      showToast('error', '❌ Error deleting student: ' + error.message);
+    } finally {
+      setDeleting(false);
+      setShowDeleteConfirm(false);
+      setStudentToDelete(null);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedStudents.length === 0) {
+      showToast('error', 'Please select students to delete');
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to delete ${selectedStudents.length} student(s)?`)) return;
+
+    setDeleting(true);
+    try {
+      const { error } = await supabase
+        .from('students')
+        .delete()
+        .in('id', selectedStudents)
+        .eq('institution_id', institutionId);
+
+      if (error) throw error;
+
+      showToast('success', `✅ ${selectedStudents.length} student(s) deleted successfully!`);
+      await fetchStudents(institutionId);
+      setSelectedStudents([]);
+      
+    } catch (error) {
+      console.error('Error bulk deleting students:', error);
+      showToast('error', '❌ Error deleting students: ' + error.message);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const getSubscriptionStatus = (student) => {
+    const today = new Date().toISOString().split('T')[0];
+    
+    if (!student.bus_subscription_start_date || !student.bus_subscription_end_date) {
+      return { text: 'No Subscription', color: 'bg-slate-800/50 text-slate-400 border-slate-700', icon: '❌' };
     }
     
-    if (due === 0 && paid > 0) {
-      return 'bg-emerald-950/50 text-emerald-400 border-emerald-800';
-    } else if (paid > 0 && due > 0) {
-      return 'bg-amber-950/50 text-amber-400 border-amber-800';
-    } else if (due > 0 && paid === 0) {
-      return 'bg-red-950/50 text-red-400 border-red-800';
-    } else {
-      return 'bg-slate-800/50 text-slate-400 border-slate-700';
+    if (student.bus_subscription_start_date <= today && student.bus_subscription_end_date >= today) {
+      const endDate = new Date(student.bus_subscription_end_date);
+      const todayDate = new Date();
+      const daysLeft = Math.ceil((endDate - todayDate) / (1000 * 60 * 60 * 24));
+      return { text: `Active (${daysLeft} days left)`, color: 'bg-emerald-950/50 text-emerald-400 border-emerald-800', icon: '✅' };
     }
-  };
-
-  const getFeesStatusText = (student) => {
-    const total = parseFloat(student.total_fees) || 0;
-    const paid = parseFloat(student.paid_amount) || 0;
-    const due = parseFloat(student.due_amount) || 0;
-
-    if (total === 0) return 'Not Configured';
-    if (due === 0 && paid > 0) return 'Fully Paid';
-    if (paid > 0 && due > 0) return 'Partial Payment';
-    if (due > 0 && paid === 0) return 'Payment Due';
-    return 'Pending';
+    
+    if (student.bus_subscription_end_date < today) {
+      return { text: 'Expired', color: 'bg-red-950/50 text-red-400 border-red-800', icon: '⚠️' };
+    }
+    
+    if (student.bus_subscription_start_date > today) {
+      return { text: 'Upcoming', color: 'bg-amber-950/50 text-amber-400 border-amber-800', icon: '📅' };
+    }
+    
+    return { text: 'Unknown', color: 'bg-slate-800/50 text-slate-400 border-slate-700', icon: '❓' };
   };
 
   const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
+    if (!dateString) return 'Not Set';
     return new Date(dateString).toLocaleDateString('en-IN', {
       day: 'numeric',
       month: 'short',
@@ -286,56 +348,32 @@ function FeesManagement() {
     });
   };
 
-  const isUpcomingPayment = (dateString) => {
-    if (!dateString) return false;
-    const paymentDate = new Date(dateString);
-    const today = new Date();
-    const nextWeek = new Date(today);
-    nextWeek.setDate(today.getDate() + 7);
-    return paymentDate >= today && paymentDate <= nextWeek;
-  };
-
   const exportToCSV = () => {
-    const headers = [
-      'USN', 'Name', 'Branch', 'Class', 'Division', 'Email', 'Phone',
-      'Total Fees (₹)', 'Paid Amount (₹)', 'Due Amount (₹)', 'Fee Status',
-      'Last Payment Date', 'Next Payment Date', 'Payment Mode', 'Last Updated'
-    ];
+    const headers = ['USN', 'Name', 'Branch', 'Class', 'Subscription Start', 'Subscription End', 'Status'];
     
-    const csvData = filteredStudents.map(student => [
-      student.usn || '',
-      student.full_name || '',
-      student.branch || 'N/A',
-      student.class || '',
-      student.division || '',
-      student.email || '',
-      student.phone || '',
-      student.total_fees || '0',
-      student.paid_amount || '0',
-      student.due_amount || '0',
-      getFeesStatusText(student),
-      student.last_payment_date || 'N/A',
-      student.next_payment_date || 'N/A',
-      student.payment_mode || 'N/A',
-      student.last_updated ? new Date(student.last_updated).toLocaleDateString() : 'N/A'
-    ]);
+    const csvData = filteredStudents.map(student => {
+      const status = getSubscriptionStatus(student);
+      return [
+        student.usn || '',
+        student.full_name || '',
+        student.branch || 'N/A',
+        student.class || '',
+        student.bus_subscription_start_date || 'Not Set',
+        student.bus_subscription_end_date || 'Not Set',
+        status.text
+      ];
+    });
 
-    const csvContent = [
-      headers.join(','),
-      ...csvData.map(row => row.map(field => `"${field}"`).join(','))
-    ].join('\n');
-
+    const csvContent = [headers.join(','), ...csvData.map(row => row.join(','))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
-    link.setAttribute('download', `fee_report_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
+    link.setAttribute('download', `subscription_report_${new Date().toISOString().split('T')[0]}.csv`);
     link.click();
-    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
     
-    showToast('success', '📊 Fee report exported successfully!');
+    showToast('success', '📊 Report exported successfully!');
   };
 
   const handleBack = () => {
@@ -344,9 +382,7 @@ function FeesManagement() {
 
   const toggleStudentSelection = (studentId) => {
     setSelectedStudents(prev => 
-      prev.includes(studentId) 
-        ? prev.filter(id => id !== studentId)
-        : [...prev, studentId]
+      prev.includes(studentId) ? prev.filter(id => id !== studentId) : [...prev, studentId]
     );
   };
 
@@ -360,42 +396,36 @@ function FeesManagement() {
 
   const totalStudents = students.length;
   
-  const paidStudents = students.filter(student => {
-    const total = parseFloat(student.total_fees) || 0;
-    const paid = parseFloat(student.paid_amount) || 0;
-    const due = parseFloat(student.due_amount) || 0;
-    return total > 0 && due === 0 && paid > 0;
+  const activeStudents = students.filter(s => {
+    const today = new Date().toISOString().split('T')[0];
+    return s.bus_subscription_start_date && 
+           s.bus_subscription_end_date &&
+           s.bus_subscription_start_date <= today &&
+           s.bus_subscription_end_date >= today;
   }).length;
 
-  const partialPaidStudents = students.filter(student => {
-    const total = parseFloat(student.total_fees) || 0;
-    const paid = parseFloat(student.paid_amount) || 0;
-    const due = parseFloat(student.due_amount) || 0;
-    return total > 0 && paid > 0 && due > 0;
+  const expiringStudents = students.filter(s => {
+    if (!s.bus_subscription_end_date) return false;
+    const today = new Date();
+    const endDate = new Date(s.bus_subscription_end_date);
+    const daysLeft = Math.ceil((endDate - today) / (1000 * 60 * 60 * 24));
+    return daysLeft <= 30 && daysLeft >= 0;
   }).length;
 
-  const dueStudents = students.filter(student => {
-    const total = parseFloat(student.total_fees) || 0;
-    const paid = parseFloat(student.paid_amount) || 0;
-    const due = parseFloat(student.due_amount) || 0;
-    return total > 0 && paid === 0 && due > 0;
+  const expiredStudents = students.filter(s => {
+    if (!s.bus_subscription_end_date) return false;
+    const today = new Date().toISOString().split('T')[0];
+    return s.bus_subscription_end_date < today;
   }).length;
   
-  const totalFees = students.reduce((sum, student) => sum + (parseFloat(student.total_fees) || 0), 0);
-  const totalPaid = students.reduce((sum, student) => sum + (parseFloat(student.paid_amount) || 0), 0);
-  const totalDue = students.reduce((sum, student) => sum + (parseFloat(student.due_amount) || 0), 0);
-
-  const collectionRate = totalFees > 0 ? ((totalPaid / totalFees) * 100).toFixed(1) : 0;
+  const noSubscriptionStudents = students.filter(s => {
+    return !s.bus_subscription_start_date || !s.bus_subscription_end_date;
+  }).length;
 
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-        <div className="relative">
-          <div className="animate-spin rounded-full h-16 w-16 border-4 border-slate-700 border-t-blue-600"></div>
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="h-8 w-8 bg-blue-600 rounded-full animate-pulse"></div>
-          </div>
-        </div>
+        <div className="animate-spin rounded-full h-16 w-16 border-4 border-slate-700 border-t-blue-600"></div>
       </div>
     );
   }
@@ -410,236 +440,167 @@ function FeesManagement() {
               ? 'bg-emerald-950/90 border-emerald-500/30 text-emerald-400' 
               : 'bg-red-950/90 border-red-500/30 text-red-400'
           }`}>
-            {toast.type === 'success' ? (
-              <CheckCircle size={20} className="text-emerald-400" />
-            ) : (
-              <AlertCircle size={20} className="text-red-400" />
-            )}
+            {toast.type === 'success' ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
             <span className="text-sm font-medium">{toast.message}</span>
           </div>
         </div>
       )}
 
-      <style jsx>{`
-        @keyframes slide-in {
-          from {
-            transform: translateX(100%);
-            opacity: 0;
-          }
-          to {
-            transform: translateX(0);
-            opacity: 1;
-          }
-        }
-        .animate-slide-in {
-          animation: slide-in 0.3s ease-out;
-        }
-      `}</style>
-
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
-        <div className="space-y-6 lg:space-y-8">
-          {/* Header */}
-          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={handleBack}
-                className="p-2 text-slate-400 hover:text-blue-400 transition-all rounded-xl hover:bg-slate-800 border border-slate-700"
-              >
-                <ArrowLeft size={20} />
-              </button>
-              <div>
-                <div className="flex items-center gap-3">
-                  <div className="p-3 bg-blue-600 rounded-2xl">
-                    <Wallet className="text-white" size={24} />
-                  </div>
-                  <div>
-                    <h1 className="text-2xl lg:text-3xl font-bold text-white">
-                      Fee Management
-                    </h1>
-                    <p className="text-slate-400 text-sm mt-1">
-                      Comprehensive fee tracking & management
-                    </p>
-                  </div>
+        {/* Header */}
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
+          <div className="flex items-center gap-4">
+            <button onClick={handleBack} className="p-2 text-slate-400 hover:text-blue-400 rounded-xl hover:bg-slate-800 border border-slate-700">
+              <ArrowLeft size={20} />
+            </button>
+            <div>
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-blue-600 rounded-2xl">
+                  <CalendarDays className="text-white" size={24} />
+                </div>
+                <div>
+                  <h1 className="text-2xl lg:text-3xl font-bold text-white">Bus Subscription Management</h1>
+                  <p className="text-slate-400 text-sm mt-1">Manage student bus subscription periods & dates</p>
                 </div>
               </div>
+            </div>
+          </div>
+          
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={() => setShowBulkAssignModal(true)}
+              className="flex items-center gap-2 px-4 py-2.5 bg-purple-600/20 border border-purple-500 rounded-xl text-purple-400 hover:bg-purple-600/30 transition-all"
+            >
+              <CalendarPlus size={18} />
+              <span>Bulk Assign Dates</span>
+            </button>
+            {selectedStudents.length > 0 && (
+              <button onClick={handleBulkDelete} className="flex items-center gap-2 px-4 py-2.5 bg-red-950/50 border border-red-700 rounded-xl text-red-400 hover:bg-red-900/50">
+                <Trash2 size={18} />
+                <span>Delete ({selectedStudents.length})</span>
+              </button>
+            )}
+            <button onClick={exportToCSV} className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-slate-300 hover:bg-blue-600/20 hover:border-blue-500 hover:text-blue-400">
+              <Download size={18} />
+              <span>Export Report</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-2 bg-blue-600 rounded-xl"><Users className="text-white" size={18} /></div>
+              <span className="text-xs font-medium text-blue-400 bg-blue-950/50 px-2 py-0.5 rounded-full">Total</span>
+            </div>
+            <h3 className="text-2xl font-bold text-white">{totalStudents}</h3>
+            <p className="text-xs text-slate-400">Total Students</p>
+          </div>
+
+          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-2 bg-emerald-600 rounded-xl"><CheckCircle className="text-white" size={18} /></div>
+              <span className="text-xs font-medium text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded-full">Active</span>
+            </div>
+            <h3 className="text-2xl font-bold text-white">{activeStudents}</h3>
+            <p className="text-xs text-slate-400">Active Subscriptions</p>
+          </div>
+
+          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-2 bg-amber-600 rounded-xl"><Clock className="text-white" size={18} /></div>
+              <span className="text-xs font-medium text-amber-400 bg-amber-950/50 px-2 py-0.5 rounded-full">Expiring Soon</span>
+            </div>
+            <h3 className="text-2xl font-bold text-white">{expiringStudents}</h3>
+            <p className="text-xs text-slate-400">Expiring in 30 days</p>
+          </div>
+
+          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-2 bg-red-600 rounded-xl"><XCircle className="text-white" size={18} /></div>
+              <span className="text-xs font-medium text-red-400 bg-red-950/50 px-2 py-0.5 rounded-full">Expired</span>
+            </div>
+            <h3 className="text-2xl font-bold text-white">{expiredStudents}</h3>
+            <p className="text-xs text-slate-400">Expired Subscriptions</p>
+          </div>
+
+          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-2 bg-purple-600 rounded-xl"><Calendar className="text-white" size={18} /></div>
+              <span className="text-xs font-medium text-purple-400 bg-purple-950/50 px-2 py-0.5 rounded-full">No Date</span>
+            </div>
+            <h3 className="text-2xl font-bold text-white">{noSubscriptionStudents}</h3>
+            <p className="text-xs text-slate-400">Need Date Assignment</p>
+          </div>
+        </div>
+
+        {/* Filters */}
+        <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5 mb-6">
+          <div className="flex flex-col lg:flex-row gap-4">
+            <div className="flex-1 relative">
+              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-500" size={18} />
+              <input
+                type="text"
+                placeholder="Search by name, USN, or branch..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-11 pr-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200"
+              />
             </div>
             
             <div className="flex flex-wrap gap-3">
-              <button
-                onClick={exportToCSV}
-                className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-slate-300 hover:bg-blue-600/20 hover:border-blue-500 hover:text-blue-400 transition-all"
+              <select
+                value={feeFilter}
+                onChange={(e) => setFeeFilter(e.target.value)}
+                className="px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-slate-200 cursor-pointer"
               >
-                <Download size={18} />
-                <span className="text-sm font-medium">Export Report</span>
+                <option value="all">All Students</option>
+                <option value="active">Active Subscription</option>
+                <option value="expiring">Expiring Soon (30 days)</option>
+                <option value="expired">Expired</option>
+                <option value="no-subscription">No Subscription</option>
+              </select>
+
+              <button
+                onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
+                className="px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-slate-400 hover:text-blue-400"
+              >
+                <Layers size={18} />
               </button>
             </div>
           </div>
 
-          {/* Stats Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
-              <div className="flex items-center justify-between mb-3">
-                <div className="p-2 bg-blue-600 rounded-xl">
-                  <Users className="text-white" size={18} />
-                </div>
-                <span className="text-xs font-medium text-blue-400 bg-blue-950/50 px-2 py-0.5 rounded-full border border-blue-800">Total</span>
-              </div>
-              <h3 className="text-2xl font-bold text-white">{totalStudents}</h3>
-              <p className="text-xs text-slate-400">Enrolled Students</p>
-            </div>
-
-            <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
-              <div className="flex items-center justify-between mb-3">
-                <div className="p-2 bg-emerald-600 rounded-xl">
-                  <TrendingUp className="text-white" size={18} />
-                </div>
-                <span className="text-xs font-medium text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded-full border border-emerald-800">{collectionRate}%</span>
-              </div>
-              <h3 className="text-2xl font-bold text-white">₹{totalPaid.toLocaleString('en-IN')}</h3>
-              <p className="text-xs text-slate-400">Total Collected</p>
-            </div>
-
-            <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
-              <div className="flex items-center justify-between mb-3">
-                <div className="p-2 bg-amber-600 rounded-xl">
-                  <Clock className="text-white" size={18} />
-                </div>
-                <span className="text-xs font-medium text-amber-400 bg-amber-950/50 px-2 py-0.5 rounded-full border border-amber-800">Pending</span>
-              </div>
-              <h3 className="text-2xl font-bold text-white">₹{totalDue.toLocaleString('en-IN')}</h3>
-              <p className="text-xs text-slate-400">Outstanding Amount</p>
-            </div>
-
-            <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
-              <div className="flex items-center justify-between mb-3">
-                <div className="p-2 bg-cyan-600 rounded-xl">
-                  <Award className="text-white" size={18} />
-                </div>
-                <span className="text-xs font-medium text-cyan-400 bg-cyan-950/50 px-2 py-0.5 rounded-full border border-cyan-800">Performance</span>
-              </div>
-              <h3 className="text-2xl font-bold text-white">{paidStudents}</h3>
-              <p className="text-xs text-slate-400">Fully Paid Students</p>
-            </div>
+          <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-700">
+            <span className="text-xs font-medium text-slate-500 py-1">Quick filters:</span>
+            <button onClick={() => setFeeFilter('active')} className="px-3 py-1 bg-emerald-950/50 text-emerald-400 rounded-lg text-xs border border-emerald-800">
+              Active ({activeStudents})
+            </button>
+            <button onClick={() => setFeeFilter('expiring')} className="px-3 py-1 bg-amber-950/50 text-amber-400 rounded-lg text-xs border border-amber-800">
+              Expiring ({expiringStudents})
+            </button>
+            <button onClick={() => setFeeFilter('expired')} className="px-3 py-1 bg-red-950/50 text-red-400 rounded-lg text-xs border border-red-800">
+              Expired ({expiredStudents})
+            </button>
+            <button onClick={() => setFeeFilter('no-subscription')} className="px-3 py-1 bg-purple-950/50 text-purple-400 rounded-lg text-xs border border-purple-800">
+              No Date ({noSubscriptionStudents})
+            </button>
           </div>
+        </div>
 
-          {/* Financial Overview */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-gradient-to-br from-blue-950 to-blue-900 rounded-2xl p-5 border border-blue-800">
-              <div className="flex items-center justify-between mb-3">
-                <div className="p-2 bg-blue-800/50 rounded-lg">
-                  <Receipt className="text-blue-300" size={18} />
-                </div>
-                <span className="text-blue-300/70 text-xs">Total Fees</span>
-              </div>
-              <p className="text-2xl font-bold text-white">₹{totalFees.toLocaleString('en-IN')}</p>
-              <p className="text-xs text-blue-300/60 mt-1">Annual collection target</p>
-            </div>
-
-            <div className="bg-gradient-to-br from-emerald-950 to-emerald-900 rounded-2xl p-5 border border-emerald-800">
-              <div className="flex items-center justify-between mb-3">
-                <div className="p-2 bg-emerald-800/50 rounded-lg">
-                  <CheckCircle className="text-emerald-300" size={18} />
-                </div>
-                <span className="text-emerald-300/70 text-xs">Collected</span>
-              </div>
-              <p className="text-2xl font-bold text-white">₹{totalPaid.toLocaleString('en-IN')}</p>
-              <p className="text-xs text-emerald-300/60 mt-1">{collectionRate}% of total fees</p>
-            </div>
-
-            <div className="bg-gradient-to-br from-amber-950 to-amber-900 rounded-2xl p-5 border border-amber-800">
-              <div className="flex items-center justify-between mb-3">
-                <div className="p-2 bg-amber-800/50 rounded-lg">
-                  <AlertCircle className="text-amber-300" size={18} />
-                </div>
-                <span className="text-amber-300/70 text-xs">Outstanding</span>
-              </div>
-              <p className="text-2xl font-bold text-white">₹{totalDue.toLocaleString('en-IN')}</p>
-              <p className="text-xs text-amber-300/60 mt-1">Due from {dueStudents} students</p>
-            </div>
-          </div>
-
-          {/* Filters */}
-          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
-            <div className="flex flex-col lg:flex-row gap-4">
-              <div className="flex-1 relative">
-                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-500" size={18} />
-                <input
-                  type="text"
-                  placeholder="Search by name, USN, email, or branch..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-11 pr-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 placeholder-slate-500"
-                />
-              </div>
+        {/* Grid View */}
+        {viewMode === 'grid' ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {filteredStudents.map((student) => {
+              const status = getSubscriptionStatus(student);
               
-              <div className="flex flex-wrap gap-3">
-                <select
-                  value={feeFilter}
-                  onChange={(e) => setFeeFilter(e.target.value)}
-                  className="px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 cursor-pointer"
-                >
-                  <option value="all">All Status</option>
-                  <option value="paid">Fully Paid</option>
-                  <option value="partial">Partial Payment</option>
-                  <option value="due">Payment Due</option>
-                  <option value="not-set">Not Configured</option>
-                </select>
-
-                <select
-                  value={selectedPeriod}
-                  onChange={(e) => setSelectedPeriod(e.target.value)}
-                  className="px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 cursor-pointer"
-                >
-                  <option value="all">All Periods</option>
-                  <option value="upcoming">Upcoming</option>
-                  <option value="overdue">Overdue</option>
-                </select>
-
-                <button
-                  onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
-                  className="px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-slate-400 hover:text-blue-400 hover:border-blue-500 transition-all"
-                >
-                  <Layers size={18} />
-                </button>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-700">
-              <span className="text-xs font-medium text-slate-500 py-1">Quick filters:</span>
-              <button
-                onClick={() => setFeeFilter('paid')}
-                className="px-3 py-1 bg-emerald-950/50 text-emerald-400 rounded-lg text-xs font-medium hover:bg-emerald-900/50 transition-colors border border-emerald-800"
-              >
-                Fully Paid ({paidStudents})
-              </button>
-              <button
-                onClick={() => setFeeFilter('partial')}
-                className="px-3 py-1 bg-amber-950/50 text-amber-400 rounded-lg text-xs font-medium hover:bg-amber-900/50 transition-colors border border-amber-800"
-              >
-                Partial ({partialPaidStudents})
-              </button>
-              <button
-                onClick={() => setFeeFilter('due')}
-                className="px-3 py-1 bg-red-950/50 text-red-400 rounded-lg text-xs font-medium hover:bg-red-900/50 transition-colors border border-red-800"
-              >
-                Due ({dueStudents})
-              </button>
-            </div>
-          </div>
-
-          {/* Grid View */}
-          {viewMode === 'grid' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {filteredStudents.map((student) => (
-                <div
-                  key={student.id}
-                  className="bg-slate-800/50 rounded-2xl border border-slate-700 hover:border-blue-500/30 transition-all overflow-hidden"
-                >
+              return (
+                <div key={student.id} className="bg-slate-800/50 rounded-2xl border border-slate-700 hover:border-blue-500/30 transition-all overflow-hidden">
                   <div className={`h-1 ${
-                    getFeesStatusText(student).includes('Paid') ? 'bg-emerald-500' :
-                    getFeesStatusText(student).includes('Partial') ? 'bg-amber-500' :
-                    getFeesStatusText(student).includes('Due') ? 'bg-red-500' :
-                    'bg-slate-600'
+                    status.text.includes('Active') ? 'bg-emerald-500' :
+                    status.text.includes('Expiring') ? 'bg-amber-500' :
+                    status.text.includes('Expired') ? 'bg-red-500' :
+                    'bg-purple-500'
                   }`}></div>
                   <div className="p-5">
                     <div className="flex justify-between items-start mb-4">
@@ -652,115 +613,91 @@ function FeesManagement() {
                           <p className="text-xs text-slate-500">{student.usn}</p>
                         </div>
                       </div>
-                      <span className={`px-2 py-1 text-xs font-semibold rounded-full border ${getFeesStatusColor(student)}`}>
-                        {getFeesStatusText(student)}
+                      <span className={`px-2 py-1 text-xs font-semibold rounded-full border ${status.color}`}>
+                        {status.icon} {status.text}
                       </span>
                     </div>
 
                     <div className="space-y-3 mb-4">
                       <div className="flex items-center gap-2 text-sm">
                         <BookOpen size={14} className="text-slate-500" />
-                        <span className="text-slate-400">{student.branch} • {student.class}-{student.division}</span>
+                        <span className="text-slate-400">{student.branch} • {student.class}</span>
                       </div>
                       
-                      {parseFloat(student.total_fees) > 0 && (
-                        <div className="space-y-1">
-                          <div className="flex justify-between text-xs">
-                            <span className="text-slate-500">Payment Progress</span>
-                            <span className="font-medium text-slate-300">
-                              {((parseFloat(student.paid_amount) / parseFloat(student.total_fees)) * 100).toFixed(1)}%
-                            </span>
-                          </div>
-                          <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
-                            <div 
-                              className={`h-full rounded-full transition-all ${
-                                parseFloat(student.due_amount) === 0 ? 'bg-emerald-500' :
-                                parseFloat(student.paid_amount) > 0 ? 'bg-amber-500' :
-                                'bg-red-500'
-                              }`}
-                              style={{ width: `${(parseFloat(student.paid_amount) / parseFloat(student.total_fees)) * 100}%` }}
-                            ></div>
-                          </div>
+                      <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-700">
+                        <div className="flex items-center justify-between text-sm mb-2">
+                          <span className="text-slate-500">Subscription Period</span>
+                          <button
+                            onClick={() => openDateModal(student)}
+                            className="text-blue-400 hover:text-blue-300 text-xs flex items-center gap-1"
+                          >
+                            <Edit size={12} /> Edit
+                          </button>
                         </div>
-                      )}
-
-                      <div className="grid grid-cols-3 gap-2 pt-2">
-                        <div className="text-center p-2 bg-slate-900 rounded-lg border border-slate-700">
-                          <p className="text-xs text-slate-500">Total</p>
-                          <p className="font-bold text-white">₹{student.total_fees || '0'}</p>
-                        </div>
-                        <div className="text-center p-2 bg-emerald-950/30 rounded-lg border border-emerald-800">
-                          <p className="text-xs text-emerald-400">Paid</p>
-                          <p className="font-bold text-emerald-300">₹{student.paid_amount || '0'}</p>
-                        </div>
-                        <div className="text-center p-2 bg-red-950/30 rounded-lg border border-red-800">
-                          <p className="text-xs text-red-400">Due</p>
-                          <p className="font-bold text-red-300">₹{student.due_amount || '0'}</p>
+                        <div className="flex items-center gap-2 text-slate-300">
+                          <Calendar size={14} />
+                          <span className="text-sm">
+                            {formatDate(student.bus_subscription_start_date)} → {formatDate(student.bus_subscription_end_date)}
+                          </span>
                         </div>
                       </div>
-
-                      {student.next_payment_date && (
-                        <div className={`flex items-center gap-2 text-xs p-2 rounded-lg ${
-                          isUpcomingPayment(student.next_payment_date) 
-                            ? 'bg-amber-950/30 text-amber-400 border border-amber-800' 
-                            : 'bg-slate-900/50 text-slate-400 border border-slate-700'
-                        }`}>
-                          <Calendar size={12} />
-                          <span>Next payment: {formatDate(student.next_payment_date)}</span>
-                          {isUpcomingPayment(student.next_payment_date) && (
-                            <span className="ml-auto text-xs bg-amber-950 text-amber-400 px-2 py-0.5 rounded-full border border-amber-700">Upcoming</span>
-                          )}
-                        </div>
-                      )}
                     </div>
 
                     <div className="flex justify-end gap-2 pt-3 border-t border-slate-700">
                       <button
-                        onClick={() => openFeeForm(student)}
+                        onClick={() => openDateModal(student)}
                         className="p-2 text-blue-400 hover:bg-blue-600/20 rounded-lg transition-colors"
-                        title="Edit Fee Details"
+                        title="Edit Dates"
                       >
-                        <Edit size={16} />
+                        <Calendar size={16} />
+                      </button>
+                      {student.bus_subscription_start_date && (
+                        <button
+                          onClick={() => handleClearDates(student)}
+                          className="p-2 text-orange-400 hover:bg-orange-600/20 rounded-lg transition-colors"
+                          title="Clear Dates"
+                        >
+                          <XCircle size={16} />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleDeleteStudent(student)}
+                        className="p-2 text-red-400 hover:bg-red-600/20 rounded-lg transition-colors"
+                        title="Delete Student"
+                      >
+                        <Trash2 size={16} />
                       </button>
                     </div>
                   </div>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div className="bg-slate-800/50 rounded-2xl border border-slate-700 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="bg-slate-900 border-b border-slate-700">
-                      <th className="px-5 py-3 text-left">
-                        <input
-                          type="checkbox"
-                          checked={selectedStudents.length === filteredStudents.length}
-                          onChange={selectAllStudents}
-                          className="rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-0"
-                        />
-                      </th>
-                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Student</th>
-                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Branch</th>
-                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Total</th>
-                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Paid</th>
-                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Due</th>
-                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Status</th>
-                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Next Payment</th>
-                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-700">
-                    {filteredStudents.map((student) => (
-                      <tr key={student.id} className="hover:bg-slate-700/30 transition-colors">
+              );
+            })}
+          </div>
+        ) : (
+          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-slate-900 border-b border-slate-700">
+                    <th className="px-5 py-3 text-left">
+                      <input type="checkbox" checked={selectedStudents.length === filteredStudents.length && filteredStudents.length > 0} onChange={selectAllStudents} className="rounded" />
+                    </th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400">Student</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400">Branch</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400">Start Date</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400">End Date</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400">Status</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400">Actions</th>
+                   </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-700">
+                  {filteredStudents.map((student) => {
+                    const status = getSubscriptionStatus(student);
+                    
+                    return (
+                      <tr key={student.id} className="hover:bg-slate-700/30">
                         <td className="px-5 py-3">
-                          <input
-                            type="checkbox"
-                            checked={selectedStudents.includes(student.id)}
-                            onChange={() => toggleStudentSelection(student.id)}
-                            className="rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-0"
-                          />
+                          <input type="checkbox" checked={selectedStudents.includes(student.id)} onChange={() => toggleStudentSelection(student.id)} className="rounded" />
                         </td>
                         <td className="px-5 py-3">
                           <div className="flex items-center gap-3">
@@ -774,178 +711,101 @@ function FeesManagement() {
                           </div>
                         </td>
                         <td className="px-5 py-3 text-sm text-slate-400">{student.branch}</td>
-                        <td className="px-5 py-3 text-sm font-medium text-white">₹{student.total_fees || '0'}</td>
-                        <td className="px-5 py-3 text-sm font-medium text-emerald-400">₹{student.paid_amount || '0'}</td>
-                        <td className="px-5 py-3 text-sm font-medium text-red-400">₹{student.due_amount || '0'}</td>
+                        <td className="px-5 py-3 text-sm text-slate-300">{formatDate(student.bus_subscription_start_date)}</td>
+                        <td className="px-5 py-3 text-sm text-slate-300">{formatDate(student.bus_subscription_end_date)}</td>
                         <td className="px-5 py-3">
-                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full border ${getFeesStatusColor(student)}`}>
-                            {getFeesStatusText(student)}
+                          <span className={`px-2 py-1 text-xs font-semibold rounded-full border ${status.color}`}>
+                            {status.icon} {status.text}
                           </span>
                         </td>
-                        <td className="px-5 py-3 text-sm text-slate-400">
-                          {formatDate(student.next_payment_date)}
-                        </td>
                         <td className="px-5 py-3">
-                          <button
-                            onClick={() => openFeeForm(student)}
-                            className="p-1.5 text-blue-400 hover:bg-blue-600/20 rounded-lg transition-colors"
-                            title="Edit"
-                          >
-                            <Edit size={14} />
-                          </button>
+                          <div className="flex gap-1">
+                            <button onClick={() => openDateModal(student)} className="p-1.5 text-blue-400 hover:bg-blue-600/20 rounded" title="Edit Dates">
+                              <Edit size={14} />
+                            </button>
+                            {student.bus_subscription_start_date && (
+                              <button onClick={() => handleClearDates(student)} className="p-1.5 text-orange-400 hover:bg-orange-600/20 rounded" title="Clear Dates">
+                                <XCircle size={14} />
+                              </button>
+                            )}
+                            <button onClick={() => handleDeleteStudent(student)} className="p-1.5 text-red-400 hover:bg-red-600/20 rounded" title="Delete">
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* Empty State */}
-          {filteredStudents.length === 0 && (
-            <div className="text-center py-12 bg-slate-800/50 rounded-2xl border border-slate-700">
-              <div className="w-20 h-20 bg-slate-700/50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                <Receipt className="text-slate-500" size={32} />
-              </div>
-              <h3 className="text-lg font-semibold text-white mb-2">No Students Found</h3>
-              <p className="text-slate-400 mb-4">Try adjusting your search or filter criteria</p>
-              <button
-                onClick={() => {
-                  setSearchTerm('');
-                  setFeeFilter('all');
-                  setSelectedPeriod('all');
-                }}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                Clear Filters
-              </button>
+        {/* Empty State */}
+        {filteredStudents.length === 0 && (
+          <div className="text-center py-12 bg-slate-800/50 rounded-2xl border border-slate-700">
+            <div className="w-20 h-20 bg-slate-700/50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <CalendarDays className="text-slate-500" size={32} />
             </div>
-          )}
-        </div>
+            <h3 className="text-lg font-semibold text-white mb-2">No Students Found</h3>
+            <p className="text-slate-400 mb-4">Try adjusting your search or filter criteria</p>
+            <button onClick={() => { setSearchTerm(''); setFeeFilter('all'); }} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+              Clear Filters
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Fee Modal */}
-      {showFeeForm && selectedStudent && (
+      {/* Assign Date Modal - Single Student */}
+      {showDateModal && dateModalData.student && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-800 rounded-2xl border border-slate-700 max-w-md w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-slate-800 rounded-2xl border border-slate-700 max-w-md w-full">
             <div className="p-6">
               <div className="flex justify-between items-center mb-6">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-blue-600 rounded-xl">
-                    <Wallet className="text-white" size={20} />
+                    <Calendar className="text-white" size={20} />
                   </div>
-                  <h3 className="text-xl font-bold text-white">
-                    Update Fee Details
-                  </h3>
+                  <h3 className="text-xl font-bold text-white">Assign Subscription Period</h3>
                 </div>
-                <button 
-                  onClick={() => setShowFeeForm(false)} 
-                  className="p-2 text-slate-400 hover:text-slate-300 hover:bg-slate-700 rounded-lg transition-all"
-                >
+                <button onClick={() => setShowDateModal(false)} className="p-2 text-slate-400 hover:bg-slate-700 rounded-lg">
                   <X size={20} />
                 </button>
               </div>
               
-              <div className="mb-6 p-4 bg-blue-950/30 rounded-xl border border-blue-800">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-slate-800 rounded-lg flex items-center justify-center">
-                    <GraduationCap className="text-blue-400" size={18} />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-white">{selectedStudent.full_name}</p>
-                    <p className="text-sm text-slate-400">{selectedStudent.usn} • {selectedStudent.branch}</p>
-                  </div>
-                </div>
+              <div className="mb-6 p-4 bg-slate-700/30 rounded-xl">
+                <p className="font-semibold text-white">{dateModalData.student.full_name}</p>
+                <p className="text-sm text-slate-400">{dateModalData.student.usn} • {dateModalData.student.branch}</p>
               </div>
 
-              <form onSubmit={handleFeeSubmit} className="space-y-5">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">Total Fees (₹)</label>
-                    <input
-                      type="number"
-                      value={feeData.total_fees}
-                      onChange={(e) => setFeeData({...feeData, total_fees: e.target.value})}
-                      onBlur={calculateDue}
-                      className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200"
-                      placeholder="Enter amount"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">Paid Amount (₹)</label>
-                    <input
-                      type="number"
-                      value={feeData.paid_amount}
-                      onChange={(e) => setFeeData({...feeData, paid_amount: e.target.value})}
-                      onBlur={calculateDue}
-                      className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200"
-                      placeholder="Enter amount"
-                    />
-                  </div>
-                </div>
-
+              <form onSubmit={handleAssignDate} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">Due Amount (₹)</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Start Date *</label>
                   <input
-                    type="number"
-                    value={feeData.due_amount}
-                    readOnly
-                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-slate-400"
+                    type="date"
+                    required
+                    value={dateModalData.start_date}
+                    onChange={(e) => setDateModalData({...dateModalData, start_date: e.target.value})}
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:border-blue-500 text-slate-200"
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">Last Payment Date</label>
-                    <input
-                      type="date"
-                      value={feeData.last_payment_date}
-                      onChange={(e) => setFeeData({...feeData, last_payment_date: e.target.value})}
-                      className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">Next Payment Date</label>
-                    <input
-                      type="date"
-                      value={feeData.next_payment_date}
-                      onChange={(e) => setFeeData({...feeData, next_payment_date: e.target.value})}
-                      className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200"
-                    />
-                  </div>
-                </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">Payment Mode</label>
-                  <select
-                    value={feeData.payment_mode}
-                    onChange={(e) => setFeeData({...feeData, payment_mode: e.target.value})}
-                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200"
-                  >
-                    <option value="">Select Payment Mode</option>
-                    <option value="Cash">Cash</option>
-                    <option value="Online Transfer">Online Transfer</option>
-                    <option value="Cheque">Cheque</option>
-                    <option value="DD">Demand Draft</option>
-                    <option value="Card">Credit/Debit Card</option>
-                    <option value="UPI">UPI</option>
-                  </select>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">End Date *</label>
+                  <input
+                    type="date"
+                    required
+                    value={dateModalData.end_date}
+                    onChange={(e) => setDateModalData({...dateModalData, end_date: e.target.value})}
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:border-blue-500 text-slate-200"
+                  />
                 </div>
 
-                <div className="flex justify-end gap-3 pt-6">
-                  <button
-                    type="button"
-                    onClick={() => setShowFeeForm(false)}
-                    className="px-6 py-3 text-slate-300 bg-slate-700 rounded-xl hover:bg-slate-600 transition-all font-medium"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all font-medium"
-                  >
-                    Update Fees
+                <div className="flex justify-end gap-3 pt-4">
+                  <button type="button" onClick={() => setShowDateModal(false)} className="px-4 py-2 text-slate-300 bg-slate-700 rounded-lg hover:bg-slate-600">Cancel</button>
+                  <button type="submit" disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
+                    {saving ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Saving...</> : <><Save size={16} />Assign Dates</>}
                   </button>
                 </div>
               </form>
@@ -953,6 +813,144 @@ function FeesManagement() {
           </div>
         </div>
       )}
+
+      {/* Bulk Assign Modal */}
+      {showBulkAssignModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-slate-800 rounded-2xl border border-slate-700 max-w-md w-full">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-purple-600 rounded-xl">
+                    <CalendarPlus className="text-white" size={20} />
+                  </div>
+                  <h3 className="text-xl font-bold text-white">Bulk Assign Dates</h3>
+                </div>
+                <button onClick={() => setShowBulkAssignModal(false)} className="p-2 text-slate-400 hover:bg-slate-700 rounded-lg">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <form onSubmit={handleBulkAssign} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Assign To *</label>
+                  <select
+                    required
+                    value={bulkAssignData.apply_to}
+                    onChange={(e) => setBulkAssignData({...bulkAssignData, apply_to: e.target.value})}
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-slate-200"
+                  >
+                    <option value="all">All Students</option>
+                    <option value="without_dates">Students Without Dates Only</option>
+                    <option value="selected_branch">Specific Branch</option>
+                    <option value="selected_class">Specific Class</option>
+                  </select>
+                </div>
+
+                {bulkAssignData.apply_to === 'selected_branch' && (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">Select Branch</label>
+                    <select
+                      required
+                      value={bulkAssignData.selected_branch}
+                      onChange={(e) => setBulkAssignData({...bulkAssignData, selected_branch: e.target.value})}
+                      className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-slate-200"
+                    >
+                      <option value="">Select Branch</option>
+                      {[...new Set(students.map(s => s.branch))].filter(Boolean).map(branch => (
+                        <option key={branch} value={branch}>{branch}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {bulkAssignData.apply_to === 'selected_class' && (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">Select Class</label>
+                    <select
+                      required
+                      value={bulkAssignData.selected_class}
+                      onChange={(e) => setBulkAssignData({...bulkAssignData, selected_class: e.target.value})}
+                      className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-slate-200"
+                    >
+                      <option value="">Select Class</option>
+                      {[...new Set(students.map(s => s.class))].filter(Boolean).map(cls => (
+                        <option key={cls} value={cls}>{cls}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Start Date *</label>
+                  <input
+                    type="date"
+                    required
+                    value={bulkAssignData.start_date}
+                    onChange={(e) => setBulkAssignData({...bulkAssignData, start_date: e.target.value})}
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:border-purple-500 text-slate-200"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">End Date *</label>
+                  <input
+                    type="date"
+                    required
+                    value={bulkAssignData.end_date}
+                    onChange={(e) => setBulkAssignData({...bulkAssignData, end_date: e.target.value})}
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:border-purple-500 text-slate-200"
+                  />
+                </div>
+
+                <div className="bg-amber-950/30 p-3 rounded-lg border border-amber-800">
+                  <p className="text-amber-400 text-xs flex items-center gap-2">
+                    <AlertCircle size={14} />
+                    This will assign the date period to all students matching your selection
+                  </p>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4">
+                  <button type="button" onClick={() => setShowBulkAssignModal(false)} className="px-4 py-2 text-slate-300 bg-slate-700 rounded-lg hover:bg-slate-600">Cancel</button>
+                  <button type="submit" disabled={saving} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2">
+                    {saving ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Processing...</> : <><CalendarPlus size={16} />Bulk Assign</>}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && studentToDelete && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-slate-800 rounded-2xl border border-slate-700 max-w-md w-full">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 bg-red-600 rounded-xl"><Trash2 className="text-white" size={24} /></div>
+                <h3 className="text-xl font-bold text-white">Delete Student</h3>
+              </div>
+              <p className="text-slate-300 mb-2">Are you sure you want to delete <span className="font-semibold text-white">{studentToDelete.full_name}</span>?</p>
+              <p className="text-slate-400 text-sm mb-6">This action cannot be undone.</p>
+              <div className="flex justify-end gap-3">
+                <button onClick={() => { setShowDeleteConfirm(false); setStudentToDelete(null); }} className="px-4 py-2 text-slate-300 bg-slate-700 rounded-lg">Cancel</button>
+                <button onClick={confirmDelete} disabled={deleting} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2">
+                  {deleting ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Deleting...</> : <><Trash2 size={16} />Delete Student</>}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style jsx>{`
+        @keyframes slide-in {
+          from { transform: translateX(100%); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+        .animate-slide-in { animation: slide-in 0.3s ease-out; }
+      `}</style>
     </div>
   );
 }

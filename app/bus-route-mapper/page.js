@@ -907,7 +907,7 @@ const fetchAllStopStudents = async (stopsList) => {
 
         <div style={{ display:'flex',gap:6,alignItems:'center',flexWrap:'wrap' }}>
           <div style={{ display:'flex',background:T.surface,border:`1px solid ${T.border}`,borderRadius:9,padding:3,gap:2 }}>
-            {[['streets','Streets',<MapIcon size={11}/>],['satellite','Satellite',<Layers size={11}/>]].map(([k,label,icon])=>(
+            {[['streets','Streets',<MapIcon key="streets" size={11}/>],['satellite','Satellite',<Layers key="satellite" size={11}/>]].map(([k,label,icon])=>(
               <button key={k} onClick={()=>switchStyle(k)} style={{ padding:'5px 11px',borderRadius:7,border:'none',cursor:'pointer',background:mapStyle===k?T.blue:'transparent',color:mapStyle===k?'#fff':T.muted,fontSize:11,fontWeight:500,display:'flex',alignItems:'center',gap:4,transition:'all .15s' }}>
                 {icon}{label}
               </button>
@@ -1001,7 +1001,7 @@ const fetchAllStopStudents = async (stopsList) => {
             <div>
               <label style={{ display:'block',fontSize:10,fontWeight:700,color:T.muted,marginBottom:5,letterSpacing:'.06em',textTransform:'uppercase' }}>Direction</label>
               <div style={{ display:'flex',gap:8 }}>
-                {[['morning','Morning',<Sun size={12}/>,T.amber],['evening','Evening',<Moon size={12}/>,T.blue]].map(([v,lbl,ic,col])=>(
+                {[['morning','Morning',<Sun key="morning" size={12}/>,T.amber],['evening','Evening',<Moon key="evening" size={12}/>,T.blue]].map(([v,lbl,ic,col])=>(
                   <button key={v} onClick={()=>changeDir(v)} style={{ flex:1,padding:'8px',borderRadius:9,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6,fontSize:12,fontWeight:500,background:direction===v?`rgba(59,130,246,.14)`:'rgba(255,255,255,.03)',border:direction===v?`1px solid ${col}`:`1px solid ${T.border}`,color:direction===v?col:T.muted,transition:'all .15s' }}>
                     {ic}{lbl}
                   </button>
