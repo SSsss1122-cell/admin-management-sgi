@@ -7,7 +7,8 @@ import {
   TrendingUp, Clock, AlertCircle, ChevronDown, 
   Users, Wallet, Receipt, Award, BookOpen, 
   GraduationCap, Layers, Trash2, Plus, Eye, Save,
-  CalendarPlus, History, RefreshCw, CalendarDays
+  CalendarPlus, History, RefreshCw, CalendarDays,
+  DollarSign, PieChart, CreditCard, Truck
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useRouter } from 'next/navigation';
@@ -25,13 +26,41 @@ function FeesManagement() {
   const [viewMode, setViewMode] = useState('grid');
   const [selectedStudents, setSelectedStudents] = useState([]);
   
+  // Financial summary states
+  const [financialSummary, setFinancialSummary] = useState({
+    total_fees: 0,
+    total_collected: 0,
+    total_due: 0,
+    collection_rate: 0,
+    monthly_collection: 0,
+    pending_count: 0
+  });
+  
   // Date modal states
   const [showDateModal, setShowDateModal] = useState(false);
   const [dateModalData, setDateModalData] = useState({
     student: null,
     start_date: '',
-    end_date: '',
-    period_name: ''
+    end_date: ''
+  });
+  
+  // Due date modal for independent due date
+  const [showDueDateModal, setShowDueDateModal] = useState(false);
+  const [dueDateData, setDueDateData] = useState({
+    student: null,
+    due_date: '',
+    due_amount: 0
+  });
+  
+  // Fee payment modal
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentData, setPaymentData] = useState({
+    student: null,
+    amount: '',
+    payment_date: new Date().toISOString().split('T')[0],
+    payment_mode: 'cash',
+    utr: '',
+    remarks: ''
   });
   
   // Bulk assign modal
@@ -39,7 +68,6 @@ function FeesManagement() {
   const [bulkAssignData, setBulkAssignData] = useState({
     start_date: '',
     end_date: '',
-    period_name: '',
     apply_to: 'all',
     selected_branch: '',
     selected_class: ''
@@ -82,16 +110,61 @@ function FeesManagement() {
         .from('students')
         .select('*')
         .eq('institution_id', instId)
-        .order('usn');
+        .order('full_name');
 
       if (error) throw error;
       setStudents(data || []);
+      calculateFinancialSummary(data || []);
     } catch (error) {
       console.error('Error fetching students:', error);
       showToast('error', 'Error fetching students: ' + error.message);
     } finally {
       setLoading(false);
     }
+  };
+
+  const calculateFinancialSummary = (studentsList) => {
+    let totalFees = 0;
+    let totalCollected = 0;
+    let totalDue = 0;
+    let pendingCount = 0;
+
+    studentsList.forEach(student => {
+      const fees = Number(student.total_fees) || 0;
+      const paid = Number(student.paid_amount) || 0;
+      const due = Number(student.due_amount) || 0;
+      
+      totalFees += fees;
+      totalCollected += paid;
+      totalDue += due;
+      
+      if (due > 0) pendingCount++;
+    });
+
+    const collectionRate = totalFees > 0 ? (totalCollected / totalFees) * 100 : 0;
+
+    // Calculate monthly collection (current month)
+    const currentMonth = new Date().getMonth();
+    const currentYear = new Date().getFullYear();
+    let monthlyCollection = 0;
+    
+    studentsList.forEach(student => {
+      if (student.last_payment_date) {
+        const paymentDate = new Date(student.last_payment_date);
+        if (paymentDate.getMonth() === currentMonth && paymentDate.getFullYear() === currentYear) {
+          monthlyCollection += Number(student.paid_amount) || 0;
+        }
+      }
+    });
+
+    setFinancialSummary({
+      total_fees: totalFees,
+      total_collected: totalCollected,
+      total_due: totalDue,
+      collection_rate: collectionRate,
+      monthly_collection: monthlyCollection,
+      pending_count: pendingCount
+    });
   };
 
   const filterStudents = () => {
@@ -138,8 +211,100 @@ function FeesManagement() {
         return !student.bus_subscription_start_date || !student.bus_subscription_end_date;
       });
     }
+    else if (feeFilter === 'due') {
+      filtered = filtered.filter(student => {
+        return Number(student.due_amount) > 0;
+      });
+    }
+    else if (feeFilter === 'paid') {
+      filtered = filtered.filter(student => {
+        return Number(student.due_amount) === 0 && Number(student.total_fees) > 0;
+      });
+    }
+    else if (feeFilter === 'overdue') {
+      filtered = filtered.filter(student => {
+        if (!student.next_payment_date) return false;
+        const today = new Date().toISOString().split('T')[0];
+        return student.next_payment_date < today && Number(student.due_amount) > 0;
+      });
+    }
 
     setFilteredStudents(filtered);
+  };
+
+  const handleRecordPayment = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    
+    try {
+      const student = paymentData.student;
+      const currentPaid = Number(student.paid_amount) || 0;
+      const newPaid = currentPaid + Number(paymentData.amount);
+      const totalFees = Number(student.total_fees) || 0;
+      const newDue = totalFees - newPaid;
+      
+      // Update student fees
+      const { error } = await supabase
+        .from('students')
+        .update({
+          paid_amount: newPaid,
+          due_amount: newDue,
+          last_payment_date: paymentData.payment_date,
+          payment_mode: paymentData.payment_mode,
+          UTR: paymentData.utr || null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', student.id);
+      
+      if (error) throw error;
+      
+      showToast('success', `✅ Payment of ₹${Number(paymentData.amount).toLocaleString()} recorded for ${student.full_name}!`);
+      await fetchStudents(institutionId);
+      setShowPaymentModal(false);
+      setPaymentData({
+        student: null,
+        amount: '',
+        payment_date: new Date().toISOString().split('T')[0],
+        payment_mode: 'cash',
+        utr: '',
+        remarks: ''
+      });
+      
+    } catch (error) {
+      console.error('Error recording payment:', error);
+      showToast('error', '❌ Error recording payment: ' + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleUpdateDueDate = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    
+    try {
+      const { error } = await supabase
+        .from('students')
+        .update({
+          next_payment_date: dueDateData.due_date,
+          due_amount: dueDateData.due_amount,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', dueDateData.student.id);
+      
+      if (error) throw error;
+      
+      showToast('success', `✅ Due date updated for ${dueDateData.student.full_name}!`);
+      await fetchStudents(institutionId);
+      setShowDueDateModal(false);
+      setDueDateData({ student: null, due_date: '', due_amount: 0 });
+      
+    } catch (error) {
+      console.error('Error updating due date:', error);
+      showToast('error', '❌ Error updating due date: ' + error.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleAssignDate = async (e) => {
@@ -158,10 +323,10 @@ function FeesManagement() {
       
       if (error) throw error;
       
-      showToast('success', `✅ Date period assigned to ${dateModalData.student.full_name}!`);
+      showToast('success', `✅ Bus subscription period assigned to ${dateModalData.student.full_name}!`);
       await fetchStudents(institutionId);
       setShowDateModal(false);
-      setDateModalData({ student: null, start_date: '', end_date: '', period_name: '' });
+      setDateModalData({ student: null, start_date: '', end_date: '' });
       
     } catch (error) {
       console.error('Error assigning date:', error);
@@ -183,8 +348,7 @@ function FeesManagement() {
           bus_subscription_end_date: bulkAssignData.end_date,
           updated_at: new Date().toISOString()
         })
-        .eq('institution_id', institutionId)
-        .eq('role', 'student');
+        .eq('institution_id', institutionId);
       
       if (bulkAssignData.apply_to === 'without_dates') {
         updateQuery = updateQuery.is('bus_subscription_start_date', null);
@@ -204,7 +368,6 @@ function FeesManagement() {
       setBulkAssignData({
         start_date: '',
         end_date: '',
-        period_name: '',
         apply_to: 'all',
         selected_branch: '',
         selected_class: ''
@@ -219,7 +382,7 @@ function FeesManagement() {
   };
 
   const handleClearDates = async (student) => {
-    if (!confirm(`Clear subscription dates for ${student.full_name}?`)) return;
+    if (!confirm(`Clear bus subscription dates for ${student.full_name}?`)) return;
     
     try {
       const { error } = await supabase
@@ -233,7 +396,7 @@ function FeesManagement() {
       
       if (error) throw error;
       
-      showToast('success', `✅ Dates cleared for ${student.full_name}`);
+      showToast('success', `✅ Bus dates cleared for ${student.full_name}`);
       await fetchStudents(institutionId);
       
     } catch (error) {
@@ -246,10 +409,30 @@ function FeesManagement() {
     setDateModalData({
       student: student,
       start_date: student.bus_subscription_start_date || '',
-      end_date: student.bus_subscription_end_date || '',
-      period_name: ''
+      end_date: student.bus_subscription_end_date || ''
     });
     setShowDateModal(true);
+  };
+
+  const openDueDateModal = (student) => {
+    setDueDateData({
+      student: student,
+      due_date: student.next_payment_date || '',
+      due_amount: student.due_amount || 0
+    });
+    setShowDueDateModal(true);
+  };
+
+  const openPaymentModal = (student) => {
+    setPaymentData({
+      student: student,
+      amount: '',
+      payment_date: new Date().toISOString().split('T')[0],
+      payment_mode: 'cash',
+      utr: '',
+      remarks: ''
+    });
+    setShowPaymentModal(true);
   };
 
   const handleDeleteStudent = async (student) => {
@@ -339,6 +522,24 @@ function FeesManagement() {
     return { text: 'Unknown', color: 'bg-slate-800/50 text-slate-400 border-slate-700', icon: '❓' };
   };
 
+  const getDueStatus = (student) => {
+    const dueAmount = Number(student.due_amount) || 0;
+    const nextPaymentDate = student.next_payment_date;
+    
+    if (dueAmount === 0) {
+      return { text: 'Paid', color: 'bg-emerald-950/50 text-emerald-400 border-emerald-800', icon: '✅' };
+    }
+    
+    if (nextPaymentDate) {
+      const today = new Date().toISOString().split('T')[0];
+      if (nextPaymentDate < today) {
+        return { text: 'Overdue', color: 'bg-red-950/50 text-red-400 border-red-800', icon: '⚠️' };
+      }
+    }
+    
+    return { text: 'Pending', color: 'bg-orange-950/50 text-orange-400 border-orange-800', icon: '💰' };
+  };
+
   const formatDate = (dateString) => {
     if (!dateString) return 'Not Set';
     return new Date(dateString).toLocaleDateString('en-IN', {
@@ -348,19 +549,37 @@ function FeesManagement() {
     });
   };
 
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(amount || 0);
+  };
+
   const exportToCSV = () => {
-    const headers = ['USN', 'Name', 'Branch', 'Class', 'Subscription Start', 'Subscription End', 'Status'];
+    const headers = ['USN', 'Name', 'Branch', 'Class', 'Total Fees', 'Paid Amount', 'Due Amount', 'Due Status', 'Next Due Date', 'Bus Start Date', 'Bus End Date', 'Bus Status', 'Last Payment Date', 'Payment Mode'];
     
     const csvData = filteredStudents.map(student => {
-      const status = getSubscriptionStatus(student);
+      const busStatus = getSubscriptionStatus(student);
+      const dueStatus = getDueStatus(student);
+      
       return [
         student.usn || '',
         student.full_name || '',
         student.branch || 'N/A',
         student.class || '',
+        student.total_fees || 0,
+        student.paid_amount || 0,
+        student.due_amount || 0,
+        dueStatus.text,
+        student.next_payment_date || 'Not Set',
         student.bus_subscription_start_date || 'Not Set',
         student.bus_subscription_end_date || 'Not Set',
-        status.text
+        busStatus.text,
+        student.last_payment_date || '',
+        student.payment_mode || ''
       ];
     });
 
@@ -369,7 +588,7 @@ function FeesManagement() {
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
-    link.setAttribute('download', `subscription_report_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `fees_report_${new Date().toISOString().split('T')[0]}.csv`);
     link.click();
     URL.revokeObjectURL(url);
     
@@ -422,6 +641,13 @@ function FeesManagement() {
     return !s.bus_subscription_start_date || !s.bus_subscription_end_date;
   }).length;
 
+  const totalDueAmount = students.reduce((sum, s) => sum + (Number(s.due_amount) || 0), 0);
+  const overdueCount = students.filter(s => {
+    if (!s.next_payment_date) return false;
+    const today = new Date().toISOString().split('T')[0];
+    return s.next_payment_date < today && Number(s.due_amount) > 0;
+  }).length;
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
@@ -456,11 +682,11 @@ function FeesManagement() {
             <div>
               <div className="flex items-center gap-3">
                 <div className="p-3 bg-blue-600 rounded-2xl">
-                  <CalendarDays className="text-white" size={24} />
+                  <CreditCard className="text-white" size={24} />
                 </div>
                 <div>
-                  <h1 className="text-2xl lg:text-3xl font-bold text-white">Bus Subscription Management</h1>
-                  <p className="text-slate-400 text-sm mt-1">Manage student bus subscription periods & dates</p>
+                  <h1 className="text-2xl lg:text-3xl font-bold text-white">Fees Management</h1>
+                  <p className="text-slate-400 text-sm mt-1">Manage student fees, due dates & bus subscriptions</p>
                 </div>
               </div>
             </div>
@@ -472,7 +698,7 @@ function FeesManagement() {
               className="flex items-center gap-2 px-4 py-2.5 bg-purple-600/20 border border-purple-500 rounded-xl text-purple-400 hover:bg-purple-600/30 transition-all"
             >
               <CalendarPlus size={18} />
-              <span>Bulk Assign Dates</span>
+              <span>Bulk Assign Bus Dates</span>
             </button>
             {selectedStudents.length > 0 && (
               <button onClick={handleBulkDelete} className="flex items-center gap-2 px-4 py-2.5 bg-red-950/50 border border-red-700 rounded-xl text-red-400 hover:bg-red-900/50">
@@ -487,51 +713,113 @@ function FeesManagement() {
           </div>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
+        {/* Financial Summary Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <div className="bg-gradient-to-br from-slate-800 to-slate-800/50 rounded-2xl border border-slate-700 p-5">
             <div className="flex items-center justify-between mb-3">
-              <div className="p-2 bg-blue-600 rounded-xl"><Users className="text-white" size={18} /></div>
+              <div className="p-2 bg-blue-600/20 rounded-xl">
+                <Wallet className="text-blue-400" size={20} />
+              </div>
               <span className="text-xs font-medium text-blue-400 bg-blue-950/50 px-2 py-0.5 rounded-full">Total</span>
             </div>
-            <h3 className="text-2xl font-bold text-white">{totalStudents}</h3>
-            <p className="text-xs text-slate-400">Total Students</p>
+            <h3 className="text-2xl font-bold text-white">{formatCurrency(financialSummary.total_fees)}</h3>
+            <p className="text-xs text-slate-400 mt-1">Total Fees Amount</p>
           </div>
 
-          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
+          <div className="bg-gradient-to-br from-emerald-900/30 to-slate-800/50 rounded-2xl border border-emerald-700/30 p-5">
             <div className="flex items-center justify-between mb-3">
-              <div className="p-2 bg-emerald-600 rounded-xl"><CheckCircle className="text-white" size={18} /></div>
-              <span className="text-xs font-medium text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded-full">Active</span>
+              <div className="p-2 bg-emerald-600/20 rounded-xl">
+                <CheckCircle className="text-emerald-400" size={20} />
+              </div>
+              <span className="text-xs font-medium text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded-full">Collected</span>
             </div>
-            <h3 className="text-2xl font-bold text-white">{activeStudents}</h3>
-            <p className="text-xs text-slate-400">Active Subscriptions</p>
+            <h3 className="text-2xl font-bold text-emerald-400">{formatCurrency(financialSummary.total_collected)}</h3>
+            <p className="text-xs text-slate-400 mt-1">Total Fees Collected</p>
           </div>
 
-          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
+          <div className="bg-gradient-to-br from-orange-900/30 to-slate-800/50 rounded-2xl border border-orange-700/30 p-5">
             <div className="flex items-center justify-between mb-3">
-              <div className="p-2 bg-amber-600 rounded-xl"><Clock className="text-white" size={18} /></div>
-              <span className="text-xs font-medium text-amber-400 bg-amber-950/50 px-2 py-0.5 rounded-full">Expiring Soon</span>
+              <div className="p-2 bg-orange-600/20 rounded-xl">
+                <AlertCircle className="text-orange-400" size={20} />
+              </div>
+              <span className="text-xs font-medium text-orange-400 bg-orange-950/50 px-2 py-0.5 rounded-full">Due</span>
             </div>
-            <h3 className="text-2xl font-bold text-white">{expiringStudents}</h3>
-            <p className="text-xs text-slate-400">Expiring in 30 days</p>
+            <h3 className="text-2xl font-bold text-orange-400">{formatCurrency(financialSummary.total_due)}</h3>
+            <p className="text-xs text-slate-400 mt-1">Total Due Amount</p>
           </div>
 
-          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
+          <div className="bg-gradient-to-br from-purple-900/30 to-slate-800/50 rounded-2xl border border-purple-700/30 p-5">
             <div className="flex items-center justify-between mb-3">
-              <div className="p-2 bg-red-600 rounded-xl"><XCircle className="text-white" size={18} /></div>
-              <span className="text-xs font-medium text-red-400 bg-red-950/50 px-2 py-0.5 rounded-full">Expired</span>
+              <div className="p-2 bg-purple-600/20 rounded-xl">
+                <TrendingUp className="text-purple-400" size={20} />
+              </div>
+              <span className="text-xs font-medium text-purple-400 bg-purple-950/50 px-2 py-0.5 rounded-full">Collection Rate</span>
             </div>
-            <h3 className="text-2xl font-bold text-white">{expiredStudents}</h3>
-            <p className="text-xs text-slate-400">Expired Subscriptions</p>
+            <h3 className="text-2xl font-bold text-purple-400">{financialSummary.collection_rate.toFixed(1)}%</h3>
+            <p className="text-xs text-slate-400 mt-1">Overall Collection Rate</p>
+          </div>
+        </div>
+
+        {/* Additional Stats Row */}
+        <div className="grid grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
+          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-600 rounded-xl"><Users className="text-white" size={16} /></div>
+              <div>
+                <h3 className="text-xl font-bold text-white">{totalStudents}</h3>
+                <p className="text-xs text-slate-400">Total Students</p>
+              </div>
+            </div>
           </div>
 
-          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="p-2 bg-purple-600 rounded-xl"><Calendar className="text-white" size={18} /></div>
-              <span className="text-xs font-medium text-purple-400 bg-purple-950/50 px-2 py-0.5 rounded-full">No Date</span>
+          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-emerald-600 rounded-xl"><CheckCircle className="text-white" size={16} /></div>
+              <div>
+                <h3 className="text-xl font-bold text-emerald-400">{activeStudents}</h3>
+                <p className="text-xs text-slate-400">Active Bus</p>
+              </div>
             </div>
-            <h3 className="text-2xl font-bold text-white">{noSubscriptionStudents}</h3>
-            <p className="text-xs text-slate-400">Need Date Assignment</p>
+          </div>
+
+          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-amber-600 rounded-xl"><Clock className="text-white" size={16} /></div>
+              <div>
+                <h3 className="text-xl font-bold text-amber-400">{expiringStudents}</h3>
+                <p className="text-xs text-slate-400">Bus Expiring</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-orange-600 rounded-xl"><AlertCircle className="text-white" size={16} /></div>
+              <div>
+                <h3 className="text-xl font-bold text-orange-400">{financialSummary.pending_count}</h3>
+                <p className="text-xs text-slate-400">Pending Fees</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-red-600 rounded-xl"><XCircle className="text-white" size={16} /></div>
+              <div>
+                <h3 className="text-xl font-bold text-red-400">{overdueCount}</h3>
+                <p className="text-xs text-slate-400">Overdue</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-purple-600 rounded-xl"><Calendar className="text-white" size={16} /></div>
+              <div>
+                <h3 className="text-xl font-bold text-purple-400">{noSubscriptionStudents}</h3>
+                <p className="text-xs text-slate-400">No Bus Date</p>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -556,10 +844,13 @@ function FeesManagement() {
                 className="px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-slate-200 cursor-pointer"
               >
                 <option value="all">All Students</option>
-                <option value="active">Active Subscription</option>
-                <option value="expiring">Expiring Soon (30 days)</option>
-                <option value="expired">Expired</option>
-                <option value="no-subscription">No Subscription</option>
+                <option value="due">Due Fees</option>
+                <option value="overdue">Overdue</option>
+                <option value="paid">Fees Paid</option>
+                <option value="active">Active Bus</option>
+                <option value="expiring">Bus Expiring Soon</option>
+                <option value="expired">Bus Expired</option>
+                <option value="no-subscription">No Bus Date</option>
               </select>
 
               <button
@@ -573,17 +864,23 @@ function FeesManagement() {
 
           <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-700">
             <span className="text-xs font-medium text-slate-500 py-1">Quick filters:</span>
+            <button onClick={() => setFeeFilter('due')} className="px-3 py-1 bg-orange-950/50 text-orange-400 rounded-lg text-xs border border-orange-800">
+              Due Fees ({financialSummary.pending_count})
+            </button>
+            <button onClick={() => setFeeFilter('overdue')} className="px-3 py-1 bg-red-950/50 text-red-400 rounded-lg text-xs border border-red-800">
+              Overdue ({overdueCount})
+            </button>
+            <button onClick={() => setFeeFilter('paid')} className="px-3 py-1 bg-emerald-950/50 text-emerald-400 rounded-lg text-xs border border-emerald-800">
+              Paid ({students.filter(s => Number(s.due_amount) === 0 && Number(s.total_fees) > 0).length})
+            </button>
             <button onClick={() => setFeeFilter('active')} className="px-3 py-1 bg-emerald-950/50 text-emerald-400 rounded-lg text-xs border border-emerald-800">
-              Active ({activeStudents})
+              Active Bus ({activeStudents})
             </button>
             <button onClick={() => setFeeFilter('expiring')} className="px-3 py-1 bg-amber-950/50 text-amber-400 rounded-lg text-xs border border-amber-800">
-              Expiring ({expiringStudents})
+              Bus Expiring ({expiringStudents})
             </button>
             <button onClick={() => setFeeFilter('expired')} className="px-3 py-1 bg-red-950/50 text-red-400 rounded-lg text-xs border border-red-800">
-              Expired ({expiredStudents})
-            </button>
-            <button onClick={() => setFeeFilter('no-subscription')} className="px-3 py-1 bg-purple-950/50 text-purple-400 rounded-lg text-xs border border-purple-800">
-              No Date ({noSubscriptionStudents})
+              Bus Expired ({expiredStudents})
             </button>
           </div>
         </div>
@@ -592,15 +889,19 @@ function FeesManagement() {
         {viewMode === 'grid' ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {filteredStudents.map((student) => {
-              const status = getSubscriptionStatus(student);
+              const busStatus = getSubscriptionStatus(student);
+              const dueStatus = getDueStatus(student);
+              const totalFees = Number(student.total_fees) || 0;
+              const paidAmount = Number(student.paid_amount) || 0;
+              const dueAmount = Number(student.due_amount) || 0;
+              const paidPercentage = totalFees > 0 ? (paidAmount / totalFees) * 100 : 0;
               
               return (
                 <div key={student.id} className="bg-slate-800/50 rounded-2xl border border-slate-700 hover:border-blue-500/30 transition-all overflow-hidden">
                   <div className={`h-1 ${
-                    status.text.includes('Active') ? 'bg-emerald-500' :
-                    status.text.includes('Expiring') ? 'bg-amber-500' :
-                    status.text.includes('Expired') ? 'bg-red-500' :
-                    'bg-purple-500'
+                    dueAmount === 0 ? 'bg-emerald-500' :
+                    dueStatus.text === 'Overdue' ? 'bg-red-500' :
+                    'bg-orange-500'
                   }`}></div>
                   <div className="p-5">
                     <div className="flex justify-between items-start mb-4">
@@ -610,29 +911,45 @@ function FeesManagement() {
                         </div>
                         <div>
                           <h3 className="font-semibold text-white">{student.full_name}</h3>
-                          <p className="text-xs text-slate-500">{student.usn}</p>
+                          <p className="text-xs text-slate-500">{student.usn || 'No USN'}</p>
                         </div>
                       </div>
-                      <span className={`px-2 py-1 text-xs font-semibold rounded-full border ${status.color}`}>
-                        {status.icon} {status.text}
-                      </span>
+                      <div className="flex flex-col items-end gap-1">
+                        <span className={`px-2 py-1 text-xs font-semibold rounded-full border ${dueStatus.color}`}>
+                          {dueStatus.icon} {dueStatus.text}
+                        </span>
+                        <span className={`px-2 py-0.5 text-xs rounded-full border ${busStatus.color}`}>
+                          {busStatus.icon} {busStatus.text.split('(')[0].trim()}
+                        </span>
+                      </div>
                     </div>
 
                     <div className="space-y-3 mb-4">
                       <div className="flex items-center gap-2 text-sm">
                         <BookOpen size={14} className="text-slate-500" />
-                        <span className="text-slate-400">{student.branch} • {student.class}</span>
+                        <span className="text-slate-400">{student.branch || 'N/A'} • {student.class || 'N/A'}</span>
                       </div>
                       
+                      {/* Bus Subscription */}
                       <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-700">
                         <div className="flex items-center justify-between text-sm mb-2">
-                          <span className="text-slate-500">Subscription Period</span>
-                          <button
-                            onClick={() => openDateModal(student)}
-                            className="text-blue-400 hover:text-blue-300 text-xs flex items-center gap-1"
-                          >
-                            <Edit size={12} /> Edit
-                          </button>
+                          <span className="text-slate-500">Bus Subscription</span>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => openDateModal(student)}
+                              className="text-blue-400 hover:text-blue-300 text-xs flex items-center gap-1"
+                            >
+                              <Edit size={12} /> Edit
+                            </button>
+                            {student.bus_subscription_start_date && (
+                              <button
+                                onClick={() => handleClearDates(student)}
+                                className="text-red-400 hover:text-red-300 text-xs"
+                              >
+                                <XCircle size={12} />
+                              </button>
+                            )}
+                          </div>
                         </div>
                         <div className="flex items-center gap-2 text-slate-300">
                           <Calendar size={14} />
@@ -641,31 +958,69 @@ function FeesManagement() {
                           </span>
                         </div>
                       </div>
+                      
+                      {/* Fees Status */}
+                      <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-700">
+                        <div className="flex justify-between text-sm mb-1">
+                          <span className="text-slate-500">Fees Status</span>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => openPaymentModal(student)}
+                              className="text-emerald-400 hover:text-emerald-300 text-xs flex items-center gap-1"
+                            >
+                              <DollarSign size={12} /> Pay
+                            </button>
+                            <button
+                              onClick={() => openDueDateModal(student)}
+                              className="text-purple-400 hover:text-purple-300 text-xs flex items-center gap-1"
+                            >
+                              <Calendar size={12} /> Set Due
+                            </button>
+                          </div>
+                        </div>
+                        <div className="w-full bg-slate-700 rounded-full h-1.5 mb-2">
+                          <div 
+                            className={`h-1.5 rounded-full transition-all ${
+                              dueAmount === 0 ? 'bg-emerald-500' : 'bg-orange-500'
+                            }`}
+                            style={{ width: `${paidPercentage}%` }}
+                          ></div>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-emerald-400">Paid: {formatCurrency(paidAmount)}</span>
+                          <span className="text-orange-400">Due: {formatCurrency(dueAmount)}</span>
+                          <span className="text-slate-400">Total: {formatCurrency(totalFees)}</span>
+                        </div>
+                        {student.next_payment_date && (
+                          <div className="mt-2 pt-2 border-t border-slate-700 text-xs">
+                            <span className="text-slate-500">Next Due Date: </span>
+                            <span className={student.next_payment_date < new Date().toISOString().split('T')[0] ? 'text-red-400' : 'text-yellow-400'}>
+                              {formatDate(student.next_payment_date)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     <div className="flex justify-end gap-2 pt-3 border-t border-slate-700">
                       <button
-                        onClick={() => openDateModal(student)}
-                        className="p-2 text-blue-400 hover:bg-blue-600/20 rounded-lg transition-colors"
-                        title="Edit Dates"
+                        onClick={() => openPaymentModal(student)}
+                        className="px-3 py-1.5 bg-emerald-600/20 text-emerald-400 rounded-lg text-xs hover:bg-emerald-600/30 transition-colors flex items-center gap-1"
                       >
-                        <Calendar size={16} />
+                        <DollarSign size={12} /> Record Payment
                       </button>
-                      {student.bus_subscription_start_date && (
-                        <button
-                          onClick={() => handleClearDates(student)}
-                          className="p-2 text-orange-400 hover:bg-orange-600/20 rounded-lg transition-colors"
-                          title="Clear Dates"
-                        >
-                          <XCircle size={16} />
-                        </button>
-                      )}
+                      <button
+                        onClick={() => openDueDateModal(student)}
+                        className="px-3 py-1.5 bg-purple-600/20 text-purple-400 rounded-lg text-xs hover:bg-purple-600/30 transition-colors flex items-center gap-1"
+                      >
+                        <Calendar size={12} /> Set Due Date
+                      </button>
                       <button
                         onClick={() => handleDeleteStudent(student)}
-                        className="p-2 text-red-400 hover:bg-red-600/20 rounded-lg transition-colors"
+                        className="p-1.5 text-red-400 hover:bg-red-600/20 rounded-lg transition-colors"
                         title="Delete Student"
                       >
-                        <Trash2 size={16} />
+                        <Trash2 size={14} />
                       </button>
                     </div>
                   </div>
@@ -684,15 +1039,23 @@ function FeesManagement() {
                     </th>
                     <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400">Student</th>
                     <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400">Branch</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400">Start Date</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400">End Date</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400">Total Fees</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400">Paid</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400">Due</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400">Due Date</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400">Bus Start</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400">Bus End</th>
                     <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400">Status</th>
                     <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400">Actions</th>
-                   </tr>
+                  </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-700">
                   {filteredStudents.map((student) => {
-                    const status = getSubscriptionStatus(student);
+                    const busStatus = getSubscriptionStatus(student);
+                    const dueStatus = getDueStatus(student);
+                    const totalFees = Number(student.total_fees) || 0;
+                    const paidAmount = Number(student.paid_amount) || 0;
+                    const dueAmount = Number(student.due_amount) || 0;
                     
                     return (
                       <tr key={student.id} className="hover:bg-slate-700/30">
@@ -706,28 +1069,44 @@ function FeesManagement() {
                             </div>
                             <div>
                               <p className="font-medium text-white">{student.full_name}</p>
-                              <p className="text-xs text-slate-500">{student.usn}</p>
+                              <p className="text-xs text-slate-500">{student.usn || 'No USN'}</p>
                             </div>
                           </div>
                         </td>
-                        <td className="px-5 py-3 text-sm text-slate-400">{student.branch}</td>
+                        <td className="px-5 py-3 text-sm text-slate-400">{student.branch || 'N/A'}</td>
+                        <td className="px-5 py-3 text-sm text-white">{formatCurrency(totalFees)}</td>
+                        <td className="px-5 py-3 text-sm text-emerald-400">{formatCurrency(paidAmount)}</td>
+                        <td className={`px-5 py-3 text-sm font-semibold ${dueAmount > 0 ? 'text-orange-400' : 'text-emerald-400'}`}>
+                          {formatCurrency(dueAmount)}
+                        </td>
+                        <td className="px-5 py-3 text-sm text-slate-300">
+                          <span className={student.next_payment_date && student.next_payment_date < new Date().toISOString().split('T')[0] ? 'text-red-400' : ''}>
+                            {formatDate(student.next_payment_date)}
+                          </span>
+                        </td>
                         <td className="px-5 py-3 text-sm text-slate-300">{formatDate(student.bus_subscription_start_date)}</td>
                         <td className="px-5 py-3 text-sm text-slate-300">{formatDate(student.bus_subscription_end_date)}</td>
                         <td className="px-5 py-3">
-                          <span className={`px-2 py-1 text-xs font-semibold rounded-full border ${status.color}`}>
-                            {status.icon} {status.text}
-                          </span>
+                          <div className="flex flex-col gap-1">
+                            <span className={`px-2 py-0.5 text-xs font-semibold rounded-full border ${dueStatus.color}`}>
+                              {dueStatus.icon} {dueStatus.text}
+                            </span>
+                            <span className={`px-2 py-0.5 text-xs rounded-full border ${busStatus.color}`}>
+                              {busStatus.icon} {busStatus.text.split('(')[0].trim()}
+                            </span>
+                          </div>
                         </td>
                         <td className="px-5 py-3">
                           <div className="flex gap-1">
-                            <button onClick={() => openDateModal(student)} className="p-1.5 text-blue-400 hover:bg-blue-600/20 rounded" title="Edit Dates">
+                            <button onClick={() => openPaymentModal(student)} className="p-1.5 text-emerald-400 hover:bg-emerald-600/20 rounded" title="Record Payment">
+                              <DollarSign size={14} />
+                            </button>
+                            <button onClick={() => openDueDateModal(student)} className="p-1.5 text-purple-400 hover:bg-purple-600/20 rounded" title="Set Due Date">
+                              <Calendar size={14} />
+                            </button>
+                            <button onClick={() => openDateModal(student)} className="p-1.5 text-blue-400 hover:bg-blue-600/20 rounded" title="Edit Bus Dates">
                               <Edit size={14} />
                             </button>
-                            {student.bus_subscription_start_date && (
-                              <button onClick={() => handleClearDates(student)} className="p-1.5 text-orange-400 hover:bg-orange-600/20 rounded" title="Clear Dates">
-                                <XCircle size={14} />
-                              </button>
-                            )}
                             <button onClick={() => handleDeleteStudent(student)} className="p-1.5 text-red-400 hover:bg-red-600/20 rounded" title="Delete">
                               <Trash2 size={14} />
                             </button>
@@ -746,7 +1125,7 @@ function FeesManagement() {
         {filteredStudents.length === 0 && (
           <div className="text-center py-12 bg-slate-800/50 rounded-2xl border border-slate-700">
             <div className="w-20 h-20 bg-slate-700/50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <CalendarDays className="text-slate-500" size={32} />
+              <CreditCard className="text-slate-500" size={32} />
             </div>
             <h3 className="text-lg font-semibold text-white mb-2">No Students Found</h3>
             <p className="text-slate-400 mb-4">Try adjusting your search or filter criteria</p>
@@ -757,7 +1136,7 @@ function FeesManagement() {
         )}
       </div>
 
-      {/* Assign Date Modal - Single Student */}
+      {/* Assign Bus Date Modal */}
       {showDateModal && dateModalData.student && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-slate-800 rounded-2xl border border-slate-700 max-w-md w-full">
@@ -767,7 +1146,7 @@ function FeesManagement() {
                   <div className="p-2 bg-blue-600 rounded-xl">
                     <Calendar className="text-white" size={20} />
                   </div>
-                  <h3 className="text-xl font-bold text-white">Assign Subscription Period</h3>
+                  <h3 className="text-xl font-bold text-white">Assign Bus Subscription Period</h3>
                 </div>
                 <button onClick={() => setShowDateModal(false)} className="p-2 text-slate-400 hover:bg-slate-700 rounded-lg">
                   <X size={20} />
@@ -814,6 +1193,170 @@ function FeesManagement() {
         </div>
       )}
 
+      {/* Set Due Date Modal */}
+      {showDueDateModal && dueDateData.student && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-slate-800 rounded-2xl border border-slate-700 max-w-md w-full">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-purple-600 rounded-xl">
+                    <CalendarDays className="text-white" size={20} />
+                  </div>
+                  <h3 className="text-xl font-bold text-white">Set Due Date</h3>
+                </div>
+                <button onClick={() => setShowDueDateModal(false)} className="p-2 text-slate-400 hover:bg-slate-700 rounded-lg">
+                  <X size={20} />
+                </button>
+              </div>
+              
+              <div className="mb-6 p-4 bg-slate-700/30 rounded-xl">
+                <p className="font-semibold text-white">{dueDateData.student.full_name}</p>
+                <p className="text-sm text-slate-400">{dueDateData.student.usn} • {dueDateData.student.branch}</p>
+              </div>
+
+              <form onSubmit={handleUpdateDueDate} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Due Amount *</label>
+                  <div className="relative">
+                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500">
+                      <IndianRupee size={16} />
+                    </div>
+                    <input
+                      type="number"
+                      required
+                      placeholder="Enter due amount"
+                      value={dueDateData.due_amount}
+                      onChange={(e) => setDueDateData({...dueDateData, due_amount: e.target.value})}
+                      className="w-full pl-10 pr-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:border-purple-500 text-slate-200"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Next Due Date *</label>
+                  <input
+                    type="date"
+                    required
+                    value={dueDateData.due_date}
+                    onChange={(e) => setDueDateData({...dueDateData, due_date: e.target.value})}
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:border-purple-500 text-slate-200"
+                  />
+                </div>
+
+                <div className="bg-amber-950/30 p-3 rounded-lg border border-amber-800">
+                  <p className="text-amber-400 text-xs flex items-center gap-2">
+                    <AlertCircle size={14} />
+                    Setting a due date will help track overdue payments
+                  </p>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4">
+                  <button type="button" onClick={() => setShowDueDateModal(false)} className="px-4 py-2 text-slate-300 bg-slate-700 rounded-lg hover:bg-slate-600">Cancel</button>
+                  <button type="submit" disabled={saving} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2">
+                    {saving ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Saving...</> : <><Save size={16} />Set Due Date</>}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Modal */}
+      {showPaymentModal && paymentData.student && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-slate-800 rounded-2xl border border-slate-700 max-w-md w-full">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-emerald-600 rounded-xl">
+                    <DollarSign className="text-white" size={20} />
+                  </div>
+                  <h3 className="text-xl font-bold text-white">Record Fee Payment</h3>
+                </div>
+                <button onClick={() => setShowPaymentModal(false)} className="p-2 text-slate-400 hover:bg-slate-700 rounded-lg">
+                  <X size={20} />
+                </button>
+              </div>
+              
+              <div className="mb-6 p-4 bg-slate-700/30 rounded-xl">
+                <p className="font-semibold text-white">{paymentData.student.full_name}</p>
+                <p className="text-sm text-slate-400">{paymentData.student.usn} • {paymentData.student.branch}</p>
+                <div className="mt-2 pt-2 border-t border-slate-600">
+                  <p className="text-sm text-slate-300">Total Fees: <span className="text-white font-semibold">{formatCurrency(Number(paymentData.student.total_fees) || 0)}</span></p>
+                  <p className="text-sm text-slate-300">Already Paid: <span className="text-emerald-400 font-semibold">{formatCurrency(Number(paymentData.student.paid_amount) || 0)}</span></p>
+                  <p className="text-sm text-slate-300">Remaining Due: <span className="text-orange-400 font-semibold">{formatCurrency(Number(paymentData.student.due_amount) || 0)}</span></p>
+                </div>
+              </div>
+
+              <form onSubmit={handleRecordPayment} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Amount *</label>
+                  <div className="relative">
+                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500">
+                      <IndianRupee size={16} />
+                    </div>
+                    <input
+                      type="number"
+                      required
+                      placeholder="Enter amount"
+                      value={paymentData.amount}
+                      onChange={(e) => setPaymentData({...paymentData, amount: e.target.value})}
+                      className="w-full pl-10 pr-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:border-emerald-500 text-slate-200"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Payment Date *</label>
+                  <input
+                    type="date"
+                    required
+                    value={paymentData.payment_date}
+                    onChange={(e) => setPaymentData({...paymentData, payment_date: e.target.value})}
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:border-emerald-500 text-slate-200"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Payment Mode</label>
+                  <select
+                    value={paymentData.payment_mode}
+                    onChange={(e) => setPaymentData({...paymentData, payment_mode: e.target.value})}
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:border-emerald-500 text-slate-200"
+                  >
+                    <option value="cash">Cash</option>
+                    <option value="card">Card</option>
+                    <option value="upi">UPI</option>
+                    <option value="bank_transfer">Bank Transfer</option>
+                    <option value="cheque">Cheque</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">UTR / Transaction ID</label>
+                  <input
+                    type="text"
+                    placeholder="Enter UTR or Transaction ID"
+                    value={paymentData.utr}
+                    onChange={(e) => setPaymentData({...paymentData, utr: e.target.value})}
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:border-emerald-500 text-slate-200"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4">
+                  <button type="button" onClick={() => setShowPaymentModal(false)} className="px-4 py-2 text-slate-300 bg-slate-700 rounded-lg hover:bg-slate-600">Cancel</button>
+                  <button type="submit" disabled={saving} className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-2">
+                    {saving ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Processing...</> : <><CheckCircle size={16} />Record Payment</>}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Bulk Assign Modal */}
       {showBulkAssignModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
@@ -824,7 +1367,7 @@ function FeesManagement() {
                   <div className="p-2 bg-purple-600 rounded-xl">
                     <CalendarPlus className="text-white" size={20} />
                   </div>
-                  <h3 className="text-xl font-bold text-white">Bulk Assign Dates</h3>
+                  <h3 className="text-xl font-bold text-white">Bulk Assign Bus Dates</h3>
                 </div>
                 <button onClick={() => setShowBulkAssignModal(false)} className="p-2 text-slate-400 hover:bg-slate-700 rounded-lg">
                   <X size={20} />
@@ -906,7 +1449,7 @@ function FeesManagement() {
                 <div className="bg-amber-950/30 p-3 rounded-lg border border-amber-800">
                   <p className="text-amber-400 text-xs flex items-center gap-2">
                     <AlertCircle size={14} />
-                    This will assign the date period to all students matching your selection
+                    This will assign the bus date period to all students matching your selection
                   </p>
                 </div>
 
