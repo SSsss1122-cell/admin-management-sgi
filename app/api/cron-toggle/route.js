@@ -15,7 +15,7 @@ function getSettings() {
   } catch (error) {
     console.error('Error reading settings:', error);
   }
-  return { enabled: false, lastRun: null };
+  return { enabled: false, lastRun: null, scheduleTime: '13:25' }; // Default 1:25 PM
 }
 
 // Save settings
@@ -30,11 +30,18 @@ export async function GET() {
 
 export async function POST(request) {
   try {
-    const { enabled } = await request.json();
+    const { enabled, scheduleTime } = await request.json();
     const settings = getSettings();
-    settings.enabled = enabled;
+    
+    if (enabled !== undefined) {
+      settings.enabled = enabled;
+    }
+    if (scheduleTime !== undefined) {
+      settings.scheduleTime = scheduleTime;
+    }
+    
     saveSettings(settings);
-    return NextResponse.json({ success: true, enabled });
+    return NextResponse.json({ success: true, enabled: settings.enabled, scheduleTime: settings.scheduleTime });
   } catch (error) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

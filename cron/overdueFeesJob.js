@@ -20,6 +20,15 @@ function formatPhoneNumber(phone) {
   return cleaned;
 }
 
+function getDaysOverdue(dueDate) {
+  if (!dueDate) return 0;
+  const today = new Date();
+  const due = new Date(dueDate);
+  const diffTime = today - due;
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  return diffDays > 0 ? diffDays : 0;
+}
+
 async function sendWhatsAppMessage(to) {
   try {
     const body = {
@@ -45,14 +54,14 @@ async function sendWhatsAppMessage(to) {
     
     if (response.ok) {
       console.log(`   ✅ Sent to ${to}`);
-      return true;
+      return { success: true, error: null };
     } else {
       console.log(`   ❌ Failed: ${data.error || data.message || 'Unknown error'}`);
-      return false;
+      return { success: false, error: data.error || data.message || 'Unknown error' };
     }
   } catch (error) {
     console.log(`   ❌ Error: ${error.message}`);
-    return false;
+    return { success: false, error: error.message };
   }
 }
 
@@ -67,7 +76,7 @@ async function checkOverdue() {
 
   const { data: students, error } = await supabase
     .from('students')
-    .select('full_name, due_amount, next_payment_date, phone')
+    .select('id, full_name, usn, due_amount, next_payment_date, phone')
     .gt('due_amount', 0)
     .not('next_payment_date', 'is', null);
 
@@ -87,17 +96,39 @@ async function checkOverdue() {
   for (const student of students) {
     const isOverdue = student.next_payment_date < today;
     const dueAmount = Number(student.due_amount) || 0;
+    const daysOverdue = getDaysOverdue(student.next_payment_date);
     
     if (isOverdue && dueAmount > 0) {
       console.log(`\n👤 Student: ${student.full_name}`);
       console.log(`   💰 Due: ₹${dueAmount}`);
       console.log(`   📅 Due Date: ${student.next_payment_date}`);
+      console.log(`   ⏰ Days Overdue: ${daysOverdue}`);
       
       const phoneNumber = formatPhoneNumber(student.phone);
       
       if (phoneNumber) {
-        const success = await sendWhatsAppMessage(phoneNumber);
-        if (success) {
+        const result = await sendWhatsAppMessage(phoneNumber);
+        
+        // Insert log into reminder_logs table
+        const { error: logError } = await supabase
+          .from('reminder_logs')
+          .insert({
+            student_id: student.id,
+            student_name: student.full_name,
+            student_usn: student.usn,
+            phone: phoneNumber,
+            due_amount: dueAmount,
+            due_date: student.next_payment_date,
+            days_overdue: daysOverdue,
+            status: result.success ? 'sent' : 'failed',
+            sent_at: new Date().toISOString()
+          });
+
+        if (logError) {
+          console.log(`   ⚠️ Log error: ${logError.message}`);
+        }
+        
+        if (result.success) {
           sent++;
         } else {
           failed++;
@@ -105,6 +136,22 @@ async function checkOverdue() {
         await new Promise(resolve => setTimeout(resolve, 2000));
       } else {
         console.log(`   ⚠️ No phone number`);
+        
+        // Log as failed
+        const { error: logError } = await supabase
+          .from('reminder_logs')
+          .insert({
+            student_id: student.id,
+            student_name: student.full_name,
+            student_usn: student.usn,
+            phone: null,
+            due_amount: dueAmount,
+            due_date: student.next_payment_date,
+            days_overdue: daysOverdue,
+            status: 'failed',
+            sent_at: new Date().toISOString()
+          });
+        
         failed++;
       }
     }
