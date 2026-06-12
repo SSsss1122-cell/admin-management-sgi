@@ -7,12 +7,11 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
-// WhatsApp Configuration - TERA CUSTOM API
+// WhatsApp Config
 const API_URL = 'https://app.viralboostup.in/api/v2/whatsapp-business/messages';
-const API_KEY = process.env.WHATSAPP_API_KEY;  // Bearer token
+const API_KEY = process.env.WHATSAPP_API_KEY;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 const TEMPLATE_NAME = 'fees_due';
-const TEST_MODE = false;  // false = real send, true = test mode
 
 function formatPhoneNumber(phone) {
   if (!phone) return null;
@@ -22,11 +21,6 @@ function formatPhoneNumber(phone) {
 }
 
 async function sendWhatsAppMessage(to) {
-  if (TEST_MODE) {
-    console.log(`   📱 [TEST MODE] Would send to: ${to}`);
-    return true;
-  }
-
   try {
     const body = {
       to: to,
@@ -37,7 +31,6 @@ async function sendWhatsAppMessage(to) {
     };
 
     console.log(`   📤 Sending to: ${to}`);
-    console.log(`   📦 Body:`, JSON.stringify(body, null, 2));
 
     const response = await fetch(API_URL, {
       method: 'POST',
@@ -51,13 +44,10 @@ async function sendWhatsAppMessage(to) {
     const data = await response.json();
     
     if (response.ok) {
-      console.log(`   ✅ WhatsApp sent successfully to ${to}`);
-      console.log(`   📨 Response:`, data);
+      console.log(`   ✅ Sent to ${to}`);
       return true;
     } else {
-      console.log(`   ❌ Failed:`);
-      console.log(`   Status: ${response.status}`);
-      console.log(`   Error:`, data);
+      console.log(`   ❌ Failed: ${data.error || data.message || 'Unknown error'}`);
       return false;
     }
   } catch (error) {
@@ -71,17 +61,9 @@ async function checkOverdue() {
   
   const today = new Date().toISOString().split('T')[0];
   console.log(`📅 Today: ${today}`);
-  console.log(`📱 Mode: ${TEST_MODE ? 'TEST MODE' : 'LIVE MODE (Sending WhatsApp)'}`);
-  console.log(`📝 Template: ${TEMPLATE_NAME}`);
-  console.log(`🌐 API: ${API_URL}\n`);
-  console.log('='.repeat(60));
-
-  // Check API credentials
-  if (!TEST_MODE) {
-    console.log(`🔑 API Key: ${API_KEY ? '✅ Present' : '❌ MISSING'}`);
-    console.log(`📞 Phone ID: ${PHONE_NUMBER_ID ? '✅ Present' : '❌ MISSING'}`);
-    console.log('');
-  }
+  console.log(`📱 Mode: LIVE (Sending WhatsApp)`);
+  console.log(`📝 Template: ${TEMPLATE_NAME}\n`);
+  console.log('='.repeat(50));
 
   const { data: students, error } = await supabase
     .from('students')
@@ -120,22 +102,20 @@ async function checkOverdue() {
         } else {
           failed++;
         }
-        // Wait 2 seconds between messages
         await new Promise(resolve => setTimeout(resolve, 2000));
       } else {
-        console.log(`   ⚠️ No phone number found`);
+        console.log(`   ⚠️ No phone number`);
         failed++;
       }
     }
   }
 
-  console.log('\n' + '='.repeat(60));
+  console.log('\n' + '='.repeat(50));
   console.log(`📊 SUMMARY:`);
   console.log(`   ✅ Sent: ${sent}`);
   console.log(`   ❌ Failed: ${failed}`);
-  console.log(`   📱 Mode: ${TEST_MODE ? 'TEST (No actual send)' : 'LIVE'}`);
-  console.log('='.repeat(60));
+  console.log('='.repeat(50));
 }
 
-// Run
-checkOverdue();
+// Run the function
+checkOverdue().catch(console.error);
