@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/whatsapp/cron/check-overdue-fees",
-      "schedule": "0 13 * * *"
+      "schedule": "6 13 * * *"
     }
   ]
 }
