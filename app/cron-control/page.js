@@ -20,6 +20,9 @@ export default function CronControl() {
   const [logs, setLogs] = useState([]);
   const [logsLoading, setLogsLoading] = useState(true);
   const [runResult, setRunResult] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [selectedLogs, setSelectedLogs] = useState([]);
+  const [selectAll, setSelectAll] = useState(false);
 
   // Fetch logs from Supabase
   const fetchLogs = async () => {
@@ -28,15 +31,90 @@ export default function CronControl() {
         .from('reminder_logs')
         .select('*')
         .order('sent_at', { ascending: false })
-        .limit(50);
+        .limit(100);
 
       if (error) throw error;
       setLogs(data || []);
+      setSelectedLogs([]);
+      setSelectAll(false);
     } catch (error) {
       console.error('Error fetching logs:', error);
     } finally {
       setLogsLoading(false);
     }
+  };
+
+  // Delete selected logs
+  const deleteSelectedLogs = async () => {
+    if (selectedLogs.length === 0) {
+      setMessage('⚠️ Please select logs to delete');
+      setTimeout(() => setMessage(''), 3000);
+      return;
+    }
+
+    if (!confirm(`Delete ${selectedLogs.length} log(s)? This action cannot be undone.`)) return;
+
+    setDeleting(true);
+    try {
+      const { error } = await supabase
+        .from('reminder_logs')
+        .delete()
+        .in('id', selectedLogs);
+
+      if (error) throw error;
+
+      setMessage(`✅ ${selectedLogs.length} log(s) deleted successfully`);
+      fetchLogs(); // Refresh logs
+    } catch (error) {
+      console.error('Error deleting logs:', error);
+      setMessage('❌ Error deleting logs: ' + error.message);
+    } finally {
+      setDeleting(false);
+      setTimeout(() => setMessage(''), 3000);
+    }
+  };
+
+  // Delete all logs
+  const deleteAllLogs = async () => {
+    if (!confirm('Delete ALL logs? This action cannot be undone!')) return;
+
+    setDeleting(true);
+    try {
+      const { error } = await supabase
+        .from('reminder_logs')
+        .delete()
+        .neq('id', 0); // Delete all rows
+
+      if (error) throw error;
+
+      setMessage('✅ All logs deleted successfully');
+      fetchLogs(); // Refresh logs
+    } catch (error) {
+      console.error('Error deleting all logs:', error);
+      setMessage('❌ Error deleting logs: ' + error.message);
+    } finally {
+      setDeleting(false);
+      setTimeout(() => setMessage(''), 3000);
+    }
+  };
+
+  // Toggle single log selection
+  const toggleLogSelection = (logId) => {
+    setSelectedLogs(prev => 
+      prev.includes(logId) 
+        ? prev.filter(id => id !== logId)
+        : [...prev, logId]
+    );
+  };
+
+  // Toggle select all
+  const toggleSelectAll = () => {
+    if (selectAll) {
+      setSelectedLogs([]);
+    } else {
+      setSelectedLogs(logs.map(log => log.id));
+    }
+    setSelectAll(!selectAll);
   };
 
   // Fetch current status
@@ -88,14 +166,6 @@ export default function CronControl() {
       const data = await res.json();
       if (data.success) {
         setMessage(`✅ Schedule time updated to ${scheduleTime}`);
-        
-        // Also update vercel.json via API (optional)
-        await fetch('/api/update-cron-schedule', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ schedule: convertTimeToCron(scheduleTime) })
-        });
-        
         setTimeout(() => setMessage(''), 3000);
       }
     } catch (error) {
@@ -329,24 +399,50 @@ export default function CronControl() {
             </div>
           </div>
 
-          {/* Right Column - Logs */}
+          {/* Right Column - Logs with Delete Option */}
           <div>
             <div className="bg-gray-800 rounded-2xl border border-gray-700 p-6 shadow-xl">
               <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-700">
                 <div className="flex items-center gap-2">
                   <h2 className="text-xl font-semibold text-white">📋 Reminder History</h2>
                   <span className="text-xs text-gray-500 bg-gray-900 px-2 py-1 rounded-full">
-                    Last 50 records
+                    {logs.length} records
                   </span>
                 </div>
-                <button
-                  onClick={fetchLogs}
-                  className="text-gray-400 hover:text-white transition-colors"
-                  title="Refresh logs"
-                >
-                  🔄
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={fetchLogs}
+                    className="text-gray-400 hover:text-white transition-colors"
+                    title="Refresh logs"
+                  >
+                    🔄
+                  </button>
+                </div>
               </div>
+
+              {/* Delete Buttons */}
+              {logs.length > 0 && (
+                <div className="flex gap-2 mb-4 pb-3 border-b border-gray-700">
+                  <button
+                    onClick={deleteSelectedLogs}
+                    disabled={deleting || selectedLogs.length === 0}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                      selectedLogs.length > 0
+                        ? 'bg-red-600 hover:bg-red-700 text-white cursor-pointer'
+                        : 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                    }`}
+                  >
+                    🗑️ Delete Selected ({selectedLogs.length})
+                  </button>
+                  <button
+                    onClick={deleteAllLogs}
+                    disabled={deleting}
+                    className="px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-medium transition-all disabled:opacity-50"
+                  >
+                    🗑️ Delete All
+                  </button>
+                </div>
+              )}
 
               {logsLoading ? (
                 <div className="text-center py-8 text-gray-500">Loading logs...</div>
@@ -357,40 +453,64 @@ export default function CronControl() {
                   <p className="text-xs mt-1">Run cron job to see records</p>
                 </div>
               ) : (
-                <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
-                  {logs.map((log) => (
-                    <div key={log.id} className="bg-gray-900 rounded-lg p-3 border border-gray-700 hover:border-gray-600 transition-all">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-white text-sm">{log.student_name}</span>
-                          <span className="text-xs text-gray-500">{log.student_usn || 'No USN'}</span>
+                <>
+                  {/* Select All Checkbox */}
+                  <div className="mb-2 flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={selectAll}
+                      onChange={toggleSelectAll}
+                      className="rounded border-gray-600 bg-gray-900 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-xs text-gray-400">Select All</span>
+                  </div>
+
+                  {/* Logs List */}
+                  <div className="space-y-2 max-h-[450px] overflow-y-auto pr-1">
+                    {logs.map((log) => (
+                      <div key={log.id} className="bg-gray-900 rounded-lg p-3 border border-gray-700 hover:border-gray-600 transition-all">
+                        <div className="flex items-start gap-2">
+                          <input
+                            type="checkbox"
+                            checked={selectedLogs.includes(log.id)}
+                            onChange={() => toggleLogSelection(log.id)}
+                            className="mt-1 rounded border-gray-600 bg-gray-900 text-blue-600 focus:ring-blue-500"
+                          />
+                          <div className="flex-1">
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold text-white text-sm">{log.student_name}</span>
+                                <span className="text-xs text-gray-500">{log.student_usn || 'No USN'}</span>
+                              </div>
+                              {getStatusBadge(log.status)}
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 text-xs">
+                              <div>
+                                <span className="text-gray-500">Phone:</span>
+                                <span className="text-gray-300 ml-1">{log.phone || 'N/A'}</span>
+                              </div>
+                              <div>
+                                <span className="text-gray-500">Due Amount:</span>
+                                <span className="text-orange-400 ml-1">₹{log.due_amount || 0}</span>
+                              </div>
+                              <div>
+                                <span className="text-gray-500">Due Date:</span>
+                                <span className="text-gray-300 ml-1">{log.due_date || 'N/A'}</span>
+                              </div>
+                              <div>
+                                <span className="text-gray-500">Days Overdue:</span>
+                                <span className="text-red-400 ml-1">{log.days_overdue || 0} days</span>
+                              </div>
+                            </div>
+                            <div className="mt-2 text-xs text-gray-500">
+                              📅 {formatDate(log.sent_at)}
+                            </div>
+                          </div>
                         </div>
-                        {getStatusBadge(log.status)}
                       </div>
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div>
-                          <span className="text-gray-500">Phone:</span>
-                          <span className="text-gray-300 ml-1">{log.phone || 'N/A'}</span>
-                        </div>
-                        <div>
-                          <span className="text-gray-500">Due Amount:</span>
-                          <span className="text-orange-400 ml-1">₹{log.due_amount || 0}</span>
-                        </div>
-                        <div>
-                          <span className="text-gray-500">Due Date:</span>
-                          <span className="text-gray-300 ml-1">{log.due_date || 'N/A'}</span>
-                        </div>
-                        <div>
-                          <span className="text-gray-500">Days Overdue:</span>
-                          <span className="text-red-400 ml-1">{log.days_overdue || 0} days</span>
-                        </div>
-                      </div>
-                      <div className="mt-2 text-xs text-gray-500">
-                        📅 {formatDate(log.sent_at)}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                </>
               )}
             </div>
           </div>
