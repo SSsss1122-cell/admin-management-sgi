@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Megaphone, Plus, X, Send, Trash2, Edit, ArrowLeft, Calendar, Clock, Bell } from 'lucide-react';
+import { Megaphone, Plus, X, Send, Trash2, Edit, ArrowLeft, Calendar, Clock, Bell, RefreshCw } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { getAdminInstitution } from '../lib/getInstitution';
 import withAuth from '../../components/withAuth';
@@ -14,6 +14,8 @@ function Announcements() {
   const [loading, setLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState('');
   const [adminData, setAdminData] = useState(null);
+  const [editingAnnouncement, setEditingAnnouncement] = useState(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
 
   const router = useRouter();
 
@@ -60,7 +62,14 @@ function Announcements() {
     try {
       const { data, error } = await supabase
         .from('announcements')
-        .select('*')
+        .select(`
+          *,
+          admin:admins (
+            id,
+            full_name,
+            email
+          )
+        `)
         .eq('institution_id', institutionId)
         .order('created_at', { ascending: false });
 
@@ -68,6 +77,7 @@ function Announcements() {
       setAnnouncements(data || []);
     } catch (error) {
       console.error('Error fetching announcements:', error);
+      alert('Error fetching announcements: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -76,17 +86,33 @@ function Announcements() {
   const handleCreateAnnouncement = async (e) => {
     e.preventDefault();
     try {
+      // Get admin ID from localStorage or adminData
+      let adminId = null;
+      try {
+        const adminString = localStorage.getItem('admin');
+        if (adminString) {
+          const admin = JSON.parse(adminString);
+          adminId = admin?.id || null;
+        }
+      } catch (e) {
+        adminId = null;
+      }
+
       const { data, error } = await supabase
         .from('announcements')
         .insert([{
           title: newAnnouncement.title,
           message: newAnnouncement.message,
-          institution_id: adminData.institution_id
+          institution_id: adminData.institution_id,
+          admin_id: adminId || adminData?.id || null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         }])
         .select();
 
       if (error) throw error;
 
+      // Show success message
       alert('Announcement created successfully!');
       setNewAnnouncement({ title: '', message: '' });
       setShowForm(false);
@@ -94,6 +120,32 @@ function Announcements() {
     } catch (error) {
       console.error('Error creating announcement:', error);
       alert('Error creating announcement: ' + error.message);
+    }
+  };
+
+  const handleUpdateAnnouncement = async (e) => {
+    e.preventDefault();
+    try {
+      const { error } = await supabase
+        .from('announcements')
+        .update({
+          title: newAnnouncement.title,
+          message: newAnnouncement.message,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', editingAnnouncement.id)
+        .eq('institution_id', adminData.institution_id);
+
+      if (error) throw error;
+
+      alert('Announcement updated successfully!');
+      setNewAnnouncement({ title: '', message: '' });
+      setShowForm(false);
+      setEditingAnnouncement(null);
+      fetchAnnouncements(adminData.institution_id);
+    } catch (error) {
+      console.error('Error updating announcement:', error);
+      alert('Error updating announcement: ' + error.message);
     }
   };
 
@@ -110,6 +162,7 @@ function Announcements() {
       if (error) throw error;
 
       alert('Announcement deleted successfully!');
+      setShowDeleteConfirm(null);
       fetchAnnouncements(adminData.institution_id);
     } catch (error) {
       console.error('Error deleting announcement:', error);
@@ -117,7 +170,17 @@ function Announcements() {
     }
   };
 
+  const editAnnouncement = (announcement) => {
+    setEditingAnnouncement(announcement);
+    setNewAnnouncement({
+      title: announcement.title,
+      message: announcement.message
+    });
+    setShowForm(true);
+  };
+
   const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleDateString('en-IN', {
       day: '2-digit',
       month: 'short',
@@ -150,6 +213,12 @@ function Announcements() {
 
   const handleBack = () => {
     router.back();
+  };
+
+  const handleRefresh = () => {
+    if (adminData) {
+      fetchAnnouncements(adminData.institution_id);
+    }
   };
 
   const today = new Date();
@@ -188,19 +257,33 @@ function Announcements() {
               <p className="text-xs text-slate-400">{currentTime}</p>
             </div>
           </div>
-          <button
-            onClick={() => setShowForm(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all"
-          >
-            <Plus size={14} />
-            <span>New</span>
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={handleRefresh}
+              className="flex items-center gap-2 px-4 py-2 bg-slate-700 text-white rounded-xl hover:bg-slate-600 transition-all"
+              title="Refresh"
+            >
+              <RefreshCw size={14} />
+              <span className="hidden sm:inline">Refresh</span>
+            </button>
+            <button
+              onClick={() => {
+                setEditingAnnouncement(null);
+                setNewAnnouncement({ title: '', message: '' });
+                setShowForm(true);
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all"
+            >
+              <Plus size={14} />
+              <span>New</span>
+            </button>
+          </div>
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
         {/* Stats Cards */}
-        <div className="grid grid-cols-2 gap-3 mb-5">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
           <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-4">
             <div className="flex justify-between items-start">
               <div>
@@ -218,11 +301,23 @@ function Announcements() {
               <div>
                 <p className="text-xs text-slate-400">Latest</p>
                 <p className="text-2xl font-bold text-cyan-400 mt-1">
-                  {announcements.length > 0 ? formatTimeAgo(announcements[0]?.created_at).split(' ')[0] : '0'}
+                  {announcements.length > 0 ? formatTimeAgo(announcements[0]?.created_at) : 'None'}
                 </p>
               </div>
               <div className="p-2 bg-cyan-600 rounded-xl">
                 <Clock size={18} className="text-white" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-4">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-xs text-slate-400">Active</p>
+                <p className="text-2xl font-bold text-emerald-400 mt-1">{announcements.length}</p>
+              </div>
+              <div className="p-2 bg-emerald-600 rounded-xl">
+                <Bell size={18} className="text-white" />
               </div>
             </div>
           </div>
@@ -236,7 +331,11 @@ function Announcements() {
               <h3 className="text-lg font-semibold text-white mb-2">No Announcements</h3>
               <p className="text-slate-400 mb-6">Create your first announcement to get started.</p>
               <button
-                onClick={() => setShowForm(true)}
+                onClick={() => {
+                  setEditingAnnouncement(null);
+                  setNewAnnouncement({ title: '', message: '' });
+                  setShowForm(true);
+                }}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all"
               >
                 <Plus size={16} className="inline mr-2" />
@@ -251,15 +350,29 @@ function Announcements() {
                     <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center">
                       <Megaphone size={18} className="text-white" />
                     </div>
-                    <h3 className="font-semibold text-white">{announcement.title}</h3>
+                    <div>
+                      <h3 className="font-semibold text-white">{announcement.title}</h3>
+                      {announcement.admin && (
+                        <p className="text-xs text-slate-400">By: {announcement.admin.full_name}</p>
+                      )}
+                    </div>
                   </div>
-                  <button
-                    onClick={() => deleteAnnouncement(announcement.id)}
-                    className="p-2 text-red-400 hover:bg-red-600/20 rounded-lg transition-colors"
-                    title="Delete"
-                  >
-                    <Trash2 size={16} />
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => editAnnouncement(announcement)}
+                      className="p-2 text-blue-400 hover:bg-blue-600/20 rounded-lg transition-colors"
+                      title="Edit"
+                    >
+                      <Edit size={16} />
+                    </button>
+                    <button
+                      onClick={() => setShowDeleteConfirm(announcement.id)}
+                      className="p-2 text-red-400 hover:bg-red-600/20 rounded-lg transition-colors"
+                      title="Delete"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
                 </div>
 
                 <p className="text-sm text-slate-300 leading-relaxed mb-4 bg-slate-900/50 rounded-xl p-4 whitespace-pre-wrap">
@@ -275,6 +388,12 @@ function Announcements() {
                     <Clock size={10} />
                     <span>{formatTimeAgo(announcement.created_at)}</span>
                   </div>
+                  {announcement.updated_at && announcement.updated_at !== announcement.created_at && (
+                    <div className="flex items-center gap-1 px-3 py-1 bg-slate-900 rounded-full text-xs text-slate-400 border border-slate-700">
+                      <Edit size={10} />
+                      <span>Updated: {formatTimeAgo(announcement.updated_at)}</span>
+                    </div>
+                  )}
                   <div className="flex items-center gap-1 px-3 py-1 bg-blue-950/50 rounded-full text-xs text-blue-400 border border-blue-800">
                     <Bell size={10} />
                     <span>Active</span>
@@ -286,7 +405,7 @@ function Announcements() {
         </div>
       </div>
 
-      {/* Create Announcement Modal */}
+      {/* Create/Edit Announcement Modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowForm(false)}>
           <div className="bg-slate-800 rounded-2xl border border-slate-700 max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -297,19 +416,27 @@ function Announcements() {
                   <Megaphone size={20} className="text-white" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-white">Create Announcement</h3>
-                  <p className="text-xs text-slate-400">Share important updates with everyone</p>
+                  <h3 className="text-lg font-bold text-white">
+                    {editingAnnouncement ? 'Edit Announcement' : 'Create Announcement'}
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    {editingAnnouncement ? 'Update your announcement' : 'Share important updates with everyone'}
+                  </p>
                 </div>
               </div>
               <button
-                onClick={() => setShowForm(false)}
+                onClick={() => {
+                  setShowForm(false);
+                  setEditingAnnouncement(null);
+                  setNewAnnouncement({ title: '', message: '' });
+                }}
                 className="p-2 text-slate-400 hover:text-slate-300 hover:bg-slate-700 rounded-lg transition-all"
               >
                 <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleCreateAnnouncement} className="p-6">
+            <form onSubmit={editingAnnouncement ? handleUpdateAnnouncement : handleCreateAnnouncement} className="p-6">
               <div className="mb-5">
                 <label className="block text-sm font-medium text-slate-300 mb-2">
                   Title <span className="text-red-400">*</span>
@@ -321,7 +448,11 @@ function Announcements() {
                   onChange={(e) => setNewAnnouncement(prev => ({ ...prev, title: e.target.value }))}
                   className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200"
                   placeholder="Enter announcement title"
+                  maxLength={100}
                 />
+                <p className="text-xs text-slate-400 mt-1">
+                  {newAnnouncement.title.length}/100 characters
+                </p>
               </div>
 
               <div className="mb-6">
@@ -335,13 +466,21 @@ function Announcements() {
                   onChange={(e) => setNewAnnouncement(prev => ({ ...prev, message: e.target.value }))}
                   className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 resize-vertical"
                   placeholder="Enter announcement message"
+                  maxLength={2000}
                 />
+                <p className="text-xs text-slate-400 mt-1">
+                  {newAnnouncement.message.length}/2000 characters
+                </p>
               </div>
 
               <div className="flex justify-end gap-3 pt-4 border-t border-slate-700">
                 <button
                   type="button"
-                  onClick={() => setShowForm(false)}
+                  onClick={() => {
+                    setShowForm(false);
+                    setEditingAnnouncement(null);
+                    setNewAnnouncement({ title: '', message: '' });
+                  }}
                   className="px-5 py-2.5 text-slate-300 bg-slate-700 rounded-lg hover:bg-slate-600 transition-all"
                 >
                   Cancel
@@ -351,10 +490,41 @@ function Announcements() {
                   className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all flex items-center gap-2"
                 >
                   <Send size={16} />
-                  Create Announcement
+                  {editingAnnouncement ? 'Update Announcement' : 'Create Announcement'}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 rounded-2xl border border-slate-700 max-w-md w-full p-6">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-red-950/50 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-red-800">
+                <Trash2 size={32} className="text-red-400" />
+              </div>
+              <h3 className="text-lg font-bold text-white mb-2">Delete Announcement?</h3>
+              <p className="text-sm text-slate-400 mb-6">
+                This action cannot be undone. Are you sure you want to delete this announcement?
+              </p>
+              <div className="flex justify-center gap-3">
+                <button
+                  onClick={() => setShowDeleteConfirm(null)}
+                  className="px-5 py-2.5 text-slate-300 bg-slate-700 rounded-lg hover:bg-slate-600 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => deleteAnnouncement(showDeleteConfirm)}
+                  className="px-5 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

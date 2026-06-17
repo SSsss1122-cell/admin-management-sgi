@@ -85,9 +85,22 @@ function AdminComplaints() {
         return;
       }
 
+      // Fetch complaints with student data from students_new table
       const { data, error } = await supabase
         .from('complaints')
-        .select('*')
+        .select(`
+          *,
+          students:students_new (
+            id,
+            full_name,
+            usn,
+            branch,
+            email,
+            phone,
+            role,
+            created_at
+          )
+        `)
         .eq('institution_id', institutionId)
         .order('created_at', { ascending: false });
 
@@ -99,7 +112,15 @@ function AdminComplaints() {
         return;
       }
 
-      setComplaints(data || []);
+      // Transform data to maintain backward compatibility
+      const transformedData = (data || []).map(complaint => ({
+        ...complaint,
+        students: complaint.students || null,
+        // Keep old field name for compatibility
+        student: complaint.students || null
+      }));
+
+      setComplaints(transformedData);
       setLoading(false);
 
     } catch (err) {
@@ -136,6 +157,7 @@ function AdminComplaints() {
 
       if (error) throw error;
 
+      // Update local state
       setComplaints(prev => 
         prev.map(complaint => 
           complaint.id === complaintId 
@@ -144,6 +166,7 @@ function AdminComplaints() {
         )
       );
 
+      // Show success message
       alert(`Status updated to ${newStatus.replace('_', ' ')}`);
     } catch (error) {
       console.warn('Error updating status:', error);
@@ -224,6 +247,47 @@ function AdminComplaints() {
     router.back();
   };
 
+  const handleExport = () => {
+    const headers = [
+      'Complaint ID',
+      'Student Name',
+      'USN',
+      'Branch',
+      'Title',
+      'Description',
+      'Status',
+      'Created At',
+      'Updated At'
+    ];
+
+    const csvData = filteredComplaints.map(complaint => [
+      complaint.id,
+      complaint.students?.full_name || 'N/A',
+      complaint.students?.usn || 'N/A',
+      complaint.students?.branch || 'N/A',
+      complaint.title || '',
+      complaint.description || '',
+      complaint.status || 'pending',
+      complaint.created_at || '',
+      complaint.updated_at || ''
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...csvData.map(row => row.map(field => `"${field}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `complaints_export_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const stats = getStats();
   const today = new Date();
   const dateStr = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
@@ -261,13 +325,22 @@ function AdminComplaints() {
               <p className="text-xs text-slate-400">{currentTime}</p>
             </div>
           </div>
-          <button 
-            onClick={fetchComplaints}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all"
-          >
-            <RefreshCw size={14} />
-            <span className="hidden sm:inline">Refresh</span>
-          </button>
+          <div className="flex gap-2">
+            <button 
+              onClick={handleExport}
+              className="flex items-center gap-2 px-4 py-2 bg-slate-700 text-white rounded-xl hover:bg-slate-600 transition-all"
+            >
+              <Download size={14} />
+              <span className="hidden sm:inline">Export</span>
+            </button>
+            <button 
+              onClick={fetchComplaints}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all"
+            >
+              <RefreshCw size={14} />
+              <span className="hidden sm:inline">Refresh</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -521,6 +594,14 @@ function AdminComplaints() {
                     <p className="text-xs text-slate-400">Email</p>
                     <p className="text-sm text-white">{selectedComplaint.students?.email || 'N/A'}</p>
                   </div>
+                  <div>
+                    <p className="text-xs text-slate-400">Phone</p>
+                    <p className="text-sm text-white">{selectedComplaint.students?.phone || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400">Role</p>
+                    <p className="text-sm text-white capitalize">{selectedComplaint.students?.role || 'N/A'}</p>
+                  </div>
                 </div>
               </div>
 
@@ -598,7 +679,7 @@ function AdminComplaints() {
               {/* Footer */}
               <div className="pt-4 border-t border-slate-700 flex justify-between items-center text-xs text-slate-400">
                 <span>Submitted: {formatDate(selectedComplaint.created_at)}</span>
-                <span>Last updated: {formatTimeAgo(selectedComplaint.created_at)}</span>
+                <span>Last updated: {formatTimeAgo(selectedComplaint.updated_at || selectedComplaint.created_at)}</span>
               </div>
             </div>
           </div>

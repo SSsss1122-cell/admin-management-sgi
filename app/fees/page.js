@@ -8,7 +8,7 @@ import {
   BarChart3, Users, Wallet, Receipt, Bell, DollarSign,
   MoreVertical, Eye, Printer, Send, FileText, Shield,
   Award, Target, BookOpen, GraduationCap, Layers,
-  Moon, Sun, Settings, LogOut, UserCircle
+  Moon, Sun, Settings, LogOut, UserCircle, Plus, RefreshCw
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useRouter } from 'next/navigation';
@@ -24,20 +24,24 @@ function FeesManagement() {
   const [institutionId, setInstitutionId] = useState(null);
   const [toast, setToast] = useState({ show: false, type: '', message: '' });
   const [feeData, setFeeData] = useState({
+    interval_number: '',
     total_fees: '',
     paid_amount: '',
     due_amount: '',
+    start_date: '',
+    end_date: '',
     last_payment_date: '',
     next_payment_date: '',
-    payment_mode: ''
+    payment_mode: '',
+    utr: '',
+    status: 'pending'
   });
   const [loading, setLoading] = useState(true);
-  const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState('all');
   const [viewMode, setViewMode] = useState('grid');
   const [selectedStudents, setSelectedStudents] = useState([]);
-  const [showBulkActions, setShowBulkActions] = useState(false);
-  const [darkMode, setDarkMode] = useState(true);
+  const [expandedStudent, setExpandedStudent] = useState(null);
+  const [editingInterval, setEditingInterval] = useState(null);
 
   const router = useRouter();
 
@@ -49,13 +53,13 @@ function FeesManagement() {
   };
 
   useEffect(() => {
-    const instId = localStorage.getItem('institutionId') || localStorage.getItem('institution_id');
+    const instId = localStorage.getItem('institution_id') || localStorage.getItem('institutionId');
     
     console.log("🏫 Fees Page Institution ID:", instId);
     
     if (instId) {
       setInstitutionId(instId);
-      fetchStudents(instId);
+      fetchStudentsWithIntervals(instId);
     } else {
       console.error("❌ No institution_id found");
       setLoading(false);
@@ -67,9 +71,10 @@ function FeesManagement() {
     filterStudents();
   }, [students, searchTerm, feeFilter, selectedPeriod]);
 
-  const fetchStudents = async (instId) => {
+  const fetchStudentsWithIntervals = async (instId) => {
     try {
-      console.log("📦 Fetching students for institution:", instId);
+      console.log("📦 Fetching students with intervals for institution:", instId);
+      setLoading(true);
       
       if (!instId) {
         console.error("No institution ID provided");
@@ -77,22 +82,100 @@ function FeesManagement() {
         return;
       }
 
-      const { data, error } = await supabase
+      // First fetch all students from students table
+      console.log("🔍 Fetching students from students table...");
+      const { data: studentsData, error: studentsError } = await supabase
         .from('students')
         .select('*')
         .eq('institution_id', instId)
         .order('usn');
 
-      if (error) {
-        console.error("Supabase error:", error);
-        throw error;
+      if (studentsError) {
+        console.error("❌ Supabase error fetching students:", studentsError);
+        throw studentsError;
       }
 
-      console.log("✅ Students Loaded:", data?.length || 0, "students");
-      setStudents(data || []);
+      console.log("📊 Students fetched:", studentsData?.length || 0);
+
+      // If no students, set empty and return
+      if (!studentsData || studentsData.length === 0) {
+        console.log("⚠️ No students found for institution:", instId);
+        setStudents([]);
+        setFilteredStudents([]);
+        setLoading(false);
+        return;
+      }
+
+      // Then fetch intervals for all students from student_intervals table
+      const studentIds = studentsData.map(s => s.id);
+      console.log("🔍 Fetching intervals for student IDs:", studentIds);
+      
+      let intervalsData = [];
+      if (studentIds.length > 0) {
+        const { data: intervals, error: intervalsError } = await supabase
+          .from('student_intervals')
+          .select('*')
+          .in('student_id', studentIds)
+          .order('interval_number', { ascending: true });
+
+        if (intervalsError) {
+          console.error("❌ Intervals fetch error:", intervalsError);
+          throw intervalsError;
+        }
+        intervalsData = intervals || [];
+        console.log("📊 Intervals fetched:", intervalsData.length);
+      }
+
+      // Combine students with their intervals
+      const studentsWithIntervals = studentsData.map(student => {
+        const studentIntervals = intervalsData.filter(
+          interval => interval.student_id === student.id
+        );
+        
+        // Calculate totals from intervals
+        const totalFees = studentIntervals.reduce((sum, i) => sum + (parseFloat(i.total_fees) || 0), 0);
+        const totalPaid = studentIntervals.reduce((sum, i) => sum + (parseFloat(i.paid_amount) || 0), 0);
+        const totalDue = studentIntervals.reduce((sum, i) => sum + (parseFloat(i.due_amount) || 0), 0);
+        
+        // Find latest interval for status and dates
+        const latestInterval = studentIntervals.length > 0 
+          ? studentIntervals.reduce((latest, current) => {
+              const latestDate = latest?.end_date ? new Date(latest.end_date) : new Date(0);
+              const currentDate = current?.end_date ? new Date(current.end_date) : new Date(0);
+              return currentDate > latestDate ? current : latest;
+            })
+          : null;
+
+        // Calculate payment progress
+        const progress = totalFees > 0 ? (totalPaid / totalFees) * 100 : 0;
+
+        // Get the most recent payment mode and date
+        const lastPaymentInterval = studentIntervals
+          .filter(i => i.last_payment_date)
+          .sort((a, b) => new Date(b.last_payment_date) - new Date(a.last_payment_date))[0];
+
+        return {
+          ...student,
+          intervals: studentIntervals || [],
+          total_fees: totalFees,
+          paid_amount: totalPaid,
+          due_amount: totalDue,
+          latest_interval: latestInterval,
+          interval_count: studentIntervals.length,
+          next_payment_date: latestInterval?.next_payment_date || null,
+          last_payment_date: lastPaymentInterval?.last_payment_date || null,
+          payment_mode: lastPaymentInterval?.payment_mode || null,
+          status: latestInterval?.status || 'pending',
+          progress: progress
+        };
+      });
+
+      console.log("✅ Students with intervals loaded:", studentsWithIntervals.length);
+      setStudents(studentsWithIntervals);
+      
     } catch (error) {
-      console.error('❌ Error fetching students:', error);
-      showToast('error', 'Error fetching students: ' + error.message);
+      console.error('❌ Error fetching data:', error);
+      showToast('error', 'Error fetching data: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -174,47 +257,76 @@ function FeesManagement() {
       const paid = parseFloat(feeData.paid_amount) || 0;
       const due = total - paid;
 
-      const updateData = {
+      // Check if interval exists for this student and interval number
+      const { data: existingInterval, error: checkError } = await supabase
+        .from('student_intervals')
+        .select('id')
+        .eq('student_id', selectedStudent.id)
+        .eq('interval_number', parseInt(feeData.interval_number))
+        .maybeSingle();
+
+      if (checkError && checkError.code !== 'PGRST116') {
+        console.error("Check error:", checkError);
+        throw checkError;
+      }
+
+      const intervalData = {
+        student_id: selectedStudent.id,
+        interval_number: parseInt(feeData.interval_number),
+        start_date: feeData.start_date,
+        end_date: feeData.end_date,
         total_fees: total,
         paid_amount: paid,
         due_amount: due > 0 ? due : 0,
-        fees_due: due > 0,
         last_payment_date: feeData.last_payment_date || null,
         next_payment_date: feeData.next_payment_date || null,
         payment_mode: feeData.payment_mode || null,
-        last_updated: new Date().toISOString()
+        utr: feeData.utr || null,
+        status: due === 0 && paid > 0 ? 'paid' : due > 0 && paid > 0 ? 'partial' : 'pending',
+        updated_at: new Date().toISOString()
       };
 
-      console.log("Updating student:", selectedStudent.id);
-      console.log("Update data:", updateData);
-
-      const { data, error } = await supabase
-        .from('students')
-        .update(updateData)
-        .eq('id', selectedStudent.id)
-        .eq('institution_id', institutionId);
-
-      if (error) {
-        console.error("Supabase update error:", error);
-        throw error;
+      let result;
+      if (existingInterval) {
+        // Update existing interval
+        result = await supabase
+          .from('student_intervals')
+          .update(intervalData)
+          .eq('id', existingInterval.id)
+          .eq('student_id', selectedStudent.id);
+      } else {
+        // Insert new interval
+        intervalData.created_at = new Date().toISOString();
+        result = await supabase
+          .from('student_intervals')
+          .insert(intervalData);
       }
 
-      console.log("Update successful:", data);
+      if (result.error) {
+        console.error("Supabase error:", result.error);
+        throw result.error;
+      }
 
       showToast('success', `✅ Fee details updated successfully for ${selectedStudent.full_name}!`);
       
       setShowFeeForm(false);
       setSelectedStudent(null);
+      setEditingInterval(null);
       setFeeData({
+        interval_number: '',
         total_fees: '',
         paid_amount: '',
         due_amount: '',
+        start_date: '',
+        end_date: '',
         last_payment_date: '',
         next_payment_date: '',
-        payment_mode: ''
+        payment_mode: '',
+        utr: '',
+        status: 'pending'
       });
       
-      await fetchStudents(institutionId);
+      await fetchStudentsWithIntervals(institutionId);
       
     } catch (error) {
       console.error('Error updating fee details:', error);
@@ -222,16 +334,46 @@ function FeesManagement() {
     }
   };
 
-  const openFeeForm = (student) => {
+  const openFeeForm = (student, interval = null) => {
     setSelectedStudent(student);
-    setFeeData({
-      total_fees: student.total_fees || '',
-      paid_amount: student.paid_amount || '',
-      due_amount: student.due_amount || '',
-      last_payment_date: student.last_payment_date || '',
-      next_payment_date: student.next_payment_date || '',
-      payment_mode: student.payment_mode || ''
-    });
+    setEditingInterval(interval);
+    
+    if (interval) {
+      // Edit existing interval
+      setFeeData({
+        interval_number: interval.interval_number.toString(),
+        total_fees: interval.total_fees || '',
+        paid_amount: interval.paid_amount || '',
+        due_amount: interval.due_amount || '',
+        start_date: interval.start_date || '',
+        end_date: interval.end_date || '',
+        last_payment_date: interval.last_payment_date || '',
+        next_payment_date: interval.next_payment_date || '',
+        payment_mode: interval.payment_mode || '',
+        utr: interval.utr || '',
+        status: interval.status || 'pending'
+      });
+    } else {
+      // New interval - suggest next interval number
+      const nextInterval = (student.intervals?.length || 0) + 1;
+      const now = new Date();
+      const sixMonthsLater = new Date(now);
+      sixMonthsLater.setMonth(now.getMonth() + 6);
+      
+      setFeeData({
+        interval_number: nextInterval.toString(),
+        total_fees: '',
+        paid_amount: '',
+        due_amount: '',
+        start_date: now.toISOString().split('T')[0],
+        end_date: sixMonthsLater.toISOString().split('T')[0],
+        last_payment_date: '',
+        next_payment_date: '',
+        payment_mode: '',
+        utr: '',
+        status: 'pending'
+      });
+    }
     setShowFeeForm(true);
   };
 
@@ -279,45 +421,51 @@ function FeesManagement() {
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-IN', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric'
-    });
+    try {
+      return new Date(dateString).toLocaleDateString('en-IN', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric'
+      });
+    } catch (e) {
+      return 'N/A';
+    }
   };
 
   const isUpcomingPayment = (dateString) => {
     if (!dateString) return false;
-    const paymentDate = new Date(dateString);
-    const today = new Date();
-    const nextWeek = new Date(today);
-    nextWeek.setDate(today.getDate() + 7);
-    return paymentDate >= today && paymentDate <= nextWeek;
+    try {
+      const paymentDate = new Date(dateString);
+      const today = new Date();
+      const nextWeek = new Date(today);
+      nextWeek.setDate(today.getDate() + 7);
+      return paymentDate >= today && paymentDate <= nextWeek;
+    } catch (e) {
+      return false;
+    }
   };
 
   const exportToCSV = () => {
     const headers = [
-      'USN', 'Name', 'Branch', 'Class', 'Division', 'Email', 'Phone',
+      'USN', 'Name', 'Branch', 'Email', 'Phone',
       'Total Fees (₹)', 'Paid Amount (₹)', 'Due Amount (₹)', 'Fee Status',
-      'Last Payment Date', 'Next Payment Date', 'Payment Mode', 'Last Updated'
+      'Intervals', 'Next Payment Date', 'Last Payment Date', 'Payment Mode'
     ];
     
     const csvData = filteredStudents.map(student => [
       student.usn || '',
       student.full_name || '',
       student.branch || 'N/A',
-      student.class || '',
-      student.division || '',
       student.email || '',
       student.phone || '',
       student.total_fees || '0',
       student.paid_amount || '0',
       student.due_amount || '0',
       getFeesStatusText(student),
-      student.last_payment_date || 'N/A',
-      student.next_payment_date || 'N/A',
-      student.payment_mode || 'N/A',
-      student.last_updated ? new Date(student.last_updated).toLocaleDateString() : 'N/A'
+      student.interval_count || 0,
+      student.next_payment_date ? formatDate(student.next_payment_date) : 'N/A',
+      student.last_payment_date ? formatDate(student.last_payment_date) : 'N/A',
+      student.payment_mode || 'N/A'
     ]);
 
     const csvContent = [
@@ -355,6 +503,29 @@ function FeesManagement() {
       setSelectedStudents([]);
     } else {
       setSelectedStudents(filteredStudents.map(s => s.id));
+    }
+  };
+
+  const toggleExpandStudent = (studentId) => {
+    setExpandedStudent(expandedStudent === studentId ? null : studentId);
+  };
+
+  const deleteInterval = async (intervalId) => {
+    if (!confirm('Are you sure you want to delete this fee interval?')) return;
+    
+    try {
+      const { error } = await supabase
+        .from('student_intervals')
+        .delete()
+        .eq('id', intervalId);
+
+      if (error) throw error;
+
+      showToast('success', 'Interval deleted successfully!');
+      await fetchStudentsWithIntervals(institutionId);
+    } catch (error) {
+      console.error('Error deleting interval:', error);
+      showToast('error', 'Error deleting interval: ' + error.message);
     }
   };
 
@@ -457,7 +628,7 @@ function FeesManagement() {
                       Fee Management
                     </h1>
                     <p className="text-slate-400 text-sm mt-1">
-                      Comprehensive fee tracking & management
+                      {students.length} students • {totalFees > 0 ? `₹${totalFees.toLocaleString('en-IN')} total fees` : 'No fees configured'}
                     </p>
                   </div>
                 </div>
@@ -465,6 +636,13 @@ function FeesManagement() {
             </div>
             
             <div className="flex flex-wrap gap-3">
+              <button
+                onClick={() => fetchStudentsWithIntervals(institutionId)}
+                className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-slate-300 hover:bg-blue-600/20 hover:border-blue-500 hover:text-blue-400 transition-all"
+              >
+                <RefreshCw size={18} />
+                <span className="text-sm font-medium">Refresh</span>
+              </button>
               <button
                 onClick={exportToCSV}
                 className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-slate-300 hover:bg-blue-600/20 hover:border-blue-500 hover:text-blue-400 transition-all"
@@ -660,15 +838,27 @@ function FeesManagement() {
                     <div className="space-y-3 mb-4">
                       <div className="flex items-center gap-2 text-sm">
                         <BookOpen size={14} className="text-slate-500" />
-                        <span className="text-slate-400">{student.branch} • {student.class}-{student.division}</span>
+                        <span className="text-slate-400">{student.branch || 'N/A'}</span>
                       </div>
+                      
+                      <div className="flex items-center gap-2 text-sm text-slate-400">
+                        <Layers size={14} className="text-slate-500" />
+                        <span>{student.interval_count || 0} fee intervals</span>
+                      </div>
+                      
+                      {student.payment_mode && (
+                        <div className="flex items-center gap-2 text-sm text-slate-400">
+                          <CreditCard size={14} className="text-slate-500" />
+                          <span>{student.payment_mode}</span>
+                        </div>
+                      )}
                       
                       {parseFloat(student.total_fees) > 0 && (
                         <div className="space-y-1">
                           <div className="flex justify-between text-xs">
                             <span className="text-slate-500">Payment Progress</span>
                             <span className="font-medium text-slate-300">
-                              {((parseFloat(student.paid_amount) / parseFloat(student.total_fees)) * 100).toFixed(1)}%
+                              {student.progress ? student.progress.toFixed(1) : 0}%
                             </span>
                           </div>
                           <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
@@ -678,7 +868,7 @@ function FeesManagement() {
                                 parseFloat(student.paid_amount) > 0 ? 'bg-amber-500' :
                                 'bg-red-500'
                               }`}
-                              style={{ width: `${(parseFloat(student.paid_amount) / parseFloat(student.total_fees)) * 100}%` }}
+                              style={{ width: `${student.progress || 0}%` }}
                             ></div>
                           </div>
                         </div>
@@ -715,14 +905,65 @@ function FeesManagement() {
                     </div>
 
                     <div className="flex justify-end gap-2 pt-3 border-t border-slate-700">
+                      {student.intervals && student.intervals.length > 0 && (
+                        <button
+                          onClick={() => toggleExpandStudent(student.id)}
+                          className="p-2 text-slate-400 hover:text-blue-400 hover:bg-blue-600/20 rounded-lg transition-colors"
+                          title="View Intervals"
+                        >
+                          <Layers size={16} />
+                        </button>
+                      )}
                       <button
                         onClick={() => openFeeForm(student)}
                         className="p-2 text-blue-400 hover:bg-blue-600/20 rounded-lg transition-colors"
-                        title="Edit Fee Details"
+                        title="Add Fee Interval"
                       >
-                        <Edit size={16} />
+                        <Plus size={16} />
                       </button>
                     </div>
+
+                    {/* Expanded intervals */}
+                    {expandedStudent === student.id && student.intervals && student.intervals.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-slate-700">
+                        <p className="text-xs font-semibold text-slate-400 mb-2">Fee Intervals</p>
+                        <div className="space-y-2 max-h-40 overflow-y-auto">
+                          {student.intervals.map((interval) => (
+                            <div key={interval.id} className="flex items-center justify-between text-xs p-2 bg-slate-900/50 rounded-lg border border-slate-700">
+                              <div>
+                                <span className="text-slate-400">#{interval.interval_number}</span>
+                                <span className="text-slate-300 ml-2">{formatDate(interval.start_date)} - {formatDate(interval.end_date)}</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-emerald-400">₹{interval.paid_amount || 0}</span>
+                                <span className="text-slate-500">/</span>
+                                <span className="text-white">₹{interval.total_fees || 0}</span>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openFeeForm(student, interval);
+                                  }}
+                                  className="p-1 text-blue-400 hover:bg-blue-600/20 rounded transition-colors"
+                                  title="Edit Interval"
+                                >
+                                  <Edit size={12} />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    deleteInterval(interval.id);
+                                  }}
+                                  className="p-1 text-red-400 hover:bg-red-600/20 rounded transition-colors"
+                                  title="Delete Interval"
+                                >
+                                  <X size={12} />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -743,10 +984,12 @@ function FeesManagement() {
                       </th>
                       <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Student</th>
                       <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Branch</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Intervals</th>
                       <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Total</th>
                       <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Paid</th>
                       <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Due</th>
                       <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Status</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Payment Mode</th>
                       <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Next Payment</th>
                       <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Actions</th>
                     </tr>
@@ -773,7 +1016,8 @@ function FeesManagement() {
                             </div>
                           </div>
                         </td>
-                        <td className="px-5 py-3 text-sm text-slate-400">{student.branch}</td>
+                        <td className="px-5 py-3 text-sm text-slate-400">{student.branch || 'N/A'}</td>
+                        <td className="px-5 py-3 text-sm text-slate-400">{student.interval_count || 0}</td>
                         <td className="px-5 py-3 text-sm font-medium text-white">₹{student.total_fees || '0'}</td>
                         <td className="px-5 py-3 text-sm font-medium text-emerald-400">₹{student.paid_amount || '0'}</td>
                         <td className="px-5 py-3 text-sm font-medium text-red-400">₹{student.due_amount || '0'}</td>
@@ -783,15 +1027,18 @@ function FeesManagement() {
                           </span>
                         </td>
                         <td className="px-5 py-3 text-sm text-slate-400">
+                          {student.payment_mode || 'N/A'}
+                        </td>
+                        <td className="px-5 py-3 text-sm text-slate-400">
                           {formatDate(student.next_payment_date)}
                         </td>
                         <td className="px-5 py-3">
                           <button
                             onClick={() => openFeeForm(student)}
                             className="p-1.5 text-blue-400 hover:bg-blue-600/20 rounded-lg transition-colors"
-                            title="Edit"
+                            title="Add Fee Interval"
                           >
-                            <Edit size={14} />
+                            <Plus size={14} />
                           </button>
                         </td>
                       </tr>
@@ -836,11 +1083,14 @@ function FeesManagement() {
                     <Wallet className="text-white" size={20} />
                   </div>
                   <h3 className="text-xl font-bold text-white">
-                    Update Fee Details
+                    {editingInterval ? 'Update' : 'Add'} Fee Interval
                   </h3>
                 </div>
                 <button 
-                  onClick={() => setShowFeeForm(false)} 
+                  onClick={() => {
+                    setShowFeeForm(false);
+                    setEditingInterval(null);
+                  }} 
                   className="p-2 text-slate-400 hover:text-slate-300 hover:bg-slate-700 rounded-lg transition-all"
                 >
                   <X size={20} />
@@ -854,12 +1104,62 @@ function FeesManagement() {
                   </div>
                   <div>
                     <p className="font-semibold text-white">{selectedStudent.full_name}</p>
-                    <p className="text-sm text-slate-400">{selectedStudent.usn} • {selectedStudent.branch}</p>
+                    <p className="text-sm text-slate-400">{selectedStudent.usn} • {selectedStudent.branch || 'N/A'}</p>
                   </div>
                 </div>
               </div>
 
               <form onSubmit={handleFeeSubmit} className="space-y-5">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">Interval Number</label>
+                    <input
+                      type="number"
+                      value={feeData.interval_number}
+                      onChange={(e) => setFeeData({...feeData, interval_number: e.target.value})}
+                      className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200"
+                      placeholder="e.g., 1"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">Status</label>
+                    <select
+                      value={feeData.status}
+                      onChange={(e) => setFeeData({...feeData, status: e.target.value})}
+                      className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200"
+                    >
+                      <option value="pending">Pending</option>
+                      <option value="partial">Partial</option>
+                      <option value="paid">Paid</option>
+                      <option value="overdue">Overdue</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">Start Date</label>
+                    <input
+                      type="date"
+                      value={feeData.start_date}
+                      onChange={(e) => setFeeData({...feeData, start_date: e.target.value})}
+                      className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">End Date</label>
+                    <input
+                      type="date"
+                      value={feeData.end_date}
+                      onChange={(e) => setFeeData({...feeData, end_date: e.target.value})}
+                      className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200"
+                      required
+                    />
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-300 mb-2">Total Fees (₹)</label>
@@ -870,6 +1170,7 @@ function FeesManagement() {
                       onBlur={calculateDue}
                       className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200"
                       placeholder="Enter amount"
+                      required
                     />
                   </div>
                   <div>
@@ -933,10 +1234,24 @@ function FeesManagement() {
                   </select>
                 </div>
 
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">UTR Number</label>
+                  <input
+                    type="text"
+                    value={feeData.utr}
+                    onChange={(e) => setFeeData({...feeData, utr: e.target.value})}
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200"
+                    placeholder="Enter UTR number"
+                  />
+                </div>
+
                 <div className="flex justify-end gap-3 pt-6">
                   <button
                     type="button"
-                    onClick={() => setShowFeeForm(false)}
+                    onClick={() => {
+                      setShowFeeForm(false);
+                      setEditingInterval(null);
+                    }}
                     className="px-6 py-3 text-slate-300 bg-slate-700 rounded-xl hover:bg-slate-600 transition-all font-medium"
                   >
                     Cancel
@@ -945,7 +1260,7 @@ function FeesManagement() {
                     type="submit"
                     className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all font-medium"
                   >
-                    Update Fees
+                    {editingInterval ? 'Update' : 'Add'} Fee Interval
                   </button>
                 </div>
               </form>
