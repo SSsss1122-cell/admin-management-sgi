@@ -7,10 +7,9 @@ import {
   Phone, GraduationCap, Filter, Download, RefreshCw, ChevronDown,
   Eye, EyeOff, BookOpen, Route, Hash, Mail, Calendar, CreditCard,
   TrendingUp, Shield, Zap, Settings, Bell, Star, Award, Activity,
-  Home, School
+  Home, School, Layers, Clock
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { getAdminInstitution } from '../lib/getInstitution';
 import { useRouter } from 'next/navigation';
 import { useInstitution } from '../../app/hooks/useInstitution';
 
@@ -31,12 +30,23 @@ export default function StudentDashboard() {
     totalBranches: 0,
     route1Count: 0,
     route2Count: 0,
-    assignedToRoute: 0
+    assignedToRoute: 0,
+    totalIntervals: 0
   });
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
-  const [viewMode, setViewMode] = useState('table'); // 'table' or 'grid'
+  const [viewMode, setViewMode] = useState('table');
   const [selectedStudents, setSelectedStudents] = useState([]);
   const [currentTime, setCurrentTime] = useState('');
+  const [showIntervalModal, setShowIntervalModal] = useState(false);
+  const [selectedStudentForInterval, setSelectedStudentForInterval] = useState(null);
+  const [intervalData, setIntervalData] = useState({
+    interval_number: 1,
+    start_date: '',
+    end_date: '',
+    total_fees: 0,
+    due_amount: 0
+  });
+  const [studentIntervals, setStudentIntervals] = useState({});
 
   const router = useRouter();
 
@@ -51,7 +61,6 @@ export default function StudentDashboard() {
     semester: ''
   });
 
-  // Predefined routes
   const routes = [
     { id: 'route1', name: 'Route 1 - Amritsar Mandir', color: '#f97316', glow: 'rgba(249,115,22,0.3)', stops: 12 },
     { id: 'route2', name: 'Route 2 - City Center', color: '#06b6d4', glow: 'rgba(6,182,212,0.3)', stops: 15 }
@@ -102,15 +111,35 @@ export default function StudentDashboard() {
     if (!institutionId) return;
     
     try {
-      const { data, error } = await supabase
-        .from('students')
-        .select('id, full_name, usn, branch, phone, routes, email, semester, created_at, updated_at')
+      // Fetch students from new table
+      const { data: studentData, error: studentError } = await supabase
+        .from('students_new')
+        .select('id, full_name, usn, branch, phone, email, password, role, created_at, updated_at, current_interval_id')
         .eq('institution_id', institutionId)
         .order('usn');
 
-      if (error) throw error;
-      setStudents(data || []);
-      updateStats(data || []);
+      if (studentError) throw studentError;
+
+      // Fetch intervals for all students
+      const { data: intervalData, error: intervalError } = await supabase
+        .from('student_intervals')
+        .select('*')
+        .in('student_id', studentData.map(s => s.id));
+
+      if (intervalError) throw intervalError;
+
+      // Group intervals by student
+      const intervalsMap = {};
+      intervalData.forEach(interval => {
+        if (!intervalsMap[interval.student_id]) {
+          intervalsMap[interval.student_id] = [];
+        }
+        intervalsMap[interval.student_id].push(interval);
+      });
+
+      setStudentIntervals(intervalsMap);
+      setStudents(studentData || []);
+      updateStats(studentData || [], intervalsMap);
     } catch (error) {
       console.error('Error fetching students:', error);
       showToast('Error fetching students', 'error');
@@ -123,19 +152,26 @@ export default function StudentDashboard() {
     setToast({ show: true, message, type });
   };
 
-  const updateStats = (studentData) => {
+  const updateStats = (studentData, intervalsMap) => {
     const totalStudents = studentData.length;
     const branches = [...new Set(studentData.map(student => student.branch).filter(Boolean))];
     const route1Count = studentData.filter(student => student.routes === 'route1').length;
     const route2Count = studentData.filter(student => student.routes === 'route2').length;
     const assignedToRoute = route1Count + route2Count;
+    
+    // Count total intervals
+    let totalIntervals = 0;
+    Object.values(intervalsMap).forEach(intervals => {
+      totalIntervals += intervals.length;
+    });
 
     setStats({
       totalStudents,
       totalBranches: branches.length,
       route1Count,
       route2Count,
-      assignedToRoute
+      assignedToRoute,
+      totalIntervals
     });
   };
 
@@ -170,7 +206,7 @@ export default function StudentDashboard() {
     e.preventDefault();
     try {
       const { data: existingStudent } = await supabase
-        .from('students')
+        .from('students_new')
         .select('usn')
         .eq('usn', newStudent.usn.toUpperCase())
         .maybeSingle();
@@ -180,30 +216,46 @@ export default function StudentDashboard() {
         return;
       }
 
-      const { data: adminData } = await supabase
-        .from('admins')
-        .select('id')
-        .eq('mobile_number', localStorage.getItem('adminMobile'))
-        .single();
-
       const studentData = {
         institution_id: institutionId,
-        user_id: adminData?.id,
         full_name: newStudent.full_name,
         usn: newStudent.usn.toUpperCase(),
         branch: newStudent.branch || null,
         phone: newStudent.phone || null,
         password: newStudent.password || null,
-        routes: newStudent.routes || null,
         email: newStudent.email || null,
-        semester: newStudent.semester || null
+        role: 'student'
       };
 
-      const { error } = await supabase
-        .from('students')
-        .insert([studentData]);
+      const { data: insertedStudent, error } = await supabase
+        .from('students_new')
+        .insert([studentData])
+        .select();
 
       if (error) throw error;
+
+      // Create default interval for the student
+      if (insertedStudent && insertedStudent.length > 0) {
+        const studentId = insertedStudent[0].id;
+        const intervalPayload = {
+          student_id: studentId,
+          interval_number: 1,
+          start_date: new Date().toISOString().split('T')[0],
+          end_date: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          total_fees: 0,
+          paid_amount: 0,
+          due_amount: 0,
+          status: 'pending'
+        };
+
+        const { error: intervalError } = await supabase
+          .from('student_intervals')
+          .insert([intervalPayload]);
+
+        if (intervalError) {
+          console.error('Error creating interval:', intervalError);
+        }
+      }
 
       showToast('Student added successfully!', 'success');
 
@@ -230,7 +282,7 @@ export default function StudentDashboard() {
     try {
       if (newStudent.usn.toUpperCase() !== editingStudent.usn) {
         const { data: existingStudent } = await supabase
-          .from('students')
+          .from('students_new')
           .select('usn')
           .eq('usn', newStudent.usn.toUpperCase())
           .eq('institution_id', institutionId)
@@ -247,9 +299,7 @@ export default function StudentDashboard() {
         usn: newStudent.usn.toUpperCase(),
         branch: newStudent.branch || null,
         phone: newStudent.phone || null,
-        routes: newStudent.routes || null,
-        email: newStudent.email || null,
-        semester: newStudent.semester || null
+        email: newStudent.email || null
       };
 
       if (newStudent.password) {
@@ -257,7 +307,7 @@ export default function StudentDashboard() {
       }
 
       const { error } = await supabase
-        .from('students')
+        .from('students_new')
         .update(updateData)
         .eq('id', editingStudent.id)
         .eq('institution_id', institutionId);
@@ -288,8 +338,14 @@ export default function StudentDashboard() {
     if (!window.confirm('⚠️ Are you sure you want to delete this student?\n\nThis action cannot be undone.')) return;
     
     try {
+      // Delete intervals first (cascade should handle but just in case)
+      await supabase
+        .from('student_intervals')
+        .delete()
+        .eq('student_id', studentId);
+
       const { error } = await supabase
-        .from('students')
+        .from('students_new')
         .delete()
         .eq('id', studentId)
         .eq('institution_id', institutionId);
@@ -310,8 +366,14 @@ export default function StudentDashboard() {
     if (!window.confirm(`⚠️ Are you sure you want to delete ${selectedStudents.length} student(s)?\n\nThis action cannot be undone.`)) return;
     
     try {
+      // Delete intervals for selected students
+      await supabase
+        .from('student_intervals')
+        .delete()
+        .in('student_id', selectedStudents);
+
       const { error } = await supabase
-        .from('students')
+        .from('students_new')
         .delete()
         .in('id', selectedStudents)
         .eq('institution_id', institutionId);
@@ -339,6 +401,47 @@ export default function StudentDashboard() {
       email: student.email || '',
       semester: student.semester || ''
     });
+  };
+
+  const openIntervalModal = (student) => {
+    setSelectedStudentForInterval(student);
+    setIntervalData({
+      interval_number: (studentIntervals[student.id]?.length || 0) + 1,
+      start_date: new Date().toISOString().split('T')[0],
+      end_date: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      total_fees: 0,
+      due_amount: 0
+    });
+    setShowIntervalModal(true);
+  };
+
+  const handleAddInterval = async (e) => {
+    e.preventDefault();
+    try {
+      const payload = {
+        student_id: selectedStudentForInterval.id,
+        interval_number: intervalData.interval_number,
+        start_date: intervalData.start_date,
+        end_date: intervalData.end_date,
+        total_fees: intervalData.total_fees,
+        paid_amount: 0,
+        due_amount: intervalData.due_amount || intervalData.total_fees,
+        status: 'pending'
+      };
+
+      const { error } = await supabase
+        .from('student_intervals')
+        .insert([payload]);
+
+      if (error) throw error;
+
+      showToast(`Interval ${intervalData.interval_number} added successfully!`, 'success');
+      setShowIntervalModal(false);
+      fetchStudents();
+    } catch (error) {
+      console.error('Error adding interval:', error);
+      showToast('Error adding interval: ' + error.message, 'error');
+    }
   };
 
   const getBranches = () => {
@@ -379,7 +482,7 @@ export default function StudentDashboard() {
   };
 
   const exportToCSV = () => {
-    const headers = ['USN', 'Name', 'Branch', 'Route', 'Phone', 'Email', 'Semester'];
+    const headers = ['USN', 'Name', 'Branch', 'Route', 'Phone', 'Email', 'Intervals'];
     const data = filteredStudents.map(s => [
       s.usn,
       s.full_name,
@@ -387,7 +490,7 @@ export default function StudentDashboard() {
       getRouteName(s.routes),
       s.phone || '',
       s.email || '',
-      s.semester || ''
+      (studentIntervals[s.id]?.length || 0).toString()
     ]);
     
     const csvContent = [headers, ...data]
@@ -425,7 +528,7 @@ export default function StudentDashboard() {
     <div className="min-h-screen bg-slate-900">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
         <div className="space-y-6 lg:space-y-8">
-          {/* Header */}
+          {/* Header - Same as before */}
           <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5 lg:p-6">
             <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
               <div className="flex items-center gap-4">
@@ -445,7 +548,7 @@ export default function StudentDashboard() {
                         Student Dashboard
                       </h1>
                       <p className="text-slate-400 text-sm mt-1">
-                        Manage student profiles and route assignments
+                        Manage student profiles, intervals, and route assignments
                       </p>
                     </div>
                   </div>
@@ -475,8 +578,8 @@ export default function StudentDashboard() {
             </div>
           </div>
 
-          {/* Stats Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Stats Cards with Intervals */}
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
             <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
               <div className="flex items-center justify-between mb-3">
                 <div className="p-2 bg-blue-600 rounded-xl">
@@ -520,9 +623,20 @@ export default function StudentDashboard() {
               <h3 className="text-2xl font-bold text-white">{stats.route2Count}</h3>
               <p className="text-xs text-slate-400">City Center Route</p>
             </div>
+
+            <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2 bg-purple-600 rounded-xl">
+                  <Layers className="text-white" size={18} />
+                </div>
+                <span className="text-xs font-medium text-purple-400 bg-purple-950/50 px-2 py-0.5 rounded-full border border-purple-800">Intervals</span>
+              </div>
+              <h3 className="text-2xl font-bold text-white">{stats.totalIntervals}</h3>
+              <p className="text-xs text-slate-400">Total Fee Periods</p>
+            </div>
           </div>
 
-          {/* Search and Filters */}
+          {/* Search and Filters - Same as before but with Interval stats */}
           <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
             <div className="space-y-4">
               {/* Search Bar */}
@@ -671,90 +785,110 @@ export default function StudentDashboard() {
                       <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Name</th>
                       <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Branch</th>
                       <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Route</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Intervals</th>
                       <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Contact</th>
-                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Semester</th>
                       <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-700">
-                    {filteredStudents.map((student) => (
-                      <tr key={student.id} className="hover:bg-slate-700/30 transition-colors">
-                        <td className="px-5 py-3">
-                          <input
-                            type="checkbox"
-                            checked={selectedStudents.includes(student.id)}
-                            onChange={() => toggleSelectStudent(student.id)}
-                            className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-0"
-                          />
-                        </td>
-                        <td className="px-5 py-3">
-                          <span className="text-sm font-mono text-slate-300">{student.usn}</span>
-                        </td>
-                        <td className="px-5 py-3">
-                          <div>
-                            <p className="text-sm font-medium text-white">{student.full_name}</p>
-                            {student.email && <p className="text-xs text-slate-500">{student.email}</p>}
-                          </div>
-                        </td>
-                        <td className="px-5 py-3">
-                          {student.branch ? (
-                            <span className="inline-flex px-2 py-1 rounded-full text-xs font-medium bg-blue-950/50 text-blue-400 border border-blue-800">
-                              {student.branch}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-slate-500">—</span>
-                          )}
-                        </td>
-                        <td className="px-5 py-3">
-                          {student.routes ? (
-                            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
-                              student.routes === 'route1' 
-                                ? 'bg-orange-950/50 text-orange-400 border border-orange-800' 
-                                : 'bg-teal-950/50 text-teal-400 border border-teal-800'
-                            }`}>
-                              <Bus size={10} />
-                              {student.routes === 'route1' ? 'Route 1' : 'Route 2'}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-slate-500">Not Assigned</span>
-                          )}
-                        </td>
-                        <td className="px-5 py-3">
-                          {student.phone ? (
-                            <span className="text-sm text-slate-300">{student.phone}</span>
-                          ) : (
-                            <span className="text-xs text-slate-500">—</span>
-                          )}
-                        </td>
-                        <td className="px-5 py-3">
-                          {student.semester ? (
-                            <span className="inline-flex px-2 py-1 rounded-full text-xs font-medium bg-indigo-950/50 text-indigo-400 border border-indigo-800">
-                              Sem {student.semester}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-slate-500">—</span>
-                          )}
-                        </td>
-                        <td className="px-5 py-3">
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => openEditForm(student)}
-                              className="p-1.5 rounded-lg text-blue-400 hover:bg-blue-600/20 transition-colors"
-                              title="Edit"
-                            >
-                              <Edit size={14} />
-                            </button>
-                            <button
-                              onClick={() => deleteStudent(student.id)}
-                              className="p-1.5 rounded-lg text-red-400 hover:bg-red-600/20 transition-colors"
-                              title="Delete"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                    {filteredStudents.map((student) => {
+                      const intervals = studentIntervals[student.id] || [];
+                      const totalDue = intervals.reduce((sum, i) => sum + (i.due_amount || 0), 0);
+                      const totalPaid = intervals.reduce((sum, i) => sum + (i.paid_amount || 0), 0);
+                      
+                      return (
+                        <tr key={student.id} className="hover:bg-slate-700/30 transition-colors">
+                          <td className="px-5 py-3">
+                            <input
+                              type="checkbox"
+                              checked={selectedStudents.includes(student.id)}
+                              onChange={() => toggleSelectStudent(student.id)}
+                              className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-0"
+                            />
+                          </td>
+                          <td className="px-5 py-3">
+                            <span className="text-sm font-mono text-slate-300">{student.usn}</span>
+                          </td>
+                          <td className="px-5 py-3">
+                            <div>
+                              <p className="text-sm font-medium text-white">{student.full_name}</p>
+                              {student.email && <p className="text-xs text-slate-500">{student.email}</p>}
+                            </div>
+                          </td>
+                          <td className="px-5 py-3">
+                            {student.branch ? (
+                              <span className="inline-flex px-2 py-1 rounded-full text-xs font-medium bg-blue-950/50 text-blue-400 border border-blue-800">
+                                {student.branch}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-slate-500">—</span>
+                            )}
+                          </td>
+                          <td className="px-5 py-3">
+                            {student.routes ? (
+                              <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                                student.routes === 'route1' 
+                                  ? 'bg-orange-950/50 text-orange-400 border border-orange-800' 
+                                  : 'bg-teal-950/50 text-teal-400 border border-teal-800'
+                              }`}>
+                                <Bus size={10} />
+                                {student.routes === 'route1' ? 'Route 1' : 'Route 2'}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-slate-500">Not Assigned</span>
+                            )}
+                          </td>
+                          <td className="px-5 py-3">
+                            <div className="flex flex-col gap-1">
+                              <span className="text-xs text-slate-300">
+                                {intervals.length} interval{intervals.length !== 1 ? 's' : ''}
+                              </span>
+                              {totalDue > 0 && (
+                                <span className="text-xs text-orange-400">Due: ₹{totalDue}</span>
+                              )}
+                              <button
+                                onClick={() => openIntervalModal(student)}
+                                className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                              >
+                                <Plus size={10} /> Add Interval
+                              </button>
+                            </div>
+                          </td>
+                          <td className="px-5 py-3">
+                            {student.phone ? (
+                              <span className="text-sm text-slate-300">{student.phone}</span>
+                            ) : (
+                              <span className="text-xs text-slate-500">—</span>
+                            )}
+                          </td>
+                          <td className="px-5 py-3">
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => openEditForm(student)}
+                                className="p-1.5 rounded-lg text-blue-400 hover:bg-blue-600/20 transition-colors"
+                                title="Edit"
+                              >
+                                <Edit size={14} />
+                              </button>
+                              <button
+                                onClick={() => openIntervalModal(student)}
+                                className="p-1.5 rounded-lg text-purple-400 hover:bg-purple-600/20 transition-colors"
+                                title="Add Interval"
+                              >
+                                <Layers size={14} />
+                              </button>
+                              <button
+                                onClick={() => deleteStudent(student.id)}
+                                className="p-1.5 rounded-lg text-red-400 hover:bg-red-600/20 transition-colors"
+                                title="Delete"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -772,79 +906,97 @@ export default function StudentDashboard() {
           {/* Grid View */}
           {viewMode === 'grid' && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {filteredStudents.map((student) => (
-                <div key={student.id} className="bg-slate-800/50 rounded-2xl border border-slate-700 hover:border-blue-500/30 transition-all overflow-hidden">
-                  <div className={`h-1 ${student.routes === 'route1' ? 'bg-orange-500' : student.routes === 'route2' ? 'bg-teal-500' : 'bg-slate-600'}`}></div>
-                  <div className="p-5">
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center">
-                          <User className="text-white" size={20} />
+              {filteredStudents.map((student) => {
+                const intervals = studentIntervals[student.id] || [];
+                const totalDue = intervals.reduce((sum, i) => sum + (i.due_amount || 0), 0);
+                
+                return (
+                  <div key={student.id} className="bg-slate-800/50 rounded-2xl border border-slate-700 hover:border-blue-500/30 transition-all overflow-hidden">
+                    <div className={`h-1 ${student.routes === 'route1' ? 'bg-orange-500' : student.routes === 'route2' ? 'bg-teal-500' : 'bg-slate-600'}`}></div>
+                    <div className="p-5">
+                      <div className="flex justify-between items-start mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center">
+                            <User className="text-white" size={20} />
+                          </div>
+                          <div>
+                            <h3 className="font-semibold text-white">{student.full_name}</h3>
+                            <p className="text-xs text-slate-500 font-mono">{student.usn}</p>
+                          </div>
                         </div>
-                        <div>
-                          <h3 className="font-semibold text-white">{student.full_name}</h3>
-                          <p className="text-xs text-slate-500 font-mono">{student.usn}</p>
+                        <div className="flex gap-1">
+                          <button 
+                            onClick={() => openEditForm(student)}
+                            className="p-1.5 text-blue-400 hover:bg-blue-600/20 rounded-lg transition-colors"
+                            title="Edit"
+                          >
+                            <Edit size={14} />
+                          </button>
+                          <button 
+                            onClick={() => deleteStudent(student.id)}
+                            className="p-1.5 text-red-400 hover:bg-red-600/20 rounded-lg transition-colors"
+                            title="Delete"
+                          >
+                            <Trash2 size={14} />
+                          </button>
                         </div>
                       </div>
-                      <div className="flex gap-1">
-                        <button 
-                          onClick={() => openEditForm(student)}
-                          className="p-1.5 text-blue-400 hover:bg-blue-600/20 rounded-lg transition-colors"
-                          title="Edit"
+
+                      <div className="space-y-3 mb-4">
+                        <div className="flex flex-wrap gap-2">
+                          {student.branch && (
+                            <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-950/50 text-blue-400 border border-blue-800">
+                              {student.branch}
+                            </span>
+                          )}
+                          {student.routes && (
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${
+                              student.routes === 'route1' 
+                                ? 'bg-orange-950/50 text-orange-400 border border-orange-800' 
+                                : 'bg-teal-950/50 text-teal-400 border border-teal-800'
+                            }`}>
+                              <Bus size={10} />
+                              {student.routes === 'route1' ? 'Route 1' : 'Route 2'}
+                            </span>
+                          )}
+                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-purple-950/50 text-purple-400 border border-purple-800 flex items-center gap-1">
+                            <Layers size={10} />
+                            {intervals.length} Interval{intervals.length !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+
+                        {student.phone && (
+                          <div className="flex items-center gap-2 text-sm">
+                            <Phone size={12} className="text-slate-500" />
+                            <span className="text-slate-300">{student.phone}</span>
+                          </div>
+                        )}
+
+                        {student.email && (
+                          <div className="flex items-center gap-2 text-sm">
+                            <Mail size={12} className="text-slate-500" />
+                            <span className="text-slate-300 truncate">{student.email}</span>
+                          </div>
+                        )}
+
+                        {totalDue > 0 && (
+                          <div className="flex items-center gap-2 text-sm bg-orange-950/30 p-2 rounded-lg border border-orange-800">
+                            <AlertCircle size={14} className="text-orange-400" />
+                            <span className="text-orange-400">Due: ₹{totalDue}</span>
+                          </div>
+                        )}
+
+                        <button
+                          onClick={() => openIntervalModal(student)}
+                          className="w-full py-2 bg-purple-600/20 text-purple-400 rounded-lg text-sm hover:bg-purple-600/30 transition-all border border-purple-800 flex items-center justify-center gap-2"
                         >
-                          <Edit size={14} />
-                        </button>
-                        <button 
-                          onClick={() => deleteStudent(student.id)}
-                          className="p-1.5 text-red-400 hover:bg-red-600/20 rounded-lg transition-colors"
-                          title="Delete"
-                        >
-                          <Trash2 size={14} />
+                          <Plus size={14} /> Add Fee Interval
                         </button>
                       </div>
-                    </div>
-
-                    <div className="space-y-3 mb-4">
-                      <div className="flex flex-wrap gap-2">
-                        {student.branch && (
-                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-950/50 text-blue-400 border border-blue-800">
-                            {student.branch}
-                          </span>
-                        )}
-                        {student.routes && (
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${
-                            student.routes === 'route1' 
-                              ? 'bg-orange-950/50 text-orange-400 border border-orange-800' 
-                              : 'bg-teal-950/50 text-teal-400 border border-teal-800'
-                          }`}>
-                            <Bus size={10} />
-                            {student.routes === 'route1' ? 'Route 1' : 'Route 2'}
-                          </span>
-                        )}
-                        {student.semester && (
-                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-indigo-950/50 text-indigo-400 border border-indigo-800">
-                            Sem {student.semester}
-                          </span>
-                        )}
-                      </div>
-
-                      {student.phone && (
-                        <div className="flex items-center gap-2 text-sm">
-                          <Phone size={12} className="text-slate-500" />
-                          <span className="text-slate-300">{student.phone}</span>
-                        </div>
-                      )}
-
-                      {student.email && (
-                        <div className="flex items-center gap-2 text-sm">
-                          <Mail size={12} className="text-slate-500" />
-                          <span className="text-slate-300 truncate">{student.email}</span>
-                        </div>
-                      )}
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
 
               {filteredStudents.length === 0 && (
                 <div className="col-span-full text-center py-12 bg-slate-800/50 rounded-2xl border border-slate-700">
@@ -858,7 +1010,7 @@ export default function StudentDashboard() {
         </div>
       </div>
 
-      {/* Add/Edit Student Modal */}
+      {/* Add/Edit Student Modal - Updated for new table */}
       {(showAddForm || editingStudent) && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-slate-800 rounded-2xl border border-slate-700 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -921,36 +1073,6 @@ export default function StudentDashboard() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">Semester</label>
-                  <select
-                    value={newStudent.semester}
-                    onChange={(e) => setNewStudent(prev => ({ ...prev, semester: e.target.value }))}
-                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200"
-                  >
-                    <option value="">Select Semester</option>
-                    <option value="1">1st Semester</option>
-                    <option value="2">2nd Semester</option>
-                    <option value="3">3rd Semester</option>
-                    <option value="4">4th Semester</option>
-                    <option value="5">5th Semester</option>
-                    <option value="6">6th Semester</option>
-                    <option value="7">7th Semester</option>
-                    <option value="8">8th Semester</option>
-                  </select>
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-slate-300 mb-2">Email</label>
-                  <input
-                    type="email"
-                    value={newStudent.email}
-                    onChange={(e) => setNewStudent(prev => ({ ...prev, email: e.target.value }))}
-                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 placeholder-slate-500"
-                    placeholder="student@example.com"
-                  />
-                </div>
-
-                <div>
                   <label className="block text-sm font-medium text-slate-300 mb-2">Phone Number</label>
                   <input
                     type="tel"
@@ -962,19 +1084,14 @@ export default function StudentDashboard() {
                 </div>
 
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
-                    <Bus size={16} className="inline mr-1 text-blue-400" />
-                    Bus Route
-                  </label>
-                  <select
-                    value={newStudent.routes}
-                    onChange={(e) => setNewStudent(prev => ({ ...prev, routes: e.target.value }))}
-                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200"
-                  >
-                    <option value="">Not Assigned</option>
-                    <option value="route1">Route 1 - Amritsar Mandir</option>
-                    <option value="route2">Route 2 - City Center</option>
-                  </select>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Email</label>
+                  <input
+                    type="email"
+                    value={newStudent.email}
+                    onChange={(e) => setNewStudent(prev => ({ ...prev, email: e.target.value }))}
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 placeholder-slate-500"
+                    placeholder="student@example.com"
+                  />
                 </div>
 
                 <div className="md:col-span-2">
@@ -1010,6 +1127,116 @@ export default function StudentDashboard() {
                 >
                   <Save size={16} className="inline mr-2" />
                   {editingStudent ? 'Update Student' : 'Add Student'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add Interval Modal */}
+      {showIntervalModal && selectedStudentForInterval && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-slate-800 rounded-2xl border border-slate-700 w-full max-w-md">
+            <div className="px-6 py-4 border-b border-slate-700 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-purple-600 rounded-xl">
+                  <Layers className="text-white" size={20} />
+                </div>
+                <h3 className="text-xl font-bold text-white">
+                  Add Fee Interval
+                </h3>
+              </div>
+              <button 
+                onClick={() => setShowIntervalModal(false)}
+                className="p-2 text-slate-400 hover:text-slate-300 hover:bg-slate-700 rounded-lg transition-all"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddInterval} className="p-6 space-y-5">
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">Student</label>
+                <div className="px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-slate-200">
+                  {selectedStudentForInterval.full_name} ({selectedStudentForInterval.usn})
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">Interval Number</label>
+                <input
+                  type="number"
+                  required
+                  value={intervalData.interval_number}
+                  onChange={(e) => setIntervalData(prev => ({ ...prev, interval_number: parseInt(e.target.value) }))}
+                  className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-purple-500 text-slate-200"
+                  min="1"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">Start Date</label>
+                <input
+                  type="date"
+                  required
+                  value={intervalData.start_date}
+                  onChange={(e) => setIntervalData(prev => ({ ...prev, start_date: e.target.value }))}
+                  className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-purple-500 text-slate-200"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">End Date</label>
+                <input
+                  type="date"
+                  required
+                  value={intervalData.end_date}
+                  onChange={(e) => setIntervalData(prev => ({ ...prev, end_date: e.target.value }))}
+                  className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-purple-500 text-slate-200"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">Total Fees (₹)</label>
+                <input
+                  type="number"
+                  required
+                  value={intervalData.total_fees}
+                  onChange={(e) => setIntervalData(prev => ({ ...prev, total_fees: parseFloat(e.target.value) || 0 }))}
+                  className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-purple-500 text-slate-200"
+                  min="0"
+                  step="1"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">Due Amount (₹)</label>
+                <input
+                  type="number"
+                  required
+                  value={intervalData.due_amount}
+                  onChange={(e) => setIntervalData(prev => ({ ...prev, due_amount: parseFloat(e.target.value) || 0 }))}
+                  className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-purple-500 text-slate-200"
+                  min="0"
+                  step="1"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-6 border-t border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setShowIntervalModal(false)}
+                  className="px-6 py-3 text-slate-300 bg-slate-700 rounded-xl hover:bg-slate-600 transition-all font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-all font-medium"
+                >
+                  <Save size={16} className="inline mr-2" />
+                  Add Interval
                 </button>
               </div>
             </form>
