@@ -10,7 +10,6 @@ import {
   Home, School
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { getAdminInstitution } from '../lib/getInstitution';
 import { useRouter } from 'next/navigation';
 import { useInstitution } from '../../app/hooks/useInstitution';
 
@@ -19,7 +18,7 @@ export default function StudentDashboard() {
   const [filteredStudents, setFilteredStudents] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [branchFilter, setBranchFilter] = useState('all');
-  const [routeFilter, setRouteFilter] = useState('all');
+  const [roleFilter, setRoleFilter] = useState('all');
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingStudent, setEditingStudent] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -29,12 +28,11 @@ export default function StudentDashboard() {
   const [stats, setStats] = useState({
     totalStudents: 0,
     totalBranches: 0,
-    route1Count: 0,
-    route2Count: 0,
-    assignedToRoute: 0
+    studentCount: 0,
+    adminCount: 0,
+    withIntervals: 0
   });
-  const [isFiltersOpen, setIsFiltersOpen] = useState(false);
-  const [viewMode, setViewMode] = useState('table'); // 'table' or 'grid'
+  const [viewMode, setViewMode] = useState('table');
   const [selectedStudents, setSelectedStudents] = useState([]);
   const [currentTime, setCurrentTime] = useState('');
 
@@ -46,16 +44,9 @@ export default function StudentDashboard() {
     branch: '',
     phone: '',
     password: '',
-    routes: '',
     email: '',
-    semester: ''
+    role: 'student'
   });
-
-  // Predefined routes
-  const routes = [
-    { id: 'route1', name: 'Route 1 - Amritsar Mandir', color: '#f97316', glow: 'rgba(249,115,22,0.3)', stops: 12 },
-    { id: 'route2', name: 'Route 2 - City Center', color: '#06b6d4', glow: 'rgba(6,182,212,0.3)', stops: 15 }
-  ];
 
   useEffect(() => {
     const storedAdminName = localStorage.getItem('adminName');
@@ -87,7 +78,7 @@ export default function StudentDashboard() {
 
   useEffect(() => {
     filterStudents();
-  }, [students, searchTerm, branchFilter, routeFilter]);
+  }, [students, searchTerm, branchFilter, roleFilter]);
 
   useEffect(() => {
     if (toast.show) {
@@ -102,18 +93,22 @@ export default function StudentDashboard() {
     if (!institutionId) return;
     
     try {
+      // Fetch students from the new table
       const { data, error } = await supabase
-        .from('students')
-        .select('id, full_name, usn, branch, phone, routes, email, semester, created_at, updated_at')
+        .from('students_new')
+        .select('id, full_name, usn, branch, phone, email, password, role, created_at, updated_at, current_interval_id')
         .eq('institution_id', institutionId)
         .order('usn');
 
       if (error) throw error;
+      
       setStudents(data || []);
       updateStats(data || []);
     } catch (error) {
       console.error('Error fetching students:', error);
-      showToast('Error fetching students', 'error');
+      showToast('Error fetching students: ' + (error.message || 'Unknown error'), 'error');
+      setStudents([]);
+      updateStats([]);
     } finally {
       setLoading(false);
     }
@@ -126,16 +121,16 @@ export default function StudentDashboard() {
   const updateStats = (studentData) => {
     const totalStudents = studentData.length;
     const branches = [...new Set(studentData.map(student => student.branch).filter(Boolean))];
-    const route1Count = studentData.filter(student => student.routes === 'route1').length;
-    const route2Count = studentData.filter(student => student.routes === 'route2').length;
-    const assignedToRoute = route1Count + route2Count;
+    const studentCount = studentData.filter(student => student.role === 'student').length;
+    const adminCount = studentData.filter(student => student.role === 'admin').length;
+    const withIntervals = studentData.filter(student => student.current_interval_id).length;
 
     setStats({
       totalStudents,
       totalBranches: branches.length,
-      route1Count,
-      route2Count,
-      assignedToRoute
+      studentCount,
+      adminCount,
+      withIntervals
     });
   };
 
@@ -155,12 +150,8 @@ export default function StudentDashboard() {
       filtered = filtered.filter(student => student.branch === branchFilter);
     }
 
-    if (routeFilter !== 'all') {
-      if (routeFilter === 'unassigned') {
-        filtered = filtered.filter(student => !student.routes);
-      } else {
-        filtered = filtered.filter(student => student.routes === routeFilter);
-      }
+    if (roleFilter !== 'all') {
+      filtered = filtered.filter(student => student.role === roleFilter);
     }
 
     setFilteredStudents(filtered);
@@ -169,43 +160,39 @@ export default function StudentDashboard() {
   const handleAddStudent = async (e) => {
     e.preventDefault();
     try {
-      const { data: existingStudent } = await supabase
-        .from('students')
-        .select('usn')
-        .eq('usn', newStudent.usn.toUpperCase())
-        .maybeSingle();
+      // Check if USN exists (if provided)
+      if (newStudent.usn) {
+        const { data: existingStudent } = await supabase
+          .from('students_new')
+          .select('usn')
+          .eq('usn', newStudent.usn.toUpperCase())
+          .maybeSingle();
 
-      if (existingStudent) {
-        showToast('USN already exists. Please use a different USN.', 'error');
-        return;
+        if (existingStudent) {
+          showToast('USN already exists. Please use a different USN.', 'error');
+          return;
+        }
       }
-
-      const { data: adminData } = await supabase
-        .from('admins')
-        .select('id')
-        .eq('mobile_number', localStorage.getItem('adminMobile'))
-        .single();
 
       const studentData = {
         institution_id: institutionId,
-        user_id: adminData?.id,
         full_name: newStudent.full_name,
-        usn: newStudent.usn.toUpperCase(),
+        usn: newStudent.usn ? newStudent.usn.toUpperCase() : null,
         branch: newStudent.branch || null,
         phone: newStudent.phone || null,
         password: newStudent.password || null,
-        routes: newStudent.routes || null,
         email: newStudent.email || null,
-        semester: newStudent.semester || null
+        role: newStudent.role || 'student',
+        current_interval_id: null
       };
 
       const { error } = await supabase
-        .from('students')
+        .from('students_new')
         .insert([studentData]);
 
       if (error) throw error;
 
-      showToast('Student added successfully!', 'success');
+      showToast('User added successfully!', 'success');
 
       setNewStudent({
         full_name: '',
@@ -213,24 +200,23 @@ export default function StudentDashboard() {
         branch: '',
         phone: '',
         password: '',
-        routes: '',
         email: '',
-        semester: ''
+        role: 'student'
       });
       setShowAddForm(false);
       fetchStudents();
     } catch (error) {
-      console.error('Error adding student:', error);
-      showToast('Error adding student: ' + error.message, 'error');
+      console.error('Error adding user:', error);
+      showToast('Error adding user: ' + error.message, 'error');
     }
   };
 
   const handleEditStudent = async (e) => {
     e.preventDefault();
     try {
-      if (newStudent.usn.toUpperCase() !== editingStudent.usn) {
+      if (newStudent.usn && newStudent.usn.toUpperCase() !== editingStudent.usn) {
         const { data: existingStudent } = await supabase
-          .from('students')
+          .from('students_new')
           .select('usn')
           .eq('usn', newStudent.usn.toUpperCase())
           .eq('institution_id', institutionId)
@@ -244,12 +230,11 @@ export default function StudentDashboard() {
 
       const updateData = {
         full_name: newStudent.full_name,
-        usn: newStudent.usn.toUpperCase(),
+        usn: newStudent.usn ? newStudent.usn.toUpperCase() : null,
         branch: newStudent.branch || null,
         phone: newStudent.phone || null,
-        routes: newStudent.routes || null,
         email: newStudent.email || null,
-        semester: newStudent.semester || null
+        role: newStudent.role || 'student'
       };
 
       if (newStudent.password) {
@@ -257,14 +242,14 @@ export default function StudentDashboard() {
       }
 
       const { error } = await supabase
-        .from('students')
+        .from('students_new')
         .update(updateData)
         .eq('id', editingStudent.id)
         .eq('institution_id', institutionId);
 
       if (error) throw error;
 
-      showToast('Student updated successfully!', 'success');
+      showToast('User updated successfully!', 'success');
       
       setEditingStudent(null);
       setNewStudent({
@@ -273,57 +258,56 @@ export default function StudentDashboard() {
         branch: '',
         phone: '',
         password: '',
-        routes: '',
         email: '',
-        semester: ''
+        role: 'student'
       });
       fetchStudents();
     } catch (error) {
-      console.error('Error updating student:', error);
-      showToast('Error updating student: ' + error.message, 'error');
+      console.error('Error updating user:', error);
+      showToast('Error updating user: ' + error.message, 'error');
     }
   };
 
   const deleteStudent = async (studentId) => {
-    if (!window.confirm('⚠️ Are you sure you want to delete this student?\n\nThis action cannot be undone.')) return;
+    if (!window.confirm('⚠️ Are you sure you want to delete this user?\n\nThis action cannot be undone.')) return;
     
     try {
       const { error } = await supabase
-        .from('students')
+        .from('students_new')
         .delete()
         .eq('id', studentId)
         .eq('institution_id', institutionId);
 
       if (error) throw error;
 
-      showToast('Student deleted successfully!', 'success');
+      showToast('User deleted successfully!', 'success');
       fetchStudents();
     } catch (error) {
-      console.error('Error deleting student:', error);
-      showToast('Error deleting student: ' + error.message, 'error');
+      console.error('Error deleting user:', error);
+      showToast('Error deleting user: ' + error.message, 'error');
     }
   };
 
   const deleteSelectedStudents = async () => {
     if (selectedStudents.length === 0) return;
     
-    if (!window.confirm(`⚠️ Are you sure you want to delete ${selectedStudents.length} student(s)?\n\nThis action cannot be undone.`)) return;
+    if (!window.confirm(`⚠️ Are you sure you want to delete ${selectedStudents.length} user(s)?\n\nThis action cannot be undone.`)) return;
     
     try {
       const { error } = await supabase
-        .from('students')
+        .from('students_new')
         .delete()
         .in('id', selectedStudents)
         .eq('institution_id', institutionId);
 
       if (error) throw error;
 
-      showToast(`${selectedStudents.length} student(s) deleted successfully!`, 'success');
+      showToast(`${selectedStudents.length} user(s) deleted successfully!`, 'success');
       setSelectedStudents([]);
       fetchStudents();
     } catch (error) {
-      console.error('Error deleting students:', error);
-      showToast('Error deleting students: ' + error.message, 'error');
+      console.error('Error deleting users:', error);
+      showToast('Error deleting users: ' + error.message, 'error');
     }
   };
 
@@ -335,9 +319,8 @@ export default function StudentDashboard() {
       branch: student.branch || '',
       phone: student.phone || '',
       password: '',
-      routes: student.routes || '',
       email: student.email || '',
-      semester: student.semester || ''
+      role: student.role || 'student'
     });
   };
 
@@ -346,9 +329,24 @@ export default function StudentDashboard() {
     return branches.sort();
   };
 
-  const getRouteName = (routeId) => {
-    const route = routes.find(r => r.id === routeId);
-    return route ? route.name : 'Not Assigned';
+  const getRoleBadge = (role) => {
+    switch(role) {
+      case 'admin':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-purple-950/50 text-purple-400 border border-purple-800">
+            <Shield size={10} />
+            Admin
+          </span>
+        );
+      case 'student':
+      default:
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-blue-950/50 text-blue-400 border border-blue-800">
+            <User size={10} />
+            Student
+          </span>
+        );
+    }
   };
 
   const handleBack = () => {
@@ -379,15 +377,14 @@ export default function StudentDashboard() {
   };
 
   const exportToCSV = () => {
-    const headers = ['USN', 'Name', 'Branch', 'Route', 'Phone', 'Email', 'Semester'];
+    const headers = ['USN', 'Name', 'Branch', 'Role', 'Phone', 'Email'];
     const data = filteredStudents.map(s => [
-      s.usn,
+      s.usn || '',
       s.full_name,
       s.branch || '',
-      getRouteName(s.routes),
+      s.role || 'student',
       s.phone || '',
-      s.email || '',
-      s.semester || ''
+      s.email || ''
     ]);
     
     const csvContent = [headers, ...data]
@@ -398,11 +395,11 @@ export default function StudentDashboard() {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `students_${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `users_${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     window.URL.revokeObjectURL(url);
     
-    showToast('Students exported successfully!', 'success');
+    showToast('Users exported successfully!', 'success');
   };
 
   if (loading || institutionLoading) {
@@ -442,10 +439,10 @@ export default function StudentDashboard() {
                     </div>
                     <div>
                       <h1 className="text-2xl lg:text-3xl font-bold text-white">
-                        Student Dashboard
+                        User Dashboard
                       </h1>
                       <p className="text-slate-400 text-sm mt-1">
-                        Manage student profiles and route assignments
+                        Manage users and role assignments
                       </p>
                     </div>
                   </div>
@@ -485,7 +482,7 @@ export default function StudentDashboard() {
                 <span className="text-xs font-medium text-blue-400 bg-blue-950/50 px-2 py-0.5 rounded-full border border-blue-800">Total</span>
               </div>
               <h3 className="text-2xl font-bold text-white">{stats.totalStudents}</h3>
-              <p className="text-xs text-slate-400">Total Students</p>
+              <p className="text-xs text-slate-400">Total Users</p>
             </div>
 
             <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
@@ -501,24 +498,24 @@ export default function StudentDashboard() {
 
             <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
               <div className="flex items-center justify-between mb-3">
-                <div className="p-2 bg-orange-600 rounded-xl">
-                  <Bus className="text-white" size={18} />
+                <div className="p-2 bg-green-600 rounded-xl">
+                  <User className="text-white" size={18} />
                 </div>
-                <span className="text-xs font-medium text-orange-400 bg-orange-950/50 px-2 py-0.5 rounded-full border border-orange-800">Route 1</span>
+                <span className="text-xs font-medium text-green-400 bg-green-950/50 px-2 py-0.5 rounded-full border border-green-800">Students</span>
               </div>
-              <h3 className="text-2xl font-bold text-white">{stats.route1Count}</h3>
-              <p className="text-xs text-slate-400">Amritsar Mandir Route</p>
+              <h3 className="text-2xl font-bold text-white">{stats.studentCount}</h3>
+              <p className="text-xs text-slate-400">Student Accounts</p>
             </div>
 
             <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
               <div className="flex items-center justify-between mb-3">
-                <div className="p-2 bg-teal-600 rounded-xl">
-                  <Bus className="text-white" size={18} />
+                <div className="p-2 bg-purple-600 rounded-xl">
+                  <Shield className="text-white" size={18} />
                 </div>
-                <span className="text-xs font-medium text-teal-400 bg-teal-950/50 px-2 py-0.5 rounded-full border border-teal-800">Route 2</span>
+                <span className="text-xs font-medium text-purple-400 bg-purple-950/50 px-2 py-0.5 rounded-full border border-purple-800">Admins</span>
               </div>
-              <h3 className="text-2xl font-bold text-white">{stats.route2Count}</h3>
-              <p className="text-xs text-slate-400">City Center Route</p>
+              <h3 className="text-2xl font-bold text-white">{stats.adminCount}</h3>
+              <p className="text-xs text-slate-400">Admin Accounts</p>
             </div>
           </div>
 
@@ -559,14 +556,13 @@ export default function StudentDashboard() {
                 </select>
 
                 <select
-                  value={routeFilter}
-                  onChange={(e) => setRouteFilter(e.target.value)}
+                  value={roleFilter}
+                  onChange={(e) => setRoleFilter(e.target.value)}
                   className="px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-300 focus:border-blue-500 outline-none"
                 >
-                  <option value="all">All Routes</option>
-                  <option value="route1">Route 1 - Amritsar Mandir</option>
-                  <option value="route2">Route 2 - City Center</option>
-                  <option value="unassigned">Not Assigned</option>
+                  <option value="all">All Roles</option>
+                  <option value="student">Student</option>
+                  <option value="admin">Admin</option>
                 </select>
 
                 {/* View Toggle */}
@@ -601,7 +597,7 @@ export default function StudentDashboard() {
                   className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all text-sm"
                 >
                   <UserPlus size={16} />
-                  Add New Student
+                  Add New User
                 </button>
 
                 <button
@@ -637,7 +633,7 @@ export default function StudentDashboard() {
           <div className="bg-slate-800/50 rounded-xl border border-slate-700 px-5 py-3 flex justify-between items-center">
             <p className="text-sm text-slate-400">
               Showing <span className="font-semibold text-white">{filteredStudents.length}</span> of{' '}
-              <span className="font-semibold text-white">{students.length}</span> students
+              <span className="font-semibold text-white">{students.length}</span> users
             </p>
             {viewMode === 'table' && filteredStudents.length > 0 && (
               <label className="flex items-center gap-2 text-sm text-slate-400 cursor-pointer">
@@ -670,9 +666,8 @@ export default function StudentDashboard() {
                       <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">USN</th>
                       <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Name</th>
                       <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Branch</th>
-                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Route</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Role</th>
                       <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Contact</th>
-                      <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Semester</th>
                       <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
@@ -688,7 +683,7 @@ export default function StudentDashboard() {
                           />
                         </td>
                         <td className="px-5 py-3">
-                          <span className="text-sm font-mono text-slate-300">{student.usn}</span>
+                          <span className="text-sm font-mono text-slate-300">{student.usn || '—'}</span>
                         </td>
                         <td className="px-5 py-3">
                           <div>
@@ -706,31 +701,11 @@ export default function StudentDashboard() {
                           )}
                         </td>
                         <td className="px-5 py-3">
-                          {student.routes ? (
-                            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
-                              student.routes === 'route1' 
-                                ? 'bg-orange-950/50 text-orange-400 border border-orange-800' 
-                                : 'bg-teal-950/50 text-teal-400 border border-teal-800'
-                            }`}>
-                              <Bus size={10} />
-                              {student.routes === 'route1' ? 'Route 1' : 'Route 2'}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-slate-500">Not Assigned</span>
-                          )}
+                          {getRoleBadge(student.role)}
                         </td>
                         <td className="px-5 py-3">
                           {student.phone ? (
                             <span className="text-sm text-slate-300">{student.phone}</span>
-                          ) : (
-                            <span className="text-xs text-slate-500">—</span>
-                          )}
-                        </td>
-                        <td className="px-5 py-3">
-                          {student.semester ? (
-                            <span className="inline-flex px-2 py-1 rounded-full text-xs font-medium bg-indigo-950/50 text-indigo-400 border border-indigo-800">
-                              Sem {student.semester}
-                            </span>
                           ) : (
                             <span className="text-xs text-slate-500">—</span>
                           )}
@@ -762,7 +737,7 @@ export default function StudentDashboard() {
               {filteredStudents.length === 0 && (
                 <div className="text-center py-12">
                   <Users size={48} className="text-slate-600 mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold text-white mb-2">No Students Found</h3>
+                  <h3 className="text-lg font-semibold text-white mb-2">No Users Found</h3>
                   <p className="text-slate-400">Try adjusting your search or filter criteria</p>
                 </div>
               )}
@@ -774,16 +749,20 @@ export default function StudentDashboard() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {filteredStudents.map((student) => (
                 <div key={student.id} className="bg-slate-800/50 rounded-2xl border border-slate-700 hover:border-blue-500/30 transition-all overflow-hidden">
-                  <div className={`h-1 ${student.routes === 'route1' ? 'bg-orange-500' : student.routes === 'route2' ? 'bg-teal-500' : 'bg-slate-600'}`}></div>
+                  <div className={`h-1 ${student.role === 'admin' ? 'bg-purple-500' : 'bg-blue-500'}`}></div>
                   <div className="p-5">
                     <div className="flex justify-between items-start mb-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center">
-                          <User className="text-white" size={20} />
+                        <div className={`w-12 h-12 ${student.role === 'admin' ? 'bg-purple-600' : 'bg-blue-600'} rounded-xl flex items-center justify-center`}>
+                          {student.role === 'admin' ? (
+                            <Shield className="text-white" size={20} />
+                          ) : (
+                            <User className="text-white" size={20} />
+                          )}
                         </div>
                         <div>
                           <h3 className="font-semibold text-white">{student.full_name}</h3>
-                          <p className="text-xs text-slate-500 font-mono">{student.usn}</p>
+                          <p className="text-xs text-slate-500 font-mono">{student.usn || 'No USN'}</p>
                         </div>
                       </div>
                       <div className="flex gap-1">
@@ -811,21 +790,7 @@ export default function StudentDashboard() {
                             {student.branch}
                           </span>
                         )}
-                        {student.routes && (
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${
-                            student.routes === 'route1' 
-                              ? 'bg-orange-950/50 text-orange-400 border border-orange-800' 
-                              : 'bg-teal-950/50 text-teal-400 border border-teal-800'
-                          }`}>
-                            <Bus size={10} />
-                            {student.routes === 'route1' ? 'Route 1' : 'Route 2'}
-                          </span>
-                        )}
-                        {student.semester && (
-                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-indigo-950/50 text-indigo-400 border border-indigo-800">
-                            Sem {student.semester}
-                          </span>
-                        )}
+                        {getRoleBadge(student.role)}
                       </div>
 
                       {student.phone && (
@@ -849,7 +814,7 @@ export default function StudentDashboard() {
               {filteredStudents.length === 0 && (
                 <div className="col-span-full text-center py-12 bg-slate-800/50 rounded-2xl border border-slate-700">
                   <Users size={48} className="text-slate-600 mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold text-white mb-2">No Students Found</h3>
+                  <h3 className="text-lg font-semibold text-white mb-2">No Users Found</h3>
                   <p className="text-slate-400">Try adjusting your search or filter criteria</p>
                 </div>
               )}
@@ -858,7 +823,7 @@ export default function StudentDashboard() {
         </div>
       </div>
 
-      {/* Add/Edit Student Modal */}
+      {/* Add/Edit User Modal */}
       {(showAddForm || editingStudent) && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-slate-800 rounded-2xl border border-slate-700 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -868,7 +833,7 @@ export default function StudentDashboard() {
                   {editingStudent ? <Edit className="text-white" size={20} /> : <UserPlus className="text-white" size={20} />}
                 </div>
                 <h3 className="text-xl font-bold text-white">
-                  {editingStudent ? 'Edit Student' : 'Add New Student'}
+                  {editingStudent ? 'Edit User' : 'Add New User'}
                 </h3>
               </div>
               <button 
@@ -892,21 +857,20 @@ export default function StudentDashboard() {
                     value={newStudent.full_name}
                     onChange={(e) => setNewStudent(prev => ({ ...prev, full_name: e.target.value }))}
                     className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 placeholder-slate-500"
-                    placeholder="Enter student's full name"
+                    placeholder="Enter user's full name"
                   />
                 </div>
 
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-slate-300 mb-2">USN *</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">USN</label>
                   <input
                     type="text"
-                    required
                     value={newStudent.usn}
                     onChange={(e) => setNewStudent(prev => ({ ...prev, usn: e.target.value }))}
                     className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 placeholder-slate-500"
-                    placeholder="e.g., 1SI21CS001"
+                    placeholder="e.g., 1SI21CS001 (optional for admins)"
                   />
-                  <p className="text-xs text-slate-500 mt-1">Must be unique</p>
+                  <p className="text-xs text-slate-500 mt-1">Must be unique if provided</p>
                 </div>
 
                 <div>
@@ -921,21 +885,14 @@ export default function StudentDashboard() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">Semester</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Role *</label>
                   <select
-                    value={newStudent.semester}
-                    onChange={(e) => setNewStudent(prev => ({ ...prev, semester: e.target.value }))}
+                    value={newStudent.role}
+                    onChange={(e) => setNewStudent(prev => ({ ...prev, role: e.target.value }))}
                     className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200"
                   >
-                    <option value="">Select Semester</option>
-                    <option value="1">1st Semester</option>
-                    <option value="2">2nd Semester</option>
-                    <option value="3">3rd Semester</option>
-                    <option value="4">4th Semester</option>
-                    <option value="5">5th Semester</option>
-                    <option value="6">6th Semester</option>
-                    <option value="7">7th Semester</option>
-                    <option value="8">8th Semester</option>
+                    <option value="student">Student</option>
+                    <option value="admin">Admin</option>
                   </select>
                 </div>
 
@@ -946,7 +903,7 @@ export default function StudentDashboard() {
                     value={newStudent.email}
                     onChange={(e) => setNewStudent(prev => ({ ...prev, email: e.target.value }))}
                     className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 placeholder-slate-500"
-                    placeholder="student@example.com"
+                    placeholder="user@example.com"
                   />
                 </div>
 
@@ -963,23 +920,7 @@ export default function StudentDashboard() {
 
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-slate-300 mb-2">
-                    <Bus size={16} className="inline mr-1 text-blue-400" />
-                    Bus Route
-                  </label>
-                  <select
-                    value={newStudent.routes}
-                    onChange={(e) => setNewStudent(prev => ({ ...prev, routes: e.target.value }))}
-                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200"
-                  >
-                    <option value="">Not Assigned</option>
-                    <option value="route1">Route 1 - Amritsar Mandir</option>
-                    <option value="route2">Route 2 - City Center</option>
-                  </select>
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
-                    Password {!editingStudent && '*'}
+                    {editingStudent ? 'New Password' : 'Password'} {!editingStudent && '*'}
                     {editingStudent && <span className="text-xs text-slate-500 ml-2">(Leave blank to keep current)</span>}
                   </label>
                   <input
@@ -988,7 +929,7 @@ export default function StudentDashboard() {
                     value={newStudent.password}
                     onChange={(e) => setNewStudent(prev => ({ ...prev, password: e.target.value }))}
                     className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 placeholder-slate-500"
-                    placeholder={editingStudent ? "Enter new password (optional)" : "Enter student password"}
+                    placeholder={editingStudent ? "Enter new password (optional)" : "Enter password"}
                   />
                 </div>
               </div>
@@ -1009,7 +950,7 @@ export default function StudentDashboard() {
                   className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all font-medium"
                 >
                   <Save size={16} className="inline mr-2" />
-                  {editingStudent ? 'Update Student' : 'Add Student'}
+                  {editingStudent ? 'Update User' : 'Add User'}
                 </button>
               </div>
             </form>
@@ -1046,7 +987,7 @@ export default function StudentDashboard() {
         <button
           onClick={() => setShowAddForm(true)}
           className="bg-blue-600 text-white p-4 rounded-full shadow-lg hover:bg-blue-700 transition-all"
-          title="Add Student"
+          title="Add User"
         >
           <Plus size={24} />
         </button>
