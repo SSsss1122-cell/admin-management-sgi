@@ -1,82 +1,48 @@
+// app/fees/page.js
 'use client';
 
 import { useState, useEffect } from 'react';
-import { 
-  Search, Download, CheckCircle, XCircle, 
-  IndianRupee, Edit, X, Calendar, ArrowLeft,
-  TrendingUp, Clock, AlertCircle, ChevronDown, ChevronUp,
-  Users, Wallet, Receipt, Award, BookOpen, 
-  GraduationCap, Layers, Trash2, Plus, Eye, Save,
-  CalendarPlus, History, RefreshCw, CalendarDays,
-  DollarSign, PieChart, CreditCard, Truck, ChevronRight,
-  Info, AlertTriangle
-} from 'lucide-react';
-import { supabase } from '../../lib/supabase';
 import { useRouter } from 'next/navigation';
 import withAuth from '../../components/withAuth';
+import { supabase } from '../../lib/supabase';
+import { feesService } from './service';
+import { 
+  FeesHeader, FeesFilters, FeesResultsCount, FeesToast, FeesGridView,
+  EditIntervalModal 
+} from './components';
+import { 
+  CheckCircle, XCircle, IndianRupee, AlertTriangle, 
+  DollarSign, Layers, CalendarDays, Calendar, Save, 
+  Trash2, Edit, Plus, X, AlertCircle, 
+  ArrowLeft, CreditCard, Wallet, TrendingUp, 
+  CalendarPlus, Download, Search 
+} from 'lucide-react';
 
 function FeesManagement() {
+  const router = useRouter();
   const [students, setStudents] = useState([]);
   const [filteredStudents, setFilteredStudents] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [feeFilter, setFeeFilter] = useState('all');
-  const [selectedStudent, setSelectedStudent] = useState(null);
   const [institutionId, setInstitutionId] = useState(null);
-  const [toast, setToast] = useState({ show: false, type: '', message: '' });
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState('grid');
   const [selectedStudents, setSelectedStudents] = useState([]);
   const [selectedIntervalId, setSelectedIntervalId] = useState(null);
-  const [selectedStudentId, setSelectedStudentId] = useState(null);
-  
-  // Financial summary states
+  const [studentIntervals, setStudentIntervals] = useState({});
+  const [selectedIntervals, setSelectedIntervals] = useState([]);
   const [financialSummary, setFinancialSummary] = useState({
-    total_fees: 0,
-    total_collected: 0,
-    total_due: 0,
-    collection_rate: 0,
-    monthly_collection: 0,
-    pending_count: 0
+    total_fees: 0, total_collected: 0, total_due: 0, 
+    collection_rate: 0, monthly_collection: 0, pending_count: 0
   });
+  const [toast, setToast] = useState({ show: false, type: '', message: '' });
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   
-  // Date modal states
-  const [showDateModal, setShowDateModal] = useState(false);
-  const [dateModalData, setDateModalData] = useState({
-    student: null,
-    start_date: '',
-    end_date: ''
-  });
-  
-  // Due date modal
-  const [showDueDateModal, setShowDueDateModal] = useState(false);
-  const [dueDateData, setDueDateData] = useState({
-    student: null,
-    interval_id: null,
-    due_date: '',
-    due_amount: 0
-  });
-  
-  // Fee payment modal
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [paymentData, setPaymentData] = useState({
-    student: null,
-    interval_id: null,
-    amount: '',
-    payment_date: new Date().toISOString().split('T')[0],
-    payment_mode: 'cash',
-    utr: '',
-    remarks: ''
-  });
-  
-  // Bulk assign modal
-  const [showBulkAssignModal, setShowBulkAssignModal] = useState(false);
-  const [bulkAssignData, setBulkAssignData] = useState({
-    start_date: '',
-    end_date: '',
-    apply_to: 'all',
-    selected_branch: '',
-    selected_class: ''
-  });
+  // Edit Interval Modal States
+  const [showEditIntervalModal, setShowEditIntervalModal] = useState(false);
+  const [editingInterval, setEditingInterval] = useState(null);
+  const [editingStudent, setEditingStudent] = useState(null);
   
   // Delete states
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -85,42 +51,41 @@ function FeesManagement() {
   const [intervalToDelete, setIntervalToDelete] = useState(null);
   const [bulkDeleteIntervals, setBulkDeleteIntervals] = useState([]);
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [saving, setSaving] = useState(false);
   
-  // Interval states
+  // Modal states
+  const [showDateModal, setShowDateModal] = useState(false);
+  const [dateModalData, setDateModalData] = useState({ student: null, start_date: '', end_date: '' });
+  const [showDueDateModal, setShowDueDateModal] = useState(false);
+  const [dueDateData, setDueDateData] = useState({ student: null, interval_id: null, due_date: '', due_amount: 0 });
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentData, setPaymentData] = useState({ 
+    student: null, interval_id: null, amount: '', 
+    payment_date: new Date().toISOString().split('T')[0], 
+    payment_mode: 'cash', utr: '', remarks: '' 
+  });
   const [showIntervalModal, setShowIntervalModal] = useState(false);
   const [selectedStudentForInterval, setSelectedStudentForInterval] = useState(null);
-  const [intervalData, setIntervalData] = useState({
-    interval_number: 1,
-    start_date: '',
-    end_date: '',
-    total_fees: 0,
-    paid_amount: 0,
-    due_amount: 0,
-    status: 'pending'
+  const [intervalData, setIntervalData] = useState({ 
+    interval_number: 1, start_date: '', end_date: '', 
+    total_fees: 0, paid_amount: 0, due_amount: 0, status: 'pending' 
   });
-  const [studentIntervals, setStudentIntervals] = useState({});
-  
-  // Interval details modal
   const [showIntervalDetails, setShowIntervalDetails] = useState(false);
   const [selectedInterval, setSelectedInterval] = useState(null);
+  const [selectedStudent, setSelectedStudent] = useState(null);
   
-  // Bulk interval selection
-  const [selectedIntervals, setSelectedIntervals] = useState([]);
-
-  const router = useRouter();
+  // Bulk assign modal
+  const [bulkAssignData, setBulkAssignData] = useState({
+    start_date: '', end_date: '', apply_to: 'all', selected_branch: '', selected_class: ''
+  });
+  const [showBulkAssignModal, setShowBulkAssignModal] = useState(false);
 
   const showToast = (type, message) => {
     setToast({ show: true, type, message });
-    setTimeout(() => {
-      setToast({ show: false, type: '', message: '' });
-    }, 3000);
+    setTimeout(() => setToast({ show: false, type: '', message: '' }), 3000);
   };
 
   useEffect(() => {
     const instId = localStorage.getItem('institutionId') || localStorage.getItem('institution_id');
-    
     if (instId) {
       setInstitutionId(instId);
       fetchStudents(instId);
@@ -136,81 +101,26 @@ function FeesManagement() {
 
   const fetchStudents = async (instId) => {
     try {
-      const { data: studentData, error: studentError } = await supabase
-        .from('students_new')
-        .select('id, full_name, usn, branch, phone, email, created_at, updated_at, current_interval_id')
-        .eq('institution_id', instId)
-        .order('full_name');
-
-      if (studentError) throw studentError;
-
-      const { data: intervalData, error: intervalError } = await supabase
-        .from('student_intervals')
-        .select('*')
-        .in('student_id', studentData.map(s => s.id));
-
-      if (intervalError) throw intervalError;
-
-      const intervalsMap = {};
-      intervalData.forEach(interval => {
-        if (!intervalsMap[interval.student_id]) {
-          intervalsMap[interval.student_id] = [];
-        }
-        intervalsMap[interval.student_id].push(interval);
-      });
-
+      const { students: studentData, intervalsMap } = await feesService.fetchStudentsWithIntervals(instId);
       setStudentIntervals(intervalsMap);
       setStudents(studentData || []);
-      calculateFinancialSummary(studentData || [], intervalsMap);
+      const summary = feesService.calculateFinancialSummary(studentData || [], intervalsMap);
+      setFinancialSummary(summary);
     } catch (error) {
-      console.error('Error fetching students:', error);
       showToast('error', 'Error fetching students: ' + error.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const calculateFinancialSummary = (studentsList, intervalsMap) => {
-    let totalFees = 0;
-    let totalCollected = 0;
-    let totalDue = 0;
-    let pendingCount = 0;
-
-    studentsList.forEach(student => {
-      const intervals = intervalsMap[student.id] || [];
-      const fees = intervals.reduce((sum, i) => sum + (i.total_fees || 0), 0);
-      const paid = intervals.reduce((sum, i) => sum + (i.paid_amount || 0), 0);
-      const due = intervals.reduce((sum, i) => sum + (i.due_amount || 0), 0);
-      
-      totalFees += fees;
-      totalCollected += paid;
-      totalDue += due;
-      
-      if (due > 0) pendingCount++;
-    });
-
-    const collectionRate = totalFees > 0 ? (totalCollected / totalFees) * 100 : 0;
-
-    setFinancialSummary({
-      total_fees: totalFees,
-      total_collected: totalCollected,
-      total_due: totalDue,
-      collection_rate: collectionRate,
-      monthly_collection: 0,
-      pending_count: pendingCount
-    });
-  };
-
   const filterStudents = () => {
     let filtered = students;
-
     if (searchTerm && searchTerm.trim() !== '') {
       const searchLower = searchTerm.toLowerCase();
       filtered = filtered.filter(student => {
         const fullName = student.full_name ? student.full_name.toLowerCase() : '';
         const usn = student.usn ? student.usn.toLowerCase() : '';
         const branch = student.branch ? student.branch.toLowerCase() : '';
-        
         return fullName.includes(searchLower) || usn.includes(searchLower) || branch.includes(searchLower);
       });
     }
@@ -220,70 +130,116 @@ function FeesManagement() {
         const intervals = studentIntervals[student.id] || [];
         return intervals.some(i => Number(i.due_amount) > 0);
       });
-    }
-    else if (feeFilter === 'paid') {
+    } else if (feeFilter === 'paid') {
       filtered = filtered.filter(student => {
         const intervals = studentIntervals[student.id] || [];
         return intervals.length > 0 && intervals.every(i => Number(i.due_amount) === 0);
       });
-    }
-    else if (feeFilter === 'overdue') {
+    } else if (feeFilter === 'overdue') {
       filtered = filtered.filter(student => {
         const intervals = studentIntervals[student.id] || [];
         const today = new Date().toISOString().split('T')[0];
         return intervals.some(i => i.end_date && i.end_date < today && Number(i.due_amount) > 0);
       });
-    }
-    else if (feeFilter === 'active') {
+    } else if (feeFilter === 'active') {
       filtered = filtered.filter(student => {
         const intervals = studentIntervals[student.id] || [];
         const today = new Date().toISOString().split('T')[0];
         return intervals.some(i => i.start_date <= today && i.end_date >= today);
       });
-    }
-    else if (feeFilter === 'expired') {
+    } else if (feeFilter === 'expired') {
       filtered = filtered.filter(student => {
         const intervals = studentIntervals[student.id] || [];
         const today = new Date().toISOString().split('T')[0];
         return intervals.some(i => i.end_date < today && Number(i.due_amount) > 0);
       });
-    }
-    else if (feeFilter === 'no-subscription') {
+    } else if (feeFilter === 'no-subscription') {
       filtered = filtered.filter(student => {
         const intervals = studentIntervals[student.id] || [];
         return intervals.length === 0;
       });
     }
-
     setFilteredStudents(filtered);
+  };
+
+  // ============================================================
+  // 📦 EDIT INTERVAL HANDLER
+  // ============================================================
+  const openEditIntervalModal = (interval, student) => {
+    setEditingInterval(interval);
+    setEditingStudent(student);
+    setShowEditIntervalModal(true);
+  };
+
+  const handleSaveInterval = async (data) => {
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from('student_intervals')
+        .update({
+          total_fees: data.total_fees,
+          due_amount: data.due_amount,
+          start_date: data.start_date,
+          end_date: data.end_date,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', data.id);
+
+      if (error) throw error;
+
+      showToast('success', '✅ Interval updated successfully!');
+      setShowEditIntervalModal(false);
+      setEditingInterval(null);
+      setEditingStudent(null);
+      await fetchStudents(institutionId);
+    } catch (error) {
+      console.error('Error updating interval:', error);
+      showToast('error', '❌ Error updating interval: ' + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ============================================================
+  // 📦 PAYMENT HANDLER
+  // ============================================================
+  const openPaymentModal = (student) => {
+    const intervals = studentIntervals[student.id] || [];
+    const target = intervals.find(i => Number(i.due_amount) > 0);
+    
+    setPaymentData({
+      student: student,
+      interval_id: target?.id || null,
+      amount: '',
+      payment_date: new Date().toISOString().split('T')[0],
+      payment_mode: 'cash',
+      utr: '',
+      remarks: ''
+    });
+    setShowPaymentModal(true);
   };
 
   const handleRecordPayment = async (e) => {
     e.preventDefault();
     setSaving(true);
-    
     try {
       const student = paymentData.student;
       const intervals = studentIntervals[student.id] || [];
-      
       let targetInterval;
       if (paymentData.interval_id) {
         targetInterval = intervals.find(i => i.id === paymentData.interval_id);
       } else {
         targetInterval = intervals.find(i => Number(i.due_amount) > 0);
       }
-      
       if (!targetInterval) {
-        showToast('error', 'No pending dues found for this student!');
+        showToast('error', 'No pending dues found!');
         setSaving(false);
         return;
       }
-      
       const currentPaid = Number(targetInterval.paid_amount) || 0;
       const newPaid = currentPaid + Number(paymentData.amount);
       const totalFees = Number(targetInterval.total_fees) || 0;
       const newDue = totalFees - newPaid;
-      
       const { error } = await supabase
         .from('student_intervals')
         .update({
@@ -296,10 +252,8 @@ function FeesManagement() {
           updated_at: new Date().toISOString()
         })
         .eq('id', targetInterval.id);
-      
       if (error) throw error;
-      
-      showToast('success', `✅ Payment of ₹${Number(paymentData.amount).toLocaleString()} recorded for ${student.full_name}!`);
+      showToast('success', `✅ Payment recorded for ${student.full_name}!`);
       await fetchStudents(institutionId);
       setShowPaymentModal(false);
       setPaymentData({
@@ -311,7 +265,6 @@ function FeesManagement() {
         utr: '',
         remarks: ''
       });
-      
     } catch (error) {
       console.error('Error recording payment:', error);
       showToast('error', '❌ Error recording payment: ' + error.message);
@@ -320,27 +273,43 @@ function FeesManagement() {
     }
   };
 
+  // ============================================================
+  // 📦 DUE DATE HANDLER
+  // ============================================================
+  const openDueDateModal = (student, intervalId = null) => {
+    const intervals = studentIntervals[student.id] || [];
+    let targetInterval;
+    if (intervalId) {
+      targetInterval = intervals.find(i => i.id === intervalId);
+    } else {
+      targetInterval = intervals.find(i => Number(i.due_amount) > 0);
+    }
+    setDueDateData({
+      student: student,
+      interval_id: targetInterval?.id || null,
+      due_date: targetInterval?.end_date || '',
+      due_amount: targetInterval?.due_amount || 0
+    });
+    setShowDueDateModal(true);
+  };
+
   const handleUpdateDueDate = async (e) => {
     e.preventDefault();
     setSaving(true);
-    
     try {
       const student = dueDateData.student;
       const intervals = studentIntervals[student.id] || [];
-      
       let targetInterval;
       if (dueDateData.interval_id) {
         targetInterval = intervals.find(i => i.id === dueDateData.interval_id);
       } else {
         targetInterval = intervals.find(i => Number(i.due_amount) > 0);
       }
-      
       if (!targetInterval) {
         showToast('error', 'No interval found!');
         setSaving(false);
         return;
       }
-      
       const { error } = await supabase
         .from('student_intervals')
         .update({
@@ -349,14 +318,11 @@ function FeesManagement() {
           updated_at: new Date().toISOString()
         })
         .eq('id', targetInterval.id);
-      
       if (error) throw error;
-      
-      showToast('success', `✅ Due date updated for ${dueDateData.student.full_name}!`);
+      showToast('success', `✅ Due date updated for ${student.full_name}!`);
       await fetchStudents(institutionId);
       setShowDueDateModal(false);
       setDueDateData({ student: null, interval_id: null, due_date: '', due_amount: 0 });
-      
     } catch (error) {
       console.error('Error updating due date:', error);
       showToast('error', '❌ Error updating due date: ' + error.message);
@@ -365,121 +331,85 @@ function FeesManagement() {
     }
   };
 
-  const handleAssignDate = async (e) => {
+  // ============================================================
+  // 📦 ADD INTERVAL HANDLER
+  // ============================================================
+  const openIntervalModal = (student) => {
+    setSelectedStudentForInterval(student);
+    const intervals = studentIntervals[student.id] || [];
+    setIntervalData({
+      interval_number: intervals.length + 1,
+      start_date: new Date().toISOString().split('T')[0],
+      end_date: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      total_fees: 0,
+      paid_amount: 0,
+      due_amount: 0,
+      status: 'pending'
+    });
+    setShowIntervalModal(true);
+  };
+
+  const handleAddInterval = async (e) => {
     e.preventDefault();
     setSaving(true);
-    
     try {
-      const student = dateModalData.student;
-      
-      const newInterval = {
-        student_id: student.id,
-        interval_number: (studentIntervals[student.id]?.length || 0) + 1,
-        start_date: dateModalData.start_date,
-        end_date: dateModalData.end_date,
-        total_fees: 0,
+      const payload = {
+        student_id: selectedStudentForInterval.id,
+        interval_number: intervalData.interval_number,
+        start_date: intervalData.start_date,
+        end_date: intervalData.end_date,
+        total_fees: intervalData.total_fees,
         paid_amount: 0,
-        due_amount: 0,
+        due_amount: intervalData.due_amount || intervalData.total_fees,
         status: 'pending',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
-
       const { error } = await supabase
         .from('student_intervals')
-        .insert([newInterval]);
-      
-      if (error) {
-        console.error('Insert error details:', error);
-        throw error;
-      }
-      
-      showToast('success', `✅ New interval assigned to ${dateModalData.student.full_name}!`);
-      await fetchStudents(institutionId);
-      setShowDateModal(false);
-      setDateModalData({ student: null, start_date: '', end_date: '' });
-      
-    } catch (error) {
-      console.error('Error assigning date:', error);
-      showToast('error', '❌ Error assigning date: ' + error.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleBulkAssign = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    
-    try {
-      let query = supabase
-        .from('students_new')
-        .select('id')
-        .eq('institution_id', institutionId);
-      
-      if (bulkAssignData.apply_to === 'selected_branch' && bulkAssignData.selected_branch) {
-        query = query.eq('branch', bulkAssignData.selected_branch);
-      }
-      
-      const { data: studentsList, error: fetchError } = await query;
-      
-      if (fetchError) throw fetchError;
-      
-      for (const student of studentsList) {
-        const newInterval = {
-          student_id: student.id,
-          interval_number: (studentIntervals[student.id]?.length || 0) + 1,
-          start_date: bulkAssignData.start_date,
-          end_date: bulkAssignData.end_date,
-          total_fees: 0,
-          paid_amount: 0,
-          due_amount: 0,
-          status: 'pending',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-        
-        await supabase
-          .from('student_intervals')
-          .insert([newInterval]);
-      }
-      
-      showToast('success', `✅ Bulk date assignment completed!`);
-      await fetchStudents(institutionId);
-      setShowBulkAssignModal(false);
-      setBulkAssignData({
-        start_date: '',
-        end_date: '',
-        apply_to: 'all',
-        selected_branch: '',
-        selected_class: ''
-      });
-      
-    } catch (error) {
-      console.error('Error bulk assigning:', error);
-      showToast('error', '❌ Error bulk assigning: ' + error.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleClearDates = async (student) => {
-    if (!confirm(`Clear all intervals for ${student.full_name}?`)) return;
-    
-    try {
-      const { error } = await supabase
-        .from('student_intervals')
-        .delete()
-        .eq('student_id', student.id);
-      
+        .insert([payload]);
       if (error) throw error;
-      
-      showToast('success', `✅ All intervals cleared for ${student.full_name}`);
+      showToast('success', `✅ Interval ${intervalData.interval_number} added successfully!`);
+      setShowIntervalModal(false);
       await fetchStudents(institutionId);
-      
     } catch (error) {
-      console.error('Error clearing intervals:', error);
-      showToast('error', '❌ Error clearing intervals: ' + error.message);
+      console.error('Error adding interval:', error);
+      showToast('error', '❌ Error adding interval: ' + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ============================================================
+  // 📦 DELETE HANDLERS
+  // ============================================================
+  const handleDeleteStudent = (student) => {
+    setStudentToDelete(student);
+    setDeleteType('student');
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDeleteStudent = async () => {
+    if (!studentToDelete) return;
+    setDeleting(true);
+    try {
+      await supabase.from('student_intervals').delete().eq('student_id', studentToDelete.id);
+      const { error } = await supabase
+        .from('students_new')
+        .delete()
+        .eq('id', studentToDelete.id)
+        .eq('institution_id', institutionId);
+      if (error) throw error;
+      showToast('success', `✅ Student ${studentToDelete.full_name} deleted successfully!`);
+      await fetchStudents(institutionId);
+      setSelectedStudents(prev => prev.filter(id => id !== studentToDelete.id));
+    } catch (error) {
+      console.error('Error deleting student:', error);
+      showToast('error', '❌ Error deleting student: ' + error.message);
+    } finally {
+      setDeleting(false);
+      setShowDeleteConfirm(false);
+      setStudentToDelete(null);
     }
   };
 
@@ -495,25 +425,20 @@ function FeesManagement() {
   const findIntervalById = (intervalId) => {
     for (const studentId in studentIntervals) {
       const interval = studentIntervals[studentId].find(i => i.id === intervalId);
-      if (interval) {
-        return interval;
-      }
+      if (interval) return interval;
     }
     return null;
   };
 
   const confirmDeleteInterval = async () => {
     if (!intervalToDelete) return;
-    
     setDeleting(true);
     try {
       const { error } = await supabase
         .from('student_intervals')
         .delete()
         .eq('id', intervalToDelete.id);
-      
       if (error) throw error;
-      
       showToast('success', `✅ Interval #${intervalToDelete.interval_number} deleted successfully!`);
       await fetchStudents(institutionId);
       setShowDeleteConfirm(false);
@@ -524,6 +449,40 @@ function FeesManagement() {
       showToast('error', '❌ Error deleting interval: ' + error.message);
     } finally {
       setDeleting(false);
+    }
+  };
+
+  // ============================================================
+  // 📦 BULK DELETE HANDLERS
+  // ============================================================
+  const handleBulkDeleteStudents = () => {
+    if (selectedStudents.length === 0) {
+      showToast('error', 'Please select students to delete');
+      return;
+    }
+    setDeleteType('bulk_students');
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmBulkDeleteStudents = async () => {
+    setDeleting(true);
+    try {
+      await supabase.from('student_intervals').delete().in('student_id', selectedStudents);
+      const { error } = await supabase
+        .from('students_new')
+        .delete()
+        .in('id', selectedStudents)
+        .eq('institution_id', institutionId);
+      if (error) throw error;
+      showToast('success', `✅ ${selectedStudents.length} student(s) deleted successfully!`);
+      await fetchStudents(institutionId);
+      setSelectedStudents([]);
+    } catch (error) {
+      console.error('Error bulk deleting students:', error);
+      showToast('error', '❌ Error deleting students: ' + error.message);
+    } finally {
+      setDeleting(false);
+      setShowDeleteConfirm(false);
     }
   };
 
@@ -544,9 +503,7 @@ function FeesManagement() {
         .from('student_intervals')
         .delete()
         .in('id', bulkDeleteIntervals);
-      
       if (error) throw error;
-      
       showToast('success', `✅ ${bulkDeleteIntervals.length} interval(s) deleted successfully!`);
       setSelectedIntervals([]);
       setBulkDeleteIntervals([]);
@@ -560,283 +517,18 @@ function FeesManagement() {
     }
   };
 
-  const toggleIntervalSelection = (intervalId) => {
-    setSelectedIntervals(prev => 
-      prev.includes(intervalId) 
-        ? prev.filter(id => id !== intervalId)
-        : [...prev, intervalId]
-    );
+  // ============================================================
+  // 📦 INTERVAL DETAILS
+  // ============================================================
+  const openIntervalDetails = (interval, student) => {
+    setSelectedInterval(interval);
+    setSelectedStudent(student);
+    setShowIntervalDetails(true);
   };
 
-  const openDateModal = (student) => {
-    setDateModalData({
-      student: student,
-      start_date: '',
-      end_date: ''
-    });
-    setShowDateModal(true);
-  };
-
-  const openDueDateModal = (student, intervalId = null) => {
-    const intervals = studentIntervals[student.id] || [];
-    let targetInterval;
-    
-    if (intervalId) {
-      targetInterval = intervals.find(i => i.id === intervalId);
-    } else {
-      targetInterval = intervals.find(i => Number(i.due_amount) > 0);
-    }
-    
-    setDueDateData({
-      student: student,
-      interval_id: targetInterval?.id || null,
-      due_date: targetInterval?.end_date || '',
-      due_amount: targetInterval?.due_amount || 0
-    });
-    setShowDueDateModal(true);
-    setShowIntervalDetails(false);
-  };
-
-  const openPaymentModal = (student, intervalId = null) => {
-    const intervals = studentIntervals[student.id] || [];
-    let targetInterval;
-    
-    if (intervalId) {
-      targetInterval = intervals.find(i => i.id === intervalId);
-    } else {
-      targetInterval = intervals.find(i => Number(i.due_amount) > 0);
-    }
-    
-    setPaymentData({
-      student: student,
-      interval_id: targetInterval?.id || null,
-      amount: '',
-      payment_date: new Date().toISOString().split('T')[0],
-      payment_mode: 'cash',
-      utr: '',
-      remarks: ''
-    });
-    setShowPaymentModal(true);
-    setShowIntervalDetails(false);
-  };
-
-  const openIntervalModal = (student) => {
-    setSelectedStudentForInterval(student);
-    const intervals = studentIntervals[student.id] || [];
-    setIntervalData({
-      interval_number: intervals.length + 1,
-      start_date: new Date().toISOString().split('T')[0],
-      end_date: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      total_fees: 0,
-      paid_amount: 0,
-      due_amount: 0,
-      status: 'pending'
-    });
-    setShowIntervalModal(true);
-    setShowIntervalDetails(false);
-  };
-
-  const handleAddInterval = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    
-    try {
-      const payload = {
-        student_id: selectedStudentForInterval.id,
-        interval_number: intervalData.interval_number,
-        start_date: intervalData.start_date,
-        end_date: intervalData.end_date,
-        total_fees: intervalData.total_fees,
-        paid_amount: 0,
-        due_amount: intervalData.due_amount || intervalData.total_fees,
-        status: 'pending',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-
-      const { error } = await supabase
-        .from('student_intervals')
-        .insert([payload]);
-
-      if (error) throw error;
-
-      showToast('success', `✅ Interval ${intervalData.interval_number} added successfully!`);
-      setShowIntervalModal(false);
-      await fetchStudents(institutionId);
-    } catch (error) {
-      console.error('Error adding interval:', error);
-      showToast('error', '❌ Error adding interval: ' + (error.message || 'Unknown error'));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDeleteStudent = (student) => {
-    setStudentToDelete(student);
-    setDeleteType('student');
-    setShowDeleteConfirm(true);
-  };
-
-  const confirmDeleteStudent = async () => {
-    if (!studentToDelete) return;
-    
-    setDeleting(true);
-    try {
-      await supabase
-        .from('student_intervals')
-        .delete()
-        .eq('student_id', studentToDelete.id);
-
-      const { error } = await supabase
-        .from('students_new')
-        .delete()
-        .eq('id', studentToDelete.id)
-        .eq('institution_id', institutionId);
-
-      if (error) throw error;
-
-      showToast('success', `✅ Student ${studentToDelete.full_name} deleted successfully!`);
-      await fetchStudents(institutionId);
-      setSelectedStudents(prev => prev.filter(id => id !== studentToDelete.id));
-      
-    } catch (error) {
-      console.error('Error deleting student:', error);
-      showToast('error', '❌ Error deleting student: ' + error.message);
-    } finally {
-      setDeleting(false);
-      setShowDeleteConfirm(false);
-      setStudentToDelete(null);
-    }
-  };
-
-  const handleBulkDeleteStudents = () => {
-    if (selectedStudents.length === 0) {
-      showToast('error', 'Please select students to delete');
-      return;
-    }
-    setDeleteType('bulk_students');
-    setShowDeleteConfirm(true);
-  };
-
-  const confirmBulkDeleteStudents = async () => {
-    setDeleting(true);
-    try {
-      await supabase
-        .from('student_intervals')
-        .delete()
-        .in('student_id', selectedStudents);
-
-      const { error } = await supabase
-        .from('students_new')
-        .delete()
-        .in('id', selectedStudents)
-        .eq('institution_id', institutionId);
-
-      if (error) throw error;
-
-      showToast('success', `✅ ${selectedStudents.length} student(s) deleted successfully!`);
-      await fetchStudents(institutionId);
-      setSelectedStudents([]);
-      
-    } catch (error) {
-      console.error('Error bulk deleting students:', error);
-      showToast('error', '❌ Error deleting students: ' + error.message);
-    } finally {
-      setDeleting(false);
-      setShowDeleteConfirm(false);
-    }
-  };
-
-  const getSubscriptionStatus = (student) => {
-    const intervals = studentIntervals[student.id] || [];
-    const activeInterval = intervals.find(i => i.start_date <= new Date().toISOString().split('T')[0] && i.end_date >= new Date().toISOString().split('T')[0]);
-    
-    if (!activeInterval) {
-      return { text: 'No Active Interval', color: 'bg-slate-800/50 text-slate-400 border-slate-700', icon: '❌' };
-    }
-    
-    if (activeInterval.end_date) {
-      const endDate = new Date(activeInterval.end_date);
-      const todayDate = new Date();
-      const daysLeft = Math.ceil((endDate - todayDate) / (1000 * 60 * 60 * 24));
-      return { text: `Active (${daysLeft} days left)`, color: 'bg-emerald-950/50 text-emerald-400 border-emerald-800', icon: '✅' };
-    }
-    
-    return { text: 'Active', color: 'bg-emerald-950/50 text-emerald-400 border-emerald-800', icon: '✅' };
-  };
-
-  const getDueStatus = (student) => {
-    const intervals = studentIntervals[student.id] || [];
-    const totalDue = intervals.reduce((sum, i) => sum + (Number(i.due_amount) || 0), 0);
-    const hasOverdue = intervals.some(i => i.end_date && i.end_date < new Date().toISOString().split('T')[0] && Number(i.due_amount) > 0);
-    
-    if (totalDue === 0) {
-      return { text: 'Paid', color: 'bg-emerald-950/50 text-emerald-400 border-emerald-800', icon: '✅' };
-    }
-    
-    if (hasOverdue) {
-      return { text: 'Overdue', color: 'bg-red-950/50 text-red-400 border-red-800', icon: '⚠️' };
-    }
-    
-    return { text: `Pending (₹${totalDue})`, color: 'bg-orange-950/50 text-orange-400 border-orange-800', icon: '💰' };
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return 'Not Set';
-    return new Date(dateString).toLocaleDateString('en-IN', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric'
-    });
-  };
-
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
-    }).format(amount || 0);
-  };
-
-  const exportToCSV = () => {
-    const headers = ['USN', 'Name', 'Branch', 'Total Fees', 'Paid Amount', 'Due Amount', 'Due Status', 'Intervals Count'];
-    
-    const csvData = filteredStudents.map(student => {
-      const intervals = studentIntervals[student.id] || [];
-      const totalFees = intervals.reduce((sum, i) => sum + (i.total_fees || 0), 0);
-      const paidAmount = intervals.reduce((sum, i) => sum + (i.paid_amount || 0), 0);
-      const dueAmount = intervals.reduce((sum, i) => sum + (i.due_amount || 0), 0);
-      const dueStatus = getDueStatus(student);
-      
-      return [
-        student.usn || '',
-        student.full_name || '',
-        student.branch || 'N/A',
-        totalFees || 0,
-        paidAmount || 0,
-        dueAmount || 0,
-        dueStatus.text,
-        intervals.length
-      ];
-    });
-
-    const csvContent = [headers.join(','), ...csvData.map(row => row.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `fees_report_${new Date().toISOString().split('T')[0]}.csv`);
-    link.click();
-    URL.revokeObjectURL(url);
-    
-    showToast('success', '📊 Report exported successfully!');
-  };
-
-  const handleBack = () => {
-    router.back();
-  };
-
+  // ============================================================
+  // 📦 TOGGLE SELECTIONS
+  // ============================================================
   const toggleStudentSelection = (studentId) => {
     setSelectedStudents(prev => 
       prev.includes(studentId) ? prev.filter(id => id !== studentId) : [...prev, studentId]
@@ -844,37 +536,80 @@ function FeesManagement() {
   };
 
   const selectAllStudents = () => {
-    if (selectedStudents.length === filteredStudents.length) {
+    if (selectedStudents.length === filteredStudents.length && filteredStudents.length > 0) {
       setSelectedStudents([]);
     } else {
       setSelectedStudents(filteredStudents.map(s => s.id));
     }
   };
 
-  const openIntervalDetails = (interval, student) => {
-    setSelectedInterval(interval);
-    setSelectedStudentId(student.id);
-    setSelectedStudent(student);
-    setShowIntervalDetails(true);
+  const toggleIntervalSelection = (intervalId) => {
+    setSelectedIntervals(prev => 
+      prev.includes(intervalId) ? prev.filter(id => id !== intervalId) : [...prev, intervalId]
+    );
   };
 
-  const totalStudents = students.length;
-  const totalDueAmount = Object.values(studentIntervals).reduce((sum, intervals) => {
-    return sum + intervals.reduce((s, i) => s + (Number(i.due_amount) || 0), 0);
-  }, 0);
+  // ============================================================
+  // 📦 UTILITY FUNCTIONS
+  // ============================================================
+  const getBranches = () => {
+    const branches = [...new Set(students.map(student => student.branch).filter(Boolean))];
+    return branches.sort();
+  };
+
+  const getSubscriptionStatus = (student) => {
+    const intervals = studentIntervals[student.id] || [];
+    const activeInterval = intervals.find(i => i.start_date <= new Date().toISOString().split('T')[0] && i.end_date >= new Date().toISOString().split('T')[0]);
+    if (!activeInterval) return { text: 'No Active Interval', color: 'bg-slate-800/50 text-slate-400 border-slate-700', icon: '❌' };
+    if (activeInterval.end_date) {
+      const endDate = new Date(activeInterval.end_date);
+      const daysLeft = Math.ceil((endDate - new Date()) / (1000 * 60 * 60 * 24));
+      return { text: `Active (${daysLeft} days left)`, color: 'bg-emerald-950/50 text-emerald-400 border-emerald-800', icon: '✅' };
+    }
+    return { text: 'Active', color: 'bg-emerald-950/50 text-emerald-400 border-emerald-800', icon: '✅' };
+  };
+
+  const getDueStatus = (student) => {
+    const intervals = studentIntervals[student.id] || [];
+    const totalDue = intervals.reduce((sum, i) => sum + (Number(i.due_amount) || 0), 0);
+    const hasOverdue = intervals.some(i => i.end_date && i.end_date < new Date().toISOString().split('T')[0] && Number(i.due_amount) > 0);
+    if (totalDue === 0) return { text: 'Paid', color: 'bg-emerald-950/50 text-emerald-400 border-emerald-800', icon: '✅' };
+    if (hasOverdue) return { text: 'Overdue', color: 'bg-red-950/50 text-red-400 border-red-800', icon: '⚠️' };
+    return { text: `Pending (₹${totalDue})`, color: 'bg-orange-950/50 text-orange-400 border-orange-800', icon: '💰' };
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'Not Set';
+    return new Date(dateString).toLocaleDateString('en-IN', {
+      day: 'numeric', month: 'short', year: 'numeric'
+    });
+  };
+
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency', currency: 'INR',
+      minimumFractionDigits: 0, maximumFractionDigits: 0
+    }).format(amount || 0);
+  };
+
+  const handleBack = () => router.back();
   
+  const exportToCSV = () => {
+    feesService.exportToCSV(filteredStudents, studentIntervals);
+    showToast('success', '📊 Report exported successfully!');
+  };
+
+  const totalIntervals = Object.values(studentIntervals).reduce((sum, intervals) => sum + intervals.length, 0);
   const overdueCount = students.filter(student => {
     const intervals = studentIntervals[student.id] || [];
     const today = new Date().toISOString().split('T')[0];
     return intervals.some(i => i.end_date && i.end_date < today && Number(i.due_amount) > 0);
   }).length;
-
   const activeStudents = students.filter(student => {
     const intervals = studentIntervals[student.id] || [];
     const today = new Date().toISOString().split('T')[0];
     return intervals.some(i => i.start_date <= today && i.end_date >= today);
   }).length;
-
   const noSubscriptionStudents = students.filter(student => {
     const intervals = studentIntervals[student.id] || [];
     return intervals.length === 0;
@@ -888,641 +623,218 @@ function FeesManagement() {
     );
   }
 
-  const totalIntervals = Object.values(studentIntervals).reduce((sum, intervals) => sum + intervals.length, 0);
-
   return (
     <div className="min-h-screen bg-slate-900">
       {/* Toast Notification */}
-      {toast.show && (
-        <div className="fixed top-20 right-4 z-50 animate-slide-in">
-          <div className={`flex items-center gap-3 px-5 py-3 rounded-xl shadow-2xl backdrop-blur-md border ${
-            toast.type === 'success' 
-              ? 'bg-emerald-950/90 border-emerald-500/30 text-emerald-400' 
-              : 'bg-red-950/90 border-red-500/30 text-red-400'
-          }`}>
-            {toast.type === 'success' ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
-            <span className="text-sm font-medium">{toast.message}</span>
-          </div>
-        </div>
-      )}
+      <FeesToast toast={toast} setToast={setToast} />
 
       <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 py-4 lg:py-10">
-        {/* Header */}
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
-          <div className="flex items-center gap-3">
-            <button onClick={handleBack} className="p-2 text-slate-400 hover:text-blue-400 rounded-xl hover:bg-slate-800 border border-slate-700">
-              <ArrowLeft size={20} />
-            </button>
-            <div>
-              <div className="flex items-center gap-3">
-                <div className="p-3 bg-blue-600 rounded-2xl">
-                  <CreditCard className="text-white" size={24} />
-                </div>
-                <div>
-                  <h1 className="text-xl lg:text-3xl font-bold text-white">Fees Management</h1>
-                  <p className="text-slate-400 text-xs lg:text-sm mt-1 hidden sm:block">Manage student fees, intervals & due dates</p>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <div className="flex flex-wrap gap-2 w-full lg:w-auto">
-            <button
-              onClick={() => setShowBulkAssignModal(true)}
-              className="flex items-center gap-2 px-3 py-2 lg:px-4 lg:py-2.5 bg-purple-600/20 border border-purple-500 rounded-xl text-purple-400 hover:bg-purple-600/30 transition-all text-sm lg:text-base"
-            >
-              <CalendarPlus size={18} />
-              <span className="hidden sm:inline">Bulk Assign</span>
-              <span className="sm:hidden">Bulk</span>
-            </button>
-            {selectedStudents.length > 0 && (
-              <button onClick={handleBulkDeleteStudents} className="flex items-center gap-2 px-3 py-2 lg:px-4 lg:py-2.5 bg-red-950/50 border border-red-700 rounded-xl text-red-400 hover:bg-red-900/50 text-sm lg:text-base">
-                <Trash2 size={18} />
-                <span>{selectedStudents.length}</span>
-              </button>
-            )}
-            {selectedIntervals.length > 0 && (
-              <button onClick={handleBulkDeleteIntervals} className="flex items-center gap-2 px-3 py-2 lg:px-4 lg:py-2.5 bg-orange-950/50 border border-orange-700 rounded-xl text-orange-400 hover:bg-orange-900/50 text-sm lg:text-base">
-                <Trash2 size={18} />
-                <span>Delete {selectedIntervals.length} Intervals</span>
-              </button>
-            )}
-            <button onClick={exportToCSV} className="flex items-center gap-2 px-3 py-2 lg:px-4 lg:py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-slate-300 hover:bg-blue-600/20 hover:border-blue-500 hover:text-blue-400 transition-all text-sm lg:text-base">
-              <Download size={18} />
-              <span className="hidden sm:inline">Export</span>
-            </button>
-          </div>
-        </div>
+        <FeesHeader 
+          handleBack={handleBack}
+          selectedStudents={selectedStudents}
+          selectedIntervals={selectedIntervals}
+          handleBulkDeleteStudents={handleBulkDeleteStudents}
+          handleBulkDeleteIntervals={handleBulkDeleteIntervals}
+          exportToCSV={exportToCSV}
+          setShowBulkAssignModal={setShowBulkAssignModal}
+          financialSummary={financialSummary}
+          totalIntervals={totalIntervals}
+        />
 
-        {/* Financial Summary Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 sm:gap-4 mb-4 sm:mb-6">
-          <div className="bg-slate-800/50 rounded-xl sm:rounded-2xl border border-slate-700 p-3 sm:p-5">
-            <div className="flex items-center justify-between mb-2 sm:mb-3">
-              <div className="p-1.5 sm:p-2 bg-blue-600/20 rounded-xl">
-                <Wallet className="text-blue-400" size={16} />
-              </div>
-              <span className="text-[10px] sm:text-xs font-medium text-blue-400 bg-blue-950/50 px-1.5 py-0.5 rounded-full border border-blue-800">Total</span>
-            </div>
-            <h3 className="text-lg sm:text-2xl font-bold text-white">{formatCurrency(financialSummary.total_fees)}</h3>
-            <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1">Total Fees</p>
-          </div>
+        <FeesFilters 
+          searchTerm={searchTerm}
+          setSearchTerm={setSearchTerm}
+          feeFilter={feeFilter}
+          setFeeFilter={setFeeFilter}
+          viewMode={viewMode}
+          setViewMode={setViewMode}
+          getBranches={getBranches}
+          financialSummary={financialSummary}
+          overdueCount={overdueCount}
+          activeStudents={activeStudents}
+          noSubscriptionStudents={noSubscriptionStudents}
+        />
 
-          <div className="bg-slate-800/50 rounded-xl sm:rounded-2xl border border-slate-700 p-3 sm:p-5">
-            <div className="flex items-center justify-between mb-2 sm:mb-3">
-              <div className="p-1.5 sm:p-2 bg-emerald-600/20 rounded-xl">
-                <CheckCircle className="text-emerald-400" size={16} />
-              </div>
-              <span className="text-[10px] sm:text-xs font-medium text-emerald-400 bg-emerald-950/50 px-1.5 py-0.5 rounded-full border border-emerald-800">Collected</span>
-            </div>
-            <h3 className="text-lg sm:text-2xl font-bold text-emerald-400">{formatCurrency(financialSummary.total_collected)}</h3>
-            <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1">Fees Collected</p>
-          </div>
+        <FeesResultsCount 
+          filteredStudents={filteredStudents}
+          students={students}
+          selectedStudents={selectedStudents}
+          selectedIntervals={selectedIntervals}
+          selectAllStudents={selectAllStudents}
+          viewMode={viewMode}
+        />
 
-          <div className="bg-slate-800/50 rounded-xl sm:rounded-2xl border border-slate-700 p-3 sm:p-5">
-            <div className="flex items-center justify-between mb-2 sm:mb-3">
-              <div className="p-1.5 sm:p-2 bg-orange-600/20 rounded-xl">
-                <AlertCircle className="text-orange-400" size={16} />
-              </div>
-              <span className="text-[10px] sm:text-xs font-medium text-orange-400 bg-orange-950/50 px-1.5 py-0.5 rounded-full border border-orange-800">Due</span>
-            </div>
-            <h3 className="text-lg sm:text-2xl font-bold text-orange-400">{formatCurrency(financialSummary.total_due)}</h3>
-            <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1">Total Due</p>
-          </div>
-
-          <div className="bg-slate-800/50 rounded-xl sm:rounded-2xl border border-slate-700 p-3 sm:p-5">
-            <div className="flex items-center justify-between mb-2 sm:mb-3">
-              <div className="p-1.5 sm:p-2 bg-purple-600/20 rounded-xl">
-                <TrendingUp className="text-purple-400" size={16} />
-              </div>
-              <span className="text-[10px] sm:text-xs font-medium text-purple-400 bg-purple-950/50 px-1.5 py-0.5 rounded-full border border-purple-800">Rate</span>
-            </div>
-            <h3 className="text-lg sm:text-2xl font-bold text-purple-400">{financialSummary.collection_rate.toFixed(1)}%</h3>
-            <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1">Collection Rate</p>
-          </div>
-
-          <div className="bg-slate-800/50 rounded-xl sm:rounded-2xl border border-slate-700 p-3 sm:p-5">
-            <div className="flex items-center justify-between mb-2 sm:mb-3">
-              <div className="p-1.5 sm:p-2 bg-indigo-600/20 rounded-xl">
-                <Layers className="text-indigo-400" size={16} />
-              </div>
-              <span className="text-[10px] sm:text-xs font-medium text-indigo-400 bg-indigo-950/50 px-1.5 py-0.5 rounded-full border border-indigo-800">Intervals</span>
-            </div>
-            <h3 className="text-lg sm:text-2xl font-bold text-indigo-400">{totalIntervals}</h3>
-            <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1">Total Intervals</p>
-          </div>
-        </div>
-
-        {/* Filters */}
-        <div className="bg-slate-800/50 rounded-xl sm:rounded-2xl border border-slate-700 p-3 sm:p-5 mb-4 sm:mb-6">
-          <div className="space-y-3 sm:space-y-4">
-            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500" size={16} />
-                <input
-                  type="text"
-                  placeholder="Search..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 sm:py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 text-sm"
-                />
-              </div>
-              
-              <div className="flex flex-wrap gap-2">
-                <select
-                  value={feeFilter}
-                  onChange={(e) => setFeeFilter(e.target.value)}
-                  className="flex-1 sm:flex-none px-3 py-2 sm:px-4 sm:py-3 bg-slate-900 border border-slate-700 rounded-xl text-slate-200 cursor-pointer text-sm"
-                >
-                  <option value="all">All</option>
-                  <option value="due">Due</option>
-                  <option value="overdue">Overdue</option>
-                  <option value="paid">Paid</option>
-                  <option value="active">Active</option>
-                  <option value="expired">Expired</option>
-                  <option value="no-subscription">No Interval</option>
-                </select>
-
-                <button
-                  onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
-                  className="px-3 py-2 sm:px-4 sm:py-3 bg-slate-900 border border-slate-700 rounded-xl text-slate-400 hover:text-blue-400"
-                >
-                  <Layers size={18} />
-                </button>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-1.5 sm:gap-2 pt-2 sm:pt-3 border-t border-slate-700">
-              <span className="text-[10px] sm:text-xs font-medium text-slate-500 py-1">Filters:</span>
-              <button onClick={() => setFeeFilter('due')} className="px-2 sm:px-3 py-0.5 sm:py-1 bg-orange-950/50 text-orange-400 rounded-lg text-[10px] sm:text-xs border border-orange-800">
-                Due ({financialSummary.pending_count})
-              </button>
-              <button onClick={() => setFeeFilter('overdue')} className="px-2 sm:px-3 py-0.5 sm:py-1 bg-red-950/50 text-red-400 rounded-lg text-[10px] sm:text-xs border border-red-800">
-                Overdue ({overdueCount})
-              </button>
-              <button onClick={() => setFeeFilter('active')} className="px-2 sm:px-3 py-0.5 sm:py-1 bg-emerald-950/50 text-emerald-400 rounded-lg text-[10px] sm:text-xs border border-emerald-800">
-                Active ({activeStudents})
-              </button>
-              <button onClick={() => setFeeFilter('no-subscription')} className="px-2 sm:px-3 py-0.5 sm:py-1 bg-purple-950/50 text-purple-400 rounded-lg text-[10px] sm:text-xs border border-purple-800">
-                No Interval ({noSubscriptionStudents})
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Results Count */}
-        <div className="bg-slate-800/50 rounded-xl border border-slate-700 px-3 sm:px-5 py-2 sm:py-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-4 sm:mb-6">
-          <p className="text-xs sm:text-sm text-slate-400">
-            Showing <span className="font-semibold text-white">{filteredStudents.length}</span> of{' '}
-            <span className="font-semibold text-white">{students.length}</span> students
-          </p>
-          <div className="flex items-center gap-4">
-            {viewMode === 'table' && filteredStudents.length > 0 && (
-              <label className="flex items-center gap-2 text-xs sm:text-sm text-slate-400 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={selectedStudents.length === filteredStudents.length && filteredStudents.length > 0}
-                  onChange={selectAllStudents}
-                  className="w-3 h-3 sm:w-4 sm:h-4 rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-0"
-                />
-                Select All
-              </label>
-            )}
-            {selectedIntervals.length > 0 && (
-              <span className="text-xs text-orange-400">
-                {selectedIntervals.length} interval(s) selected
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Grid View */}
-        {viewMode === 'grid' ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5">
-            {filteredStudents.map((student) => {
-              const intervals = studentIntervals[student.id] || [];
-              const totalFees = intervals.reduce((sum, i) => sum + (i.total_fees || 0), 0);
-              const paidAmount = intervals.reduce((sum, i) => sum + (i.paid_amount || 0), 0);
-              const dueAmount = intervals.reduce((sum, i) => sum + (i.due_amount || 0), 0);
-              const busStatus = getSubscriptionStatus(student);
-              const dueStatus = getDueStatus(student);
-              const paidPercentage = totalFees > 0 ? (paidAmount / totalFees) * 100 : 0;
-              
-              return (
-                <div key={student.id} className="bg-slate-800/50 rounded-xl sm:rounded-2xl border border-slate-700 hover:border-blue-500/30 transition-all overflow-hidden">
-                  <div className={`h-1 ${
-                    dueAmount === 0 ? 'bg-emerald-500' :
-                    dueStatus.text === 'Overdue' ? 'bg-red-500' :
-                    'bg-orange-500'
-                  }`}></div>
-                  <div className="p-3 sm:p-5">
-                    <div className="flex justify-between items-start mb-3 sm:mb-4">
-                      <div className="flex items-center gap-2 sm:gap-3">
-                        <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-600 rounded-xl flex items-center justify-center">
-                          <GraduationCap className="text-white" size={16} />
-                        </div>
-                        <div>
-                          <h3 className="font-semibold text-white text-sm sm:text-base">{student.full_name}</h3>
-                          <p className="text-[10px] sm:text-xs text-slate-500">{student.usn || 'No USN'}</p>
-                        </div>
-                      </div>
-                      <div className="flex flex-col items-end gap-0.5 sm:gap-1">
-                        <span className={`px-1.5 sm:px-2 py-0.5 text-[10px] sm:text-xs font-semibold rounded-full border ${dueStatus.color}`}>
-                          {dueStatus.icon} {dueStatus.text}
-                        </span>
-                        <span className={`px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-xs rounded-full border ${busStatus.color}`}>
-                          {busStatus.icon} {busStatus.text.split('(')[0].trim()}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2 sm:space-y-3 mb-3 sm:mb-4">
-                      <div className="flex items-center gap-2 text-xs sm:text-sm">
-                        <BookOpen size={12} className="text-slate-500" />
-                        <span className="text-slate-400">{student.branch || 'N/A'}</span>
-                      </div>
-                      
-                      {/* Intervals Info */}
-                      <div className="bg-slate-900/50 rounded-lg p-2 sm:p-3 border border-slate-700">
-                        <div className="flex items-center justify-between text-xs sm:text-sm mb-2">
-                          <span className="text-slate-500">Intervals</span>
-                          <div className="flex gap-1">
-                            <button
-                              onClick={() => openIntervalModal(student)}
-                              className="text-purple-400 hover:text-purple-300 text-[10px] sm:text-xs flex items-center gap-1"
-                            >
-                              <Plus size={12} /> Add
-                            </button>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 text-slate-300">
-                          <Layers size={12} />
-                          <span className="text-xs sm:text-sm">
-                            {intervals.length} interval{intervals.length !== 1 ? 's' : ''}
-                          </span>
-                        </div>
-                        {intervals.length > 0 && (
-                          <div className="mt-2 pt-2 border-t border-slate-700 max-h-32 sm:max-h-40 overflow-y-auto space-y-1">
-                            {intervals.map((interval) => (
-                              <div 
-                                key={interval.id} 
-                                className={`flex items-center justify-between text-[10px] sm:text-xs bg-slate-800/50 rounded px-1.5 sm:px-2 py-1 cursor-pointer hover:bg-slate-700/50 transition-colors ${
-                                  selectedIntervalId === interval.id ? 'bg-blue-900/30 border border-blue-800' : ''
-                                }`}
-                                onClick={() => {
-                                  setSelectedIntervalId(interval.id);
-                                  openIntervalDetails(interval, student);
-                                }}
-                              >
-                                <div className="flex items-center gap-1.5 sm:gap-2 flex-1 min-w-0">
-                                  <input
-                                    type="checkbox"
-                                    checked={selectedIntervals.includes(interval.id)}
-                                    onChange={(e) => {
-                                      e.stopPropagation();
-                                      toggleIntervalSelection(interval.id);
-                                    }}
-                                    className="w-3 h-3 rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-blue-500"
-                                  />
-                                  <span className="text-slate-400 font-mono">#{interval.interval_number}</span>
-                                  <span className="text-slate-300 truncate">
-                                    {formatDate(interval.start_date)} - {formatDate(interval.end_date)}
-                                  </span>
-                                  <span className={`px-1 py-0.5 rounded text-[8px] sm:text-[10px] whitespace-nowrap ${
-                                    interval.status === 'paid' ? 'bg-emerald-900/50 text-emerald-400' :
-                                    interval.status === 'partial' ? 'bg-amber-900/50 text-amber-400' :
-                                    'bg-orange-900/50 text-orange-400'
-                                  }`}>
-                                    {interval.status || 'pending'}
-                                  </span>
-                                  <span className="text-orange-400 whitespace-nowrap">₹{interval.due_amount || 0}</span>
-                                </div>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeleteInterval(interval.id);
-                                  }}
-                                  className="p-1 text-red-400 hover:bg-red-600/20 rounded transition-colors flex-shrink-0"
-                                  title="Delete Interval"
-                                >
-                                  <Trash2 size={10} />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      
-                      {/* Fees Status */}
-                      <div className="bg-slate-900/50 rounded-lg p-2 sm:p-3 border border-slate-700">
-                        <div className="flex justify-between text-xs sm:text-sm mb-1">
-                          <span className="text-slate-500">Fees Status</span>
-                          <div className="flex gap-1">
-                            <button
-                              onClick={() => openPaymentModal(student)}
-                              className="text-emerald-400 hover:text-emerald-300 text-[10px] sm:text-xs flex items-center gap-1"
-                            >
-                              <DollarSign size={12} /> Pay
-                            </button>
-                            <button
-                              onClick={() => openDueDateModal(student)}
-                              className="text-purple-400 hover:text-purple-300 text-[10px] sm:text-xs flex items-center gap-1"
-                            >
-                              <Calendar size={12} /> Due
-                            </button>
-                          </div>
-                        </div>
-                        <div className="w-full bg-slate-700 rounded-full h-1 sm:h-1.5 mb-1.5 sm:mb-2">
-                          <div 
-                            className={`h-1 sm:h-1.5 rounded-full transition-all ${
-                              dueAmount === 0 ? 'bg-emerald-500' : 'bg-orange-500'
-                            }`}
-                            style={{ width: `${paidPercentage}%` }}
-                          ></div>
-                        </div>
-                        <div className="flex justify-between text-[10px] sm:text-xs">
-                          <span className="text-emerald-400">Paid: {formatCurrency(paidAmount)}</span>
-                          <span className="text-orange-400">Due: {formatCurrency(dueAmount)}</span>
-                          <span className="text-slate-400">Total: {formatCurrency(totalFees)}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap justify-end gap-1.5 sm:gap-2 pt-2 sm:pt-3 border-t border-slate-700">
-                      <button
-                        onClick={() => openPaymentModal(student)}
-                        className="px-2 sm:px-3 py-1 sm:py-1.5 bg-emerald-600/20 text-emerald-400 rounded-lg text-[10px] sm:text-xs hover:bg-emerald-600/30 transition-colors flex items-center gap-1"
-                      >
-                        <DollarSign size={12} /> Pay
-                      </button>
-                      <button
-                        onClick={() => openIntervalModal(student)}
-                        className="px-2 sm:px-3 py-1 sm:py-1.5 bg-purple-600/20 text-purple-400 rounded-lg text-[10px] sm:text-xs hover:bg-purple-600/30 transition-colors flex items-center gap-1"
-                      >
-                        <Layers size={12} /> Add
-                      </button>
-                      <button
-                        onClick={() => handleDeleteStudent(student)}
-                        className="p-1 sm:p-1.5 text-red-400 hover:bg-red-600/20 rounded-lg transition-colors"
-                        title="Delete Student"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="bg-slate-800/50 rounded-xl sm:rounded-2xl border border-slate-700 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs sm:text-sm">
-                <thead>
-                  <tr className="bg-slate-900 border-b border-slate-700">
-                    <th className="px-2 sm:px-5 py-2 sm:py-3 text-left">
-                      <input type="checkbox" checked={selectedStudents.length === filteredStudents.length && filteredStudents.length > 0} onChange={selectAllStudents} className="rounded" />
-                    </th>
-                    <th className="px-2 sm:px-5 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-semibold text-slate-400">Student</th>
-                    <th className="px-2 sm:px-5 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-semibold text-slate-400">Branch</th>
-                    <th className="px-2 sm:px-5 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-semibold text-slate-400">Int.</th>
-                    <th className="px-2 sm:px-5 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-semibold text-slate-400">Fees</th>
-                    <th className="px-2 sm:px-5 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-semibold text-slate-400">Paid</th>
-                    <th className="px-2 sm:px-5 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-semibold text-slate-400">Due</th>
-                    <th className="px-2 sm:px-5 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-semibold text-slate-400">Status</th>
-                    <th className="px-2 sm:px-5 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-semibold text-slate-400">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-700">
-                  {filteredStudents.map((student) => {
-                    const intervals = studentIntervals[student.id] || [];
-                    const totalFees = intervals.reduce((sum, i) => sum + (i.total_fees || 0), 0);
-                    const paidAmount = intervals.reduce((sum, i) => sum + (i.paid_amount || 0), 0);
-                    const dueAmount = intervals.reduce((sum, i) => sum + (i.due_amount || 0), 0);
-                    const dueStatus = getDueStatus(student);
-                    
-                    return (
-                      <tr key={student.id} className="hover:bg-slate-700/30">
-                        <td className="px-2 sm:px-5 py-2 sm:py-3">
-                          <input type="checkbox" checked={selectedStudents.includes(student.id)} onChange={() => toggleStudentSelection(student.id)} className="rounded" />
-                        </td>
-                        <td className="px-2 sm:px-5 py-2 sm:py-3">
-                          <div className="flex items-center gap-2 sm:gap-3">
-                            <div className="w-6 h-6 sm:w-8 sm:h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-                              <GraduationCap className="text-white" size={12} />
-                            </div>
-                            <div>
-                              <p className="font-medium text-white text-xs sm:text-sm">{student.full_name}</p>
-                              <p className="text-[10px] sm:text-xs text-slate-500">{student.usn || 'No USN'}</p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-2 sm:px-5 py-2 sm:py-3 text-[10px] sm:text-sm text-slate-400">{student.branch || 'N/A'}</td>
-                        <td className="px-2 sm:px-5 py-2 sm:py-3">
-                          <div className="flex items-center gap-1 sm:gap-2">
-                            <Layers size={12} className="text-purple-400" />
-                            <span className="text-xs sm:text-sm text-slate-300">{intervals.length}</span>
-                          </div>
-                        </td>
-                        <td className="px-2 sm:px-5 py-2 sm:py-3 text-[10px] sm:text-sm text-white">{formatCurrency(totalFees)}</td>
-                        <td className="px-2 sm:px-5 py-2 sm:py-3 text-[10px] sm:text-sm text-emerald-400">{formatCurrency(paidAmount)}</td>
-                        <td className={`px-2 sm:px-5 py-2 sm:py-3 text-[10px] sm:text-sm font-semibold ${dueAmount > 0 ? 'text-orange-400' : 'text-emerald-400'}`}>
-                          {formatCurrency(dueAmount)}
-                        </td>
-                        <td className="px-2 sm:px-5 py-2 sm:py-3">
-                          <span className={`px-1.5 sm:px-2 py-0.5 text-[8px] sm:text-xs font-semibold rounded-full border ${dueStatus.color}`}>
-                            {dueStatus.icon} {dueStatus.text.split('(')[0].trim()}
-                          </span>
-                        </td>
-                        <td className="px-2 sm:px-5 py-2 sm:py-3">
-                          <div className="flex gap-0.5 sm:gap-1">
-                            <button onClick={() => openPaymentModal(student)} className="p-1 sm:p-1.5 text-emerald-400 hover:bg-emerald-600/20 rounded" title="Pay">
-                              <DollarSign size={12} />
-                            </button>
-                            <button onClick={() => openIntervalModal(student)} className="p-1 sm:p-1.5 text-purple-400 hover:bg-purple-600/20 rounded" title="Add Interval">
-                              <Layers size={12} />
-                            </button>
-                            <button onClick={() => handleDeleteStudent(student)} className="p-1 sm:p-1.5 text-red-400 hover:bg-red-600/20 rounded" title="Delete">
-                              <Trash2 size={12} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* Empty State */}
-        {filteredStudents.length === 0 && (
-          <div className="text-center py-8 sm:py-12 bg-slate-800/50 rounded-xl sm:rounded-2xl border border-slate-700">
-            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-slate-700/50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <CreditCard className="text-slate-500" size={32} />
-            </div>
-            <h3 className="text-base sm:text-lg font-semibold text-white mb-2">No Students Found</h3>
-            <p className="text-xs sm:text-sm text-slate-400 mb-4">Try adjusting your search or filter criteria</p>
-            <button onClick={() => { setSearchTerm(''); setFeeFilter('all'); }} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
-              Clear Filters
-            </button>
-          </div>
-        )}
+        <FeesGridView 
+          filteredStudents={filteredStudents}
+          studentIntervals={studentIntervals}
+          selectedIntervalId={selectedIntervalId}
+          selectedIntervals={selectedIntervals}
+          toggleIntervalSelection={toggleIntervalSelection}
+          openIntervalDetails={openIntervalDetails}
+          openPaymentModal={openPaymentModal}
+          openDueDateModal={openDueDateModal}
+          openIntervalModal={openIntervalModal}
+          handleDeleteStudent={handleDeleteStudent}
+          handleDeleteInterval={handleDeleteInterval}
+          openEditIntervalModal={openEditIntervalModal}
+          formatCurrency={formatCurrency}
+          formatDate={formatDate}
+          getSubscriptionStatus={getSubscriptionStatus}
+          getDueStatus={getDueStatus}
+        />
       </div>
 
-      {/* Interval Details Modal */}
-      {showIntervalDetails && selectedInterval && selectedStudent && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-800 rounded-2xl border border-slate-700 w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="px-6 py-4 border-b border-slate-700 flex justify-between items-center sticky top-0 bg-slate-800">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-600 rounded-xl">
-                  <Info className="text-white" size={20} />
-                </div>
-                <h3 className="text-xl font-bold text-white">
-                  Interval #{selectedInterval.interval_number}
-                </h3>
-              </div>
-              <button 
-                onClick={() => {
-                  setShowIntervalDetails(false);
-                  setSelectedIntervalId(null);
-                }}
-                className="p-2 text-slate-400 hover:text-slate-300 hover:bg-slate-700 rounded-lg transition-all"
-              >
-                <X size={20} />
-              </button>
-            </div>
+      {/* Edit Interval Modal */}
+      <EditIntervalModal 
+        show={showEditIntervalModal}
+        onClose={() => {
+          setShowEditIntervalModal(false);
+          setEditingInterval(null);
+          setEditingStudent(null);
+        }}
+        interval={editingInterval}
+        student={editingStudent}
+        onSave={handleSaveInterval}
+        formatCurrency={formatCurrency}
+        saving={saving}
+      />
 
-            <div className="p-6 space-y-4">
-              {/* Student Info */}
-              <div className="p-4 bg-slate-700/30 rounded-xl">
-                <p className="font-semibold text-white">{selectedStudent.full_name}</p>
-                <p className="text-sm text-slate-400">{selectedStudent.usn} • {selectedStudent.branch}</p>
-              </div>
-
-              {/* Interval Details */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-xs text-slate-500">Start Date</p>
-                  <p className="text-sm font-medium text-white">{formatDate(selectedInterval.start_date)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500">End Date</p>
-                  <p className="text-sm font-medium text-white">{formatDate(selectedInterval.end_date)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500">Status</p>
-                  <span className={`px-2 py-1 rounded text-xs font-medium inline-block ${
-                    selectedInterval.status === 'paid' ? 'bg-emerald-900/50 text-emerald-400' :
-                    selectedInterval.status === 'partial' ? 'bg-amber-900/50 text-amber-400' :
-                    'bg-orange-900/50 text-orange-400'
-                  }`}>
-                    {selectedInterval.status || 'pending'}
-                  </span>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500">Payment Mode</p>
-                  <p className="text-sm font-medium text-white">{selectedInterval.payment_mode || 'N/A'}</p>
-                </div>
-              </div>
-
-              {/* Amount Details */}
-              <div className="bg-slate-900/50 rounded-xl p-4 border border-slate-700">
-                <h4 className="text-sm font-semibold text-white mb-3">Amount Details</h4>
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-400">Total Fees</span>
-                    <span className="text-white font-medium">{formatCurrency(selectedInterval.total_fees)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-400">Paid Amount</span>
-                    <span className="text-emerald-400 font-medium">{formatCurrency(selectedInterval.paid_amount)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm pt-2 border-t border-slate-700">
-                    <span className="text-slate-400">Due Amount</span>
-                    <span className={`font-medium ${selectedInterval.due_amount > 0 ? 'text-orange-400' : 'text-emerald-400'}`}>
-                      {formatCurrency(selectedInterval.due_amount)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex flex-wrap gap-3 pt-4 border-t border-slate-700">
-                <button
-                  onClick={() => openPaymentModal(selectedStudent, selectedInterval.id)}
-                  className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-all font-medium flex items-center justify-center gap-2"
-                >
-                  <DollarSign size={16} /> Pay Now
-                </button>
-                <button
-                  onClick={() => openDueDateModal(selectedStudent, selectedInterval.id)}
-                  className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-all font-medium flex items-center justify-center gap-2"
-                >
-                  <Calendar size={16} /> Set Due Date
-                </button>
-                <button
-                  onClick={() => handleDeleteInterval(selectedInterval.id)}
-                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all font-medium flex items-center justify-center gap-2"
-                >
-                  <Trash2 size={16} /> Delete Interval
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Assign Interval Modal */}
-      {showDateModal && dateModalData.student && (
+      {/* Payment Modal */}
+      {showPaymentModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-slate-800 rounded-2xl border border-slate-700 max-w-md w-full">
             <div className="p-6">
               <div className="flex justify-between items-center mb-6">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-blue-600 rounded-xl">
-                    <Calendar className="text-white" size={20} />
+                  <div className="p-2 bg-emerald-600 rounded-xl">
+                    <DollarSign className="text-white" size={20} />
                   </div>
-                  <h3 className="text-xl font-bold text-white">Assign New Interval</h3>
+                  <h3 className="text-xl font-bold text-white">Record Fee Payment</h3>
                 </div>
-                <button onClick={() => setShowDateModal(false)} className="p-2 text-slate-400 hover:bg-slate-700 rounded-lg">
+                <button onClick={() => setShowPaymentModal(false)} className="p-2 text-slate-400 hover:bg-slate-700 rounded-lg">
                   <X size={20} />
                 </button>
               </div>
-              
-              <div className="mb-6 p-4 bg-slate-700/30 rounded-xl">
-                <p className="font-semibold text-white">{dateModalData.student.full_name}</p>
-                <p className="text-sm text-slate-400">{dateModalData.student.usn} • {dateModalData.student.branch}</p>
-              </div>
 
-              <form onSubmit={handleAssignDate} className="space-y-4">
+              {paymentData.student && (
+                <div className="mb-4 p-4 bg-slate-700/30 rounded-xl">
+                  <p className="font-semibold text-white">{paymentData.student.full_name}</p>
+                  <p className="text-sm text-slate-400">{paymentData.student.usn}</p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Total Intervals: {(studentIntervals[paymentData.student.id] || []).length}
+                  </p>
+                </div>
+              )}
+
+              <form onSubmit={handleRecordPayment} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">Start Date *</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Select Interval</label>
+                  <select
+                    value={paymentData.interval_id || ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setPaymentData(prev => ({ ...prev, interval_id: val || null }));
+                    }}
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:border-emerald-500 text-slate-200"
+                  >
+                    <option value="">-- Select an interval --</option>
+                    {paymentData.student && (studentIntervals[paymentData.student.id] || [])
+                      .filter(i => Number(i.due_amount) > 0)
+                      .map((interval) => (
+                        <option key={interval.id} value={interval.id}>
+                          Interval #{interval.interval_number} - Due: ₹{Number(interval.due_amount).toLocaleString()}
+                        </option>
+                      ))}
+                    {paymentData.student && (studentIntervals[paymentData.student.id] || []).filter(i => Number(i.due_amount) > 0).length === 0 && (
+                      <option value="" disabled>No pending dues found</option>
+                    )}
+                  </select>
+                  {paymentData.student && (studentIntervals[paymentData.student.id] || []).filter(i => Number(i.due_amount) > 0).length === 0 && (
+                    <p className="text-xs text-amber-400 mt-1">⚠️ This student has no pending dues</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Amount *</label>
+                  <div className="relative">
+                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500">
+                      <IndianRupee size={16} />
+                    </div>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      required
+                      placeholder="Enter amount"
+                      value={paymentData.amount}
+                      onChange={(e) => {
+                        let v = e.target.value;
+                        if (v.length > 1 && v.startsWith('0') && !v.includes('.')) {
+                          v = v.replace(/^0+/, '');
+                        }
+                        if (v === '' || /^\d*\.?\d*$/.test(v)) {
+                          setPaymentData(prev => ({ ...prev, amount: v }));
+                        }
+                      }}
+                      className="w-full pl-10 pr-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:border-emerald-500 text-slate-200"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Payment Date *</label>
                   <input
                     type="date"
                     required
-                    value={dateModalData.start_date}
-                    onChange={(e) => setDateModalData({...dateModalData, start_date: e.target.value})}
-                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:border-blue-500 text-slate-200"
+                    value={paymentData.payment_date}
+                    onChange={(e) => setPaymentData(prev => ({ ...prev, payment_date: e.target.value }))}
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:border-emerald-500 text-slate-200"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">End Date *</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Payment Mode</label>
+                  <select
+                    value={paymentData.payment_mode}
+                    onChange={(e) => setPaymentData(prev => ({ ...prev, payment_mode: e.target.value }))}
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:border-emerald-500 text-slate-200"
+                  >
+                    <option value="cash">Cash</option>
+                    <option value="card">Card</option>
+                    <option value="upi">UPI</option>
+                    <option value="bank_transfer">Bank Transfer</option>
+                    <option value="cheque">Cheque</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">UTR / Transaction ID</label>
                   <input
-                    type="date"
-                    required
-                    value={dateModalData.end_date}
-                    onChange={(e) => setDateModalData({...dateModalData, end_date: e.target.value})}
-                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:border-blue-500 text-slate-200"
+                    type="text"
+                    placeholder="Enter UTR or Transaction ID"
+                    value={paymentData.utr}
+                    onChange={(e) => setPaymentData(prev => ({ ...prev, utr: e.target.value }))}
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:border-emerald-500 text-slate-200"
                   />
                 </div>
 
                 <div className="flex justify-end gap-3 pt-4">
-                  <button type="button" onClick={() => setShowDateModal(false)} className="px-4 py-2 text-slate-300 bg-slate-700 rounded-lg hover:bg-slate-600">Cancel</button>
-                  <button type="submit" disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
-                    {saving ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Saving...</> : <><Save size={16} />Assign Interval</>}
+                  <button
+                    type="button"
+                    onClick={() => setShowPaymentModal(false)}
+                    className="px-4 py-2 text-slate-300 bg-slate-700 rounded-lg hover:bg-slate-600"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-2 disabled:opacity-50"
+                  >
+                    {saving ? (
+                      <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Processing...</>
+                    ) : (
+                      <><CheckCircle size={16} /> Record Payment</>
+                    )}
                   </button>
                 </div>
               </form>
@@ -1531,8 +843,8 @@ function FeesManagement() {
         </div>
       )}
 
-      {/* Set Due Date Modal */}
-      {showDueDateModal && dueDateData.student && (
+      {/* Due Date Modal */}
+      {showDueDateModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-slate-800 rounded-2xl border border-slate-700 max-w-md w-full">
             <div className="p-6">
@@ -1547,11 +859,13 @@ function FeesManagement() {
                   <X size={20} />
                 </button>
               </div>
-              
-              <div className="mb-6 p-4 bg-slate-700/30 rounded-xl">
-                <p className="font-semibold text-white">{dueDateData.student.full_name}</p>
-                <p className="text-sm text-slate-400">{dueDateData.student.usn} • {dueDateData.student.branch}</p>
-              </div>
+
+              {dueDateData.student && (
+                <div className="mb-4 p-4 bg-slate-700/30 rounded-xl">
+                  <p className="font-semibold text-white">{dueDateData.student.full_name}</p>
+                  <p className="text-sm text-slate-400">{dueDateData.student.usn}</p>
+                </div>
+              )}
 
               <form onSubmit={handleUpdateDueDate} className="space-y-4">
                 <div>
@@ -1588,11 +902,20 @@ function FeesManagement() {
                       <IndianRupee size={16} />
                     </div>
                     <input
-                      type="number"
+                      type="text"
+                      inputMode="decimal"
                       required
                       placeholder="Enter due amount"
                       value={dueDateData.due_amount}
-                      onChange={(e) => setDueDateData({...dueDateData, due_amount: parseFloat(e.target.value) || 0})}
+                      onChange={(e) => {
+                        let v = e.target.value;
+                        if (v.length > 1 && v.startsWith('0') && !v.includes('.')) {
+                          v = v.replace(/^0+/, '');
+                        }
+                        if (v === '' || /^\d*\.?\d*$/.test(v)) {
+                          setDueDateData(prev => ({ ...prev, due_amount: v }));
+                        }
+                      }}
                       className="w-full pl-10 pr-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:border-purple-500 text-slate-200"
                     />
                   </div>
@@ -1621,126 +944,8 @@ function FeesManagement() {
         </div>
       )}
 
-      {/* Payment Modal */}
-      {showPaymentModal && paymentData.student && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-800 rounded-2xl border border-slate-700 max-w-md w-full">
-            <div className="p-6">
-              <div className="flex justify-between items-center mb-6">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-emerald-600 rounded-xl">
-                    <DollarSign className="text-white" size={20} />
-                  </div>
-                  <h3 className="text-xl font-bold text-white">Record Fee Payment</h3>
-                </div>
-                <button onClick={() => setShowPaymentModal(false)} className="p-2 text-slate-400 hover:bg-slate-700 rounded-lg">
-                  <X size={20} />
-                </button>
-              </div>
-              
-              <div className="mb-6 p-4 bg-slate-700/30 rounded-xl">
-                <p className="font-semibold text-white">{paymentData.student.full_name}</p>
-                <p className="text-sm text-slate-400">{paymentData.student.usn} • {paymentData.student.branch}</p>
-                <div className="mt-2 pt-2 border-t border-slate-600">
-                  <p className="text-sm text-slate-300">Total Fees: <span className="text-white font-semibold">{formatCurrency((studentIntervals[paymentData.student.id] || []).reduce((sum, i) => sum + (i.total_fees || 0), 0))}</span></p>
-                  <p className="text-sm text-slate-300">Already Paid: <span className="text-emerald-400 font-semibold">{formatCurrency((studentIntervals[paymentData.student.id] || []).reduce((sum, i) => sum + (i.paid_amount || 0), 0))}</span></p>
-                </div>
-              </div>
-
-              <form onSubmit={handleRecordPayment} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">Select Interval</label>
-                  <select
-                    value={paymentData.interval_id || ''}
-                    onChange={(e) => {
-                      const intervals = studentIntervals[paymentData.student.id] || [];
-                      const selected = intervals.find(i => i.id === e.target.value);
-                      if (selected) {
-                        setPaymentData({
-                          ...paymentData,
-                          interval_id: selected.id
-                        });
-                      }
-                    }}
-                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:border-emerald-500 text-slate-200"
-                  >
-                    <option value="">Select an interval</option>
-                    {(studentIntervals[paymentData.student.id] || []).filter(i => Number(i.due_amount) > 0).map(interval => (
-                      <option key={interval.id} value={interval.id}>
-                        Interval #{interval.interval_number} - Due: ₹{interval.due_amount || 0}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">Amount *</label>
-                  <div className="relative">
-                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500">
-                      <IndianRupee size={16} />
-                    </div>
-                    <input
-                      type="number"
-                      required
-                      placeholder="Enter amount"
-                      value={paymentData.amount}
-                      onChange={(e) => setPaymentData({...paymentData, amount: e.target.value})}
-                      className="w-full pl-10 pr-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:border-emerald-500 text-slate-200"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">Payment Date *</label>
-                  <input
-                    type="date"
-                    required
-                    value={paymentData.payment_date}
-                    onChange={(e) => setPaymentData({...paymentData, payment_date: e.target.value})}
-                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:border-emerald-500 text-slate-200"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">Payment Mode</label>
-                  <select
-                    value={paymentData.payment_mode}
-                    onChange={(e) => setPaymentData({...paymentData, payment_mode: e.target.value})}
-                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:border-emerald-500 text-slate-200"
-                  >
-                    <option value="cash">Cash</option>
-                    <option value="card">Card</option>
-                    <option value="upi">UPI</option>
-                    <option value="bank_transfer">Bank Transfer</option>
-                    <option value="cheque">Cheque</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">UTR / Transaction ID</label>
-                  <input
-                    type="text"
-                    placeholder="Enter UTR or Transaction ID"
-                    value={paymentData.utr}
-                    onChange={(e) => setPaymentData({...paymentData, utr: e.target.value})}
-                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:border-emerald-500 text-slate-200"
-                  />
-                </div>
-
-                <div className="flex justify-end gap-3 pt-4">
-                  <button type="button" onClick={() => setShowPaymentModal(false)} className="px-4 py-2 text-slate-300 bg-slate-700 rounded-lg hover:bg-slate-600">Cancel</button>
-                  <button type="submit" disabled={saving} className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-2">
-                    {saving ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Processing...</> : <><CheckCircle size={16} />Record Payment</>}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Add Interval Modal */}
-      {showIntervalModal && selectedStudentForInterval && (
+      {showIntervalModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-slate-800 rounded-2xl border border-slate-700 w-full max-w-md">
             <div className="px-6 py-4 border-b border-slate-700 flex justify-between items-center">
@@ -1750,10 +955,7 @@ function FeesManagement() {
                 </div>
                 <h3 className="text-xl font-bold text-white">Add Fee Interval</h3>
               </div>
-              <button 
-                onClick={() => setShowIntervalModal(false)}
-                className="p-2 text-slate-400 hover:text-slate-300 hover:bg-slate-700 rounded-lg transition-all"
-              >
+              <button onClick={() => setShowIntervalModal(false)} className="p-2 text-slate-400 hover:text-slate-300 hover:bg-slate-700 rounded-lg transition-all">
                 <X size={20} />
               </button>
             </div>
@@ -1762,7 +964,7 @@ function FeesManagement() {
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-2">Student</label>
                 <div className="px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-slate-200">
-                  {selectedStudentForInterval.full_name} ({selectedStudentForInterval.usn})
+                  {selectedStudentForInterval?.full_name} ({selectedStudentForInterval?.usn})
                 </div>
               </div>
 
@@ -1772,7 +974,7 @@ function FeesManagement() {
                   type="number"
                   required
                   value={intervalData.interval_number}
-                  onChange={(e) => setIntervalData(prev => ({ ...prev, interval_number: parseInt(e.target.value) }))}
+                  onChange={(e) => setIntervalData({...intervalData, interval_number: parseInt(e.target.value)})}
                   className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-purple-500 text-slate-200"
                   min="1"
                 />
@@ -1784,7 +986,7 @@ function FeesManagement() {
                   type="date"
                   required
                   value={intervalData.start_date}
-                  onChange={(e) => setIntervalData(prev => ({ ...prev, start_date: e.target.value }))}
+                  onChange={(e) => setIntervalData({...intervalData, start_date: e.target.value})}
                   className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-purple-500 text-slate-200"
                 />
               </div>
@@ -1795,35 +997,61 @@ function FeesManagement() {
                   type="date"
                   required
                   value={intervalData.end_date}
-                  onChange={(e) => setIntervalData(prev => ({ ...prev, end_date: e.target.value }))}
+                  onChange={(e) => setIntervalData({...intervalData, end_date: e.target.value})}
                   className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-purple-500 text-slate-200"
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-2">Total Fees (₹)</label>
-                <input
-                  type="number"
-                  required
-                  value={intervalData.total_fees}
-                  onChange={(e) => setIntervalData(prev => ({ ...prev, total_fees: parseFloat(e.target.value) || 0 }))}
-                  className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-purple-500 text-slate-200"
-                  min="0"
-                  step="1"
-                />
+                <div className="relative">
+                  <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500">
+                    <IndianRupee size={16} />
+                  </div>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    required
+                    value={intervalData.total_fees}
+                    onChange={(e) => {
+                      let v = e.target.value;
+                      if (v.length > 1 && v.startsWith('0') && !v.includes('.')) {
+                        v = v.replace(/^0+/, '');
+                      }
+                      if (v === '' || /^\d*\.?\d*$/.test(v)) {
+                        setIntervalData(prev => ({ ...prev, total_fees: v }));
+                      }
+                    }}
+                    className="w-full pl-10 pr-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-purple-500 text-slate-200"
+                    placeholder="0"
+                  />
+                </div>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-2">Due Amount (₹)</label>
-                <input
-                  type="number"
-                  required
-                  value={intervalData.due_amount}
-                  onChange={(e) => setIntervalData(prev => ({ ...prev, due_amount: parseFloat(e.target.value) || 0 }))}
-                  className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-purple-500 text-slate-200"
-                  min="0"
-                  step="1"
-                />
+                <div className="relative">
+                  <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500">
+                    <IndianRupee size={16} />
+                  </div>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    required
+                    value={intervalData.due_amount}
+                    onChange={(e) => {
+                      let v = e.target.value;
+                      if (v.length > 1 && v.startsWith('0') && !v.includes('.')) {
+                        v = v.replace(/^0+/, '');
+                      }
+                      if (v === '' || /^\d*\.?\d*$/.test(v)) {
+                        setIntervalData(prev => ({ ...prev, due_amount: v }));
+                      }
+                    }}
+                    className="w-full pl-10 pr-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-purple-500 text-slate-200"
+                    placeholder="0"
+                  />
+                </div>
               </div>
 
               <div className="flex justify-end gap-3 pt-6 border-t border-slate-700">
@@ -1837,101 +1065,12 @@ function FeesManagement() {
                 <button
                   type="submit"
                   disabled={saving}
-                  className="px-6 py-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-all font-medium flex items-center gap-2"
+                  className="px-6 py-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-all font-medium flex items-center gap-2 disabled:opacity-50"
                 >
                   {saving ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Saving...</> : <><Save size={16} />Add Interval</>}
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* Bulk Assign Modal */}
-      {showBulkAssignModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-800 rounded-2xl border border-slate-700 max-w-md w-full">
-            <div className="p-6">
-              <div className="flex justify-between items-center mb-6">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-purple-600 rounded-xl">
-                    <CalendarPlus className="text-white" size={20} />
-                  </div>
-                  <h3 className="text-xl font-bold text-white">Bulk Assign Intervals</h3>
-                </div>
-                <button onClick={() => setShowBulkAssignModal(false)} className="p-2 text-slate-400 hover:bg-slate-700 rounded-lg">
-                  <X size={20} />
-                </button>
-              </div>
-
-              <form onSubmit={handleBulkAssign} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">Assign To *</label>
-                  <select
-                    required
-                    value={bulkAssignData.apply_to}
-                    onChange={(e) => setBulkAssignData({...bulkAssignData, apply_to: e.target.value})}
-                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-slate-200"
-                  >
-                    <option value="all">All Students</option>
-                    <option value="selected_branch">Specific Branch</option>
-                  </select>
-                </div>
-
-                {bulkAssignData.apply_to === 'selected_branch' && (
-                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">Select Branch</label>
-                    <select
-                      required
-                      value={bulkAssignData.selected_branch}
-                      onChange={(e) => setBulkAssignData({...bulkAssignData, selected_branch: e.target.value})}
-                      className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-slate-200"
-                    >
-                      <option value="">Select Branch</option>
-                      {[...new Set(students.map(s => s.branch))].filter(Boolean).map(branch => (
-                        <option key={branch} value={branch}>{branch}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">Start Date *</label>
-                  <input
-                    type="date"
-                    required
-                    value={bulkAssignData.start_date}
-                    onChange={(e) => setBulkAssignData({...bulkAssignData, start_date: e.target.value})}
-                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:border-purple-500 text-slate-200"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">End Date *</label>
-                  <input
-                    type="date"
-                    required
-                    value={bulkAssignData.end_date}
-                    onChange={(e) => setBulkAssignData({...bulkAssignData, end_date: e.target.value})}
-                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:border-purple-500 text-slate-200"
-                  />
-                </div>
-
-                <div className="bg-amber-950/30 p-3 rounded-lg border border-amber-800">
-                  <p className="text-amber-400 text-xs flex items-center gap-2">
-                    <AlertCircle size={14} />
-                    This will assign a new interval to all students matching your selection
-                  </p>
-                </div>
-
-                <div className="flex justify-end gap-3 pt-4">
-                  <button type="button" onClick={() => setShowBulkAssignModal(false)} className="px-4 py-2 text-slate-300 bg-slate-700 rounded-lg hover:bg-slate-600">Cancel</button>
-                  <button type="submit" disabled={saving} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2">
-                    {saving ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Processing...</> : <><CalendarPlus size={16} />Bulk Assign</>}
-                  </button>
-                </div>
-              </form>
-            </div>
           </div>
         </div>
       )}
@@ -1999,13 +1138,9 @@ function FeesManagement() {
                 </button>
                 <button
                   onClick={() => {
-                    if (deleteType === 'student') {
-                      confirmDeleteStudent();
-                    } else if (deleteType === 'interval') {
-                      confirmDeleteInterval();
-                    } else if (deleteType === 'bulk_students') {
-                      confirmBulkDeleteStudents();
-                    }
+                    if (deleteType === 'student') confirmDeleteStudent();
+                    else if (deleteType === 'interval') confirmDeleteInterval();
+                    else if (deleteType === 'bulk_students') confirmBulkDeleteStudents();
                   }}
                   disabled={deleting}
                   className="px-5 py-2.5 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-all font-medium flex items-center gap-2 disabled:opacity-50"
@@ -2021,68 +1156,6 @@ function FeesManagement() {
           </div>
         </div>
       )}
-
-      {/* Bulk Delete Intervals Modal */}
-      {showBulkDeleteModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-800 rounded-2xl border border-slate-700 max-w-md w-full shadow-2xl">
-            <div className="p-6">
-              <div className="flex items-center gap-4 mb-4">
-                <div className="p-3 bg-red-600/20 rounded-xl border border-red-600/30">
-                  <AlertTriangle className="text-red-500" size={28} />
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold text-white">Delete Intervals</h3>
-                  <p className="text-slate-400 text-sm">This will delete {bulkDeleteIntervals.length} interval(s).</p>
-                </div>
-              </div>
-              
-              <div className="bg-slate-900/50 rounded-xl p-4 border border-slate-700 mb-6 max-h-40 overflow-y-auto">
-                <p className="text-slate-400 text-sm mb-2">Selected intervals:</p>
-                {bulkDeleteIntervals.map((id, index) => {
-                  const interval = findIntervalById(id);
-                  return interval ? (
-                    <p key={id} className="text-white text-sm">
-                      #{index + 1}: Interval #{interval.interval_number} - {formatDate(interval.start_date)} to {formatDate(interval.end_date)}
-                    </p>
-                  ) : null;
-                })}
-              </div>
-
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => {
-                    setShowBulkDeleteModal(false);
-                    setBulkDeleteIntervals([]);
-                  }}
-                  className="px-5 py-2.5 text-slate-300 bg-slate-700 rounded-xl hover:bg-slate-600 transition-all font-medium"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={confirmBulkDeleteIntervals}
-                  disabled={deleting}
-                  className="px-5 py-2.5 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-all font-medium flex items-center gap-2 disabled:opacity-50"
-                >
-                  {deleting ? (
-                    <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Deleting...</>
-                  ) : (
-                    <><Trash2 size={16} /> Delete All</>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <style jsx>{`
-        @keyframes slide-in {
-          from { transform: translateX(100%); opacity: 0; }
-          to { transform: translateX(0); opacity: 1; }
-        }
-        .animate-slide-in { animation: slide-in 0.3s ease-out; }
-      `}</style>
     </div>
   );
 }
