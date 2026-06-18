@@ -174,9 +174,9 @@ function HomePage() {
                     <School className="text-white" size={24} />
                   </div>
                   <div>
-                 <h1 className="text-2xl lg:text-3xl font-bold text-white">
-  Admin Dashboard
-</h1>
+                    <h1 className="text-2xl lg:text-3xl font-bold text-white">
+                      Admin Dashboard
+                    </h1>
                     <p className="text-gray-400 text-sm mt-1 flex items-center gap-2">
                       <span>Welcome back to your command center</span>
                       <span className="w-1 h-1 bg-gray-600 rounded-full"></span>
@@ -208,44 +208,44 @@ function HomePage() {
             </div>
           </div>
 
-       {/* Hero Section */}
-<div className="bg-gray-800/50 backdrop-blur-xl rounded-2xl shadow-xl border border-gray-700/50 p-6 lg:p-8">
-  <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
-    <div>
-      <div className="text-sm text-purple-400 font-medium mb-2">{dateStr}</div>
-      <h2 className="text-2xl lg:text-3xl font-bold text-white mb-2">
-        {greeting}, {adminName}
-      </h2>
-      <p className="text-gray-400">Your daily snapshot of fleet activity, student management, and campus operations.</p>
-      <div className="flex flex-wrap gap-3 mt-4">
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-900/50 rounded-full border border-gray-700">
-          <Users size={14} className="text-purple-400" />
-          <span className="text-sm text-gray-300">{stats.totalStudents} students</span>
-        </div>
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-900/50 rounded-full border border-gray-700">
-          <Bus size={14} className="text-emerald-400" />
-          <span className="text-sm text-gray-300">{stats.totalBuses} buses</span>
-        </div>
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-900/50 rounded-full border border-gray-700">
-          <Navigation size={14} className="text-amber-400" />
-          <span className="text-sm text-gray-300">{tripStats.activeTrips} active trips</span>
-        </div>
-        {stats.dailyComplaints > 0 && (
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-900/50 rounded-full border border-gray-700">
-            <AlertTriangle size={14} className="text-rose-400" />
-            <span className="text-sm text-gray-300">{stats.dailyComplaints} complaints today</span>
+          {/* Hero Section */}
+          <div className="bg-gray-800/50 backdrop-blur-xl rounded-2xl shadow-xl border border-gray-700/50 p-6 lg:p-8">
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+              <div>
+                <div className="text-sm text-purple-400 font-medium mb-2">{dateStr}</div>
+                <h2 className="text-2xl lg:text-3xl font-bold text-white mb-2">
+                  {greeting}, {adminName}
+                </h2>
+                <p className="text-gray-400">Your daily snapshot of fleet activity, student management, and campus operations.</p>
+                <div className="flex flex-wrap gap-3 mt-4">
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-900/50 rounded-full border border-gray-700">
+                    <Users size={14} className="text-purple-400" />
+                    <span className="text-sm text-gray-300">{stats.totalStudents} students</span>
+                  </div>
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-900/50 rounded-full border border-gray-700">
+                    <Bus size={14} className="text-emerald-400" />
+                    <span className="text-sm text-gray-300">{stats.totalBuses} buses</span>
+                  </div>
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-900/50 rounded-full border border-gray-700">
+                    <Navigation size={14} className="text-amber-400" />
+                    <span className="text-sm text-gray-300">{tripStats.activeTrips} active trips</span>
+                  </div>
+                  {stats.dailyComplaints > 0 && (
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-900/50 rounded-full border border-gray-700">
+                      <AlertTriangle size={14} className="text-rose-400" />
+                      <span className="text-sm text-gray-300">{stats.dailyComplaints} complaints today</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <button 
+                onClick={fetchDashboardData}
+                className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-900/50 hover:bg-gray-800/50 rounded-xl text-sm text-gray-400 hover:text-purple-400 transition-all border border-gray-700/50"
+              >
+                <RefreshCw size={14} /> Refresh Data
+              </button>
+            </div>
           </div>
-        )}
-      </div>
-    </div>
-    <button 
-      onClick={fetchDashboardData}
-      className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-900/50 hover:bg-gray-800/50 rounded-xl text-sm text-gray-400 hover:text-purple-400 transition-all border border-gray-700/50"
-    >
-      <RefreshCw size={14} /> Refresh Data
-    </button>
-  </div>
-</div>
 
           {/* Stats Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
@@ -320,7 +320,7 @@ function HomePage() {
             </div>
           </div>
 
-            {/* Quick Actions */}
+          {/* Quick Actions */}
           <div>
             <h2 className="text-lg font-semibold text-white mb-5">Quick Actions</h2>
             <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
@@ -341,23 +341,21 @@ function HomePage() {
               })}
             </div>
           </div>
-        </div>
-      </div>
 
-          {/* Modules Section */}
+          {/* Management Modules - Fixed CSS */}
           <div>
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-lg font-semibold text-white">Management Modules</h2>
               <span className="text-xs text-gray-500">{modules.length} sections</span>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
               {modules.map((mod) => {
                 const Icon = mod.icon;
                 return (
                   <Link
                     key={mod.id}
                     href={mod.href}
-                    className="group relative bg-gray-800/50 backdrop-blur-xl rounded-2xl shadow-xl hover:shadow-2xl transition-all border border-gray-700/50 overflow-hidden hover:border-purple-500/30"
+                    className="group block bg-gray-800/50 backdrop-blur-xl rounded-2xl shadow-xl hover:shadow-2xl transition-all border border-gray-700/50 overflow-hidden hover:border-purple-500/30 hover:-translate-y-1 duration-200"
                   >
                     {mod.live && (
                       <div className="absolute top-3 right-3">
@@ -368,10 +366,10 @@ function HomePage() {
                     )}
                     <div className="p-5">
                       <div className="flex items-start justify-between mb-4">
-                        <div className={`p-3 bg-gradient-to-br ${mod.color} rounded-xl shadow-lg`}>
+                        <div className={`p-3 bg-gradient-to-br ${mod.color} rounded-xl shadow-lg flex-shrink-0`}>
                           <Icon className="text-white" size={20} />
                         </div>
-                        <span className={`text-xs font-medium px-2 py-1 rounded-full border ${
+                        <span className={`text-xs font-medium px-2 py-1 rounded-full border whitespace-nowrap ${
                           mod.tag === 'Analytics' ? 'bg-blue-950/50 text-blue-400 border-blue-800/50' :
                           mod.tag === 'Fleet' ? 'bg-emerald-950/50 text-emerald-400 border-emerald-800/50' :
                           mod.tag === 'Ops' ? 'bg-violet-950/50 text-violet-400 border-violet-800/50' :
@@ -387,7 +385,7 @@ function HomePage() {
                         </span>
                       </div>
                       <h3 className="text-lg font-semibold text-white mb-1">{mod.name}</h3>
-                      <p className="text-sm text-gray-400 mb-4">{mod.desc}</p>
+                      <p className="text-sm text-gray-400 mb-4 line-clamp-2">{mod.desc}</p>
                       <div className="flex items-center justify-between pt-3 border-t border-gray-700/50">
                         <span className="text-xs text-gray-500 font-mono">{mod.metrics}</span>
                         <span className="text-sm text-purple-400 group-hover:translate-x-1 transition-transform flex items-center gap-1">
@@ -412,7 +410,7 @@ function HomePage() {
               <div className="divide-y divide-gray-700/50 max-h-[400px] overflow-y-auto">
                 {recentActivities.length > 0 ? recentActivities.map((act, i) => (
                   <div key={i} className="px-6 py-3 hover:bg-gray-700/30 transition-colors flex items-center gap-3">
-                    <div className={`p-2 rounded-lg ${
+                    <div className={`p-2 rounded-lg flex-shrink-0 ${
                       act.type === 'complaint' ? 'bg-fuchsia-950/50' :
                       act.type === 'trip' ? 'bg-violet-950/50' :
                       act.type === 'payment' ? 'bg-amber-950/50' :
@@ -423,13 +421,13 @@ function HomePage() {
                       {act.type === 'payment' && <CreditCard size={14} className="text-amber-400" />}
                       {act.type === 'announcement' && <Megaphone size={14} className="text-teal-400" />}
                     </div>
-                    <div className="flex-1">
-                      <p className="text-sm text-white">{act.action}</p>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-white truncate">{act.action}</p>
                       <p className="text-xs text-gray-500">{act.user}</p>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right flex-shrink-0">
                       <p className="text-xs text-gray-500">{act.time}</p>
-                      <div className={`w-2 h-2 rounded-full mt-1 ${
+                      <div className={`w-2 h-2 rounded-full mt-1 ml-auto ${
                         act.status === 'success' ? 'bg-emerald-500' :
                         act.status === 'pending' ? 'bg-amber-500' : 'bg-blue-500'
                       }`}></div>
@@ -492,8 +490,8 @@ function HomePage() {
               )}
             </div>
           </div>
-
-        
+        </div>
+      </div>
 
       {/* Footer */}
       <footer className="relative mt-8 py-6 border-t border-gray-800">
