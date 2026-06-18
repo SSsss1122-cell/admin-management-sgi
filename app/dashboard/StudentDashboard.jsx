@@ -34,7 +34,7 @@ export default function StudentDashboard() {
     totalIntervals: 0
   });
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
-  const [viewMode, setViewMode] = useState('table');
+  const [viewMode, setViewMode] = useState('grid');
   const [selectedStudents, setSelectedStudents] = useState([]);
   const [currentTime, setCurrentTime] = useState('');
   const [showIntervalModal, setShowIntervalModal] = useState(false);
@@ -47,6 +47,7 @@ export default function StudentDashboard() {
     due_amount: 0
   });
   const [studentIntervals, setStudentIntervals] = useState({});
+  const [updating, setUpdating] = useState(false);
 
   const router = useRouter();
 
@@ -111,16 +112,14 @@ export default function StudentDashboard() {
     if (!institutionId) return;
     
     try {
-      // Fetch students from new table
       const { data: studentData, error: studentError } = await supabase
         .from('students_new')
         .select('id, full_name, usn, branch, phone, email, password, role, created_at, updated_at, current_interval_id')
         .eq('institution_id', institutionId)
-        .order('usn');
+        .order('full_name');
 
       if (studentError) throw studentError;
 
-      // Fetch intervals for all students
       const { data: intervalData, error: intervalError } = await supabase
         .from('student_intervals')
         .select('*')
@@ -128,7 +127,6 @@ export default function StudentDashboard() {
 
       if (intervalError) throw intervalError;
 
-      // Group intervals by student
       const intervalsMap = {};
       intervalData.forEach(interval => {
         if (!intervalsMap[interval.student_id]) {
@@ -159,7 +157,6 @@ export default function StudentDashboard() {
     const route2Count = studentData.filter(student => student.routes === 'route2').length;
     const assignedToRoute = route1Count + route2Count;
     
-    // Count total intervals
     let totalIntervals = 0;
     Object.values(intervalsMap).forEach(intervals => {
       totalIntervals += intervals.length;
@@ -178,12 +175,13 @@ export default function StudentDashboard() {
   const filterStudents = () => {
     let filtered = students;
 
-    if (searchTerm) {
+    if (searchTerm && searchTerm.trim() !== '') {
+      const searchLower = searchTerm.toLowerCase().trim();
       filtered = filtered.filter(student =>
-        student.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        student.usn?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        student.phone?.includes(searchTerm) ||
-        student.email?.toLowerCase().includes(searchTerm.toLowerCase())
+        student.full_name?.toLowerCase().includes(searchLower) ||
+        student.usn?.toLowerCase().includes(searchLower) ||
+        student.phone?.includes(searchTerm.trim()) ||
+        student.email?.toLowerCase().includes(searchLower)
       );
     }
 
@@ -204,6 +202,7 @@ export default function StudentDashboard() {
 
   const handleAddStudent = async (e) => {
     e.preventDefault();
+    setUpdating(true);
     try {
       const { data: existingStudent } = await supabase
         .from('students_new')
@@ -213,13 +212,14 @@ export default function StudentDashboard() {
 
       if (existingStudent) {
         showToast('USN already exists. Please use a different USN.', 'error');
+        setUpdating(false);
         return;
       }
 
       const studentData = {
         institution_id: institutionId,
-        full_name: newStudent.full_name,
-        usn: newStudent.usn.toUpperCase(),
+        full_name: newStudent.full_name.trim(),
+        usn: newStudent.usn.toUpperCase().trim(),
         branch: newStudent.branch || null,
         phone: newStudent.phone || null,
         password: newStudent.password || null,
@@ -234,7 +234,6 @@ export default function StudentDashboard() {
 
       if (error) throw error;
 
-      // Create default interval for the student
       if (insertedStudent && insertedStudent.length > 0) {
         const studentId = insertedStudent[0].id;
         const intervalPayload = {
@@ -248,13 +247,9 @@ export default function StudentDashboard() {
           status: 'pending'
         };
 
-        const { error: intervalError } = await supabase
+        await supabase
           .from('student_intervals')
           .insert([intervalPayload]);
-
-        if (intervalError) {
-          console.error('Error creating interval:', intervalError);
-        }
       }
 
       showToast('Student added successfully!', 'success');
@@ -274,36 +269,40 @@ export default function StudentDashboard() {
     } catch (error) {
       console.error('Error adding student:', error);
       showToast('Error adding student: ' + error.message, 'error');
+    } finally {
+      setUpdating(false);
     }
   };
 
   const handleEditStudent = async (e) => {
     e.preventDefault();
+    setUpdating(true);
     try {
-      if (newStudent.usn.toUpperCase() !== editingStudent.usn) {
+      if (newStudent.usn.toUpperCase().trim() !== editingStudent.usn) {
         const { data: existingStudent } = await supabase
           .from('students_new')
           .select('usn')
-          .eq('usn', newStudent.usn.toUpperCase())
+          .eq('usn', newStudent.usn.toUpperCase().trim())
           .eq('institution_id', institutionId)
           .maybeSingle();
 
         if (existingStudent) {
           showToast('USN already exists. Please use a different USN.', 'error');
+          setUpdating(false);
           return;
         }
       }
 
       const updateData = {
-        full_name: newStudent.full_name,
-        usn: newStudent.usn.toUpperCase(),
+        full_name: newStudent.full_name.trim(),
+        usn: newStudent.usn.toUpperCase().trim(),
         branch: newStudent.branch || null,
         phone: newStudent.phone || null,
         email: newStudent.email || null
       };
 
-      if (newStudent.password) {
-        updateData.password = newStudent.password;
+      if (newStudent.password && newStudent.password.trim() !== '') {
+        updateData.password = newStudent.password.trim();
       }
 
       const { error } = await supabase
@@ -331,6 +330,8 @@ export default function StudentDashboard() {
     } catch (error) {
       console.error('Error updating student:', error);
       showToast('Error updating student: ' + error.message, 'error');
+    } finally {
+      setUpdating(false);
     }
   };
 
@@ -338,7 +339,6 @@ export default function StudentDashboard() {
     if (!window.confirm('⚠️ Are you sure you want to delete this student?\n\nThis action cannot be undone.')) return;
     
     try {
-      // Delete intervals first (cascade should handle but just in case)
       await supabase
         .from('student_intervals')
         .delete()
@@ -366,7 +366,6 @@ export default function StudentDashboard() {
     if (!window.confirm(`⚠️ Are you sure you want to delete ${selectedStudents.length} student(s)?\n\nThis action cannot be undone.`)) return;
     
     try {
-      // Delete intervals for selected students
       await supabase
         .from('student_intervals')
         .delete()
@@ -417,6 +416,7 @@ export default function StudentDashboard() {
 
   const handleAddInterval = async (e) => {
     e.preventDefault();
+    setUpdating(true);
     try {
       const payload = {
         student_id: selectedStudentForInterval.id,
@@ -441,6 +441,8 @@ export default function StudentDashboard() {
     } catch (error) {
       console.error('Error adding interval:', error);
       showToast('Error adding interval: ' + error.message, 'error');
+    } finally {
+      setUpdating(false);
     }
   };
 
@@ -528,7 +530,7 @@ export default function StudentDashboard() {
     <div className="min-h-screen bg-slate-900">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
         <div className="space-y-6 lg:space-y-8">
-          {/* Header - Same as before */}
+          {/* Header */}
           <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5 lg:p-6">
             <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
               <div className="flex items-center gap-4">
@@ -578,7 +580,7 @@ export default function StudentDashboard() {
             </div>
           </div>
 
-          {/* Stats Cards with Intervals */}
+          {/* Stats Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
             <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
               <div className="flex items-center justify-between mb-3">
@@ -636,7 +638,7 @@ export default function StudentDashboard() {
             </div>
           </div>
 
-          {/* Search and Filters - Same as before but with Interval stats */}
+          {/* Search and Filters */}
           <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5">
             <div className="space-y-4">
               {/* Search Bar */}
@@ -794,7 +796,6 @@ export default function StudentDashboard() {
                     {filteredStudents.map((student) => {
                       const intervals = studentIntervals[student.id] || [];
                       const totalDue = intervals.reduce((sum, i) => sum + (i.due_amount || 0), 0);
-                      const totalPaid = intervals.reduce((sum, i) => sum + (i.paid_amount || 0), 0);
                       
                       return (
                         <tr key={student.id} className="hover:bg-slate-700/30 transition-colors">
@@ -1010,7 +1011,7 @@ export default function StudentDashboard() {
         </div>
       </div>
 
-      {/* Add/Edit Student Modal - Updated for new table */}
+      {/* Add/Edit Student Modal */}
       {(showAddForm || editingStudent) && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-slate-800 rounded-2xl border border-slate-700 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -1123,10 +1124,15 @@ export default function StudentDashboard() {
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all font-medium"
+                  disabled={updating}
+                  className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all font-medium disabled:opacity-50"
                 >
-                  <Save size={16} className="inline mr-2" />
-                  {editingStudent ? 'Update Student' : 'Add Student'}
+                  {updating ? (
+                    <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin inline mr-2"></div> Saving...</>
+                  ) : (
+                    <><Save size={16} className="inline mr-2" />
+                    {editingStudent ? 'Update Student' : 'Add Student'}</>
+                  )}
                 </button>
               </div>
             </form>
@@ -1233,10 +1239,14 @@ export default function StudentDashboard() {
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-all font-medium"
+                  disabled={updating}
+                  className="px-6 py-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-all font-medium disabled:opacity-50"
                 >
-                  <Save size={16} className="inline mr-2" />
-                  Add Interval
+                  {updating ? (
+                    <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin inline mr-2"></div> Saving...</>
+                  ) : (
+                    <><Save size={16} className="inline mr-2" /> Add Interval</>
+                  )}
                 </button>
               </div>
             </form>

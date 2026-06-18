@@ -4,11 +4,12 @@ import { useState, useEffect } from 'react';
 import { 
   Search, Download, CheckCircle, XCircle, 
   IndianRupee, Edit, X, Calendar, ArrowLeft,
-  TrendingUp, Clock, AlertCircle, ChevronDown, 
+  TrendingUp, Clock, AlertCircle, ChevronDown, ChevronUp,
   Users, Wallet, Receipt, Award, BookOpen, 
   GraduationCap, Layers, Trash2, Plus, Eye, Save,
   CalendarPlus, History, RefreshCw, CalendarDays,
-  DollarSign, PieChart, CreditCard, Truck
+  DollarSign, PieChart, CreditCard, Truck, ChevronRight,
+  Info, AlertTriangle
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useRouter } from 'next/navigation';
@@ -25,6 +26,8 @@ function FeesManagement() {
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState('grid');
   const [selectedStudents, setSelectedStudents] = useState([]);
+  const [selectedIntervalId, setSelectedIntervalId] = useState(null);
+  const [selectedStudentId, setSelectedStudentId] = useState(null);
   
   // Financial summary states
   const [financialSummary, setFinancialSummary] = useState({
@@ -44,7 +47,7 @@ function FeesManagement() {
     end_date: ''
   });
   
-  // Due date modal for independent due date
+  // Due date modal
   const [showDueDateModal, setShowDueDateModal] = useState(false);
   const [dueDateData, setDueDateData] = useState({
     student: null,
@@ -78,6 +81,10 @@ function FeesManagement() {
   // Delete states
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [studentToDelete, setStudentToDelete] = useState(null);
+  const [deleteType, setDeleteType] = useState('student');
+  const [intervalToDelete, setIntervalToDelete] = useState(null);
+  const [bulkDeleteIntervals, setBulkDeleteIntervals] = useState([]);
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [saving, setSaving] = useState(false);
   
@@ -95,9 +102,12 @@ function FeesManagement() {
   });
   const [studentIntervals, setStudentIntervals] = useState({});
   
-  // Interval dropdown state
-  const [showIntervalDropdown, setShowIntervalDropdown] = useState(false);
-  const [selectedIntervalId, setSelectedIntervalId] = useState(null);
+  // Interval details modal
+  const [showIntervalDetails, setShowIntervalDetails] = useState(false);
+  const [selectedInterval, setSelectedInterval] = useState(null);
+  
+  // Bulk interval selection
+  const [selectedIntervals, setSelectedIntervals] = useState([]);
 
   const router = useRouter();
 
@@ -126,7 +136,6 @@ function FeesManagement() {
 
   const fetchStudents = async (instId) => {
     try {
-      // Fetch students from new table
       const { data: studentData, error: studentError } = await supabase
         .from('students_new')
         .select('id, full_name, usn, branch, phone, email, created_at, updated_at, current_interval_id')
@@ -135,7 +144,6 @@ function FeesManagement() {
 
       if (studentError) throw studentError;
 
-      // Fetch intervals for all students
       const { data: intervalData, error: intervalError } = await supabase
         .from('student_intervals')
         .select('*')
@@ -143,7 +151,6 @@ function FeesManagement() {
 
       if (intervalError) throw intervalError;
 
-      // Group intervals by student
       const intervalsMap = {};
       intervalData.forEach(interval => {
         if (!intervalsMap[interval.student_id]) {
@@ -259,7 +266,6 @@ function FeesManagement() {
       const student = paymentData.student;
       const intervals = studentIntervals[student.id] || [];
       
-      // Find the specific interval or first unpaid
       let targetInterval;
       if (paymentData.interval_id) {
         targetInterval = intervals.find(i => i.id === paymentData.interval_id);
@@ -477,23 +483,89 @@ function FeesManagement() {
     }
   };
 
-  const handleDeleteInterval = async (intervalId) => {
-    if (!confirm('⚠️ Are you sure you want to delete this interval?\n\nThis action cannot be undone.')) return;
+  const handleDeleteInterval = (intervalId) => {
+    const interval = findIntervalById(intervalId);
+    if (interval) {
+      setIntervalToDelete(interval);
+      setDeleteType('interval');
+      setShowDeleteConfirm(true);
+    }
+  };
+
+  const findIntervalById = (intervalId) => {
+    for (const studentId in studentIntervals) {
+      const interval = studentIntervals[studentId].find(i => i.id === intervalId);
+      if (interval) {
+        return interval;
+      }
+    }
+    return null;
+  };
+
+  const confirmDeleteInterval = async () => {
+    if (!intervalToDelete) return;
     
+    setDeleting(true);
     try {
       const { error } = await supabase
         .from('student_intervals')
         .delete()
-        .eq('id', intervalId);
+        .eq('id', intervalToDelete.id);
       
       if (error) throw error;
       
-      showToast('success', '✅ Interval deleted successfully!');
+      showToast('success', `✅ Interval #${intervalToDelete.interval_number} deleted successfully!`);
       await fetchStudents(institutionId);
+      setShowDeleteConfirm(false);
+      setIntervalToDelete(null);
+      setShowIntervalDetails(false);
     } catch (error) {
       console.error('Error deleting interval:', error);
       showToast('error', '❌ Error deleting interval: ' + error.message);
+    } finally {
+      setDeleting(false);
     }
+  };
+
+  const handleBulkDeleteIntervals = () => {
+    if (selectedIntervals.length === 0) {
+      showToast('error', 'Please select intervals to delete');
+      return;
+    }
+    setBulkDeleteIntervals([...selectedIntervals]);
+    setDeleteType('bulk');
+    setShowBulkDeleteModal(true);
+  };
+
+  const confirmBulkDeleteIntervals = async () => {
+    setDeleting(true);
+    try {
+      const { error } = await supabase
+        .from('student_intervals')
+        .delete()
+        .in('id', bulkDeleteIntervals);
+      
+      if (error) throw error;
+      
+      showToast('success', `✅ ${bulkDeleteIntervals.length} interval(s) deleted successfully!`);
+      setSelectedIntervals([]);
+      setBulkDeleteIntervals([]);
+      setShowBulkDeleteModal(false);
+      await fetchStudents(institutionId);
+    } catch (error) {
+      console.error('Error bulk deleting intervals:', error);
+      showToast('error', '❌ Error bulk deleting intervals: ' + error.message);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const toggleIntervalSelection = (intervalId) => {
+    setSelectedIntervals(prev => 
+      prev.includes(intervalId) 
+        ? prev.filter(id => id !== intervalId)
+        : [...prev, intervalId]
+    );
   };
 
   const openDateModal = (student) => {
@@ -505,9 +577,15 @@ function FeesManagement() {
     setShowDateModal(true);
   };
 
-  const openDueDateModal = (student) => {
+  const openDueDateModal = (student, intervalId = null) => {
     const intervals = studentIntervals[student.id] || [];
-    const targetInterval = intervals.find(i => Number(i.due_amount) > 0);
+    let targetInterval;
+    
+    if (intervalId) {
+      targetInterval = intervals.find(i => i.id === intervalId);
+    } else {
+      targetInterval = intervals.find(i => Number(i.due_amount) > 0);
+    }
     
     setDueDateData({
       student: student,
@@ -516,11 +594,18 @@ function FeesManagement() {
       due_amount: targetInterval?.due_amount || 0
     });
     setShowDueDateModal(true);
+    setShowIntervalDetails(false);
   };
 
-  const openPaymentModal = (student) => {
+  const openPaymentModal = (student, intervalId = null) => {
     const intervals = studentIntervals[student.id] || [];
-    const targetInterval = intervals.find(i => Number(i.due_amount) > 0);
+    let targetInterval;
+    
+    if (intervalId) {
+      targetInterval = intervals.find(i => i.id === intervalId);
+    } else {
+      targetInterval = intervals.find(i => Number(i.due_amount) > 0);
+    }
     
     setPaymentData({
       student: student,
@@ -532,6 +617,7 @@ function FeesManagement() {
       remarks: ''
     });
     setShowPaymentModal(true);
+    setShowIntervalDetails(false);
   };
 
   const openIntervalModal = (student) => {
@@ -547,6 +633,7 @@ function FeesManagement() {
       status: 'pending'
     });
     setShowIntervalModal(true);
+    setShowIntervalDetails(false);
   };
 
   const handleAddInterval = async (e) => {
@@ -567,19 +654,11 @@ function FeesManagement() {
         updated_at: new Date().toISOString()
       };
 
-      console.log('Inserting interval:', payload);
-
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('student_intervals')
-        .insert([payload])
-        .select();
+        .insert([payload]);
 
-      if (error) {
-        console.error('Supabase error:', error);
-        throw error;
-      }
-
-      console.log('Insert successful:', data);
+      if (error) throw error;
 
       showToast('success', `✅ Interval ${intervalData.interval_number} added successfully!`);
       setShowIntervalModal(false);
@@ -592,12 +671,13 @@ function FeesManagement() {
     }
   };
 
-  const handleDeleteStudent = async (student) => {
+  const handleDeleteStudent = (student) => {
     setStudentToDelete(student);
+    setDeleteType('student');
     setShowDeleteConfirm(true);
   };
 
-  const confirmDelete = async () => {
+  const confirmDeleteStudent = async () => {
     if (!studentToDelete) return;
     
     setDeleting(true);
@@ -629,14 +709,16 @@ function FeesManagement() {
     }
   };
 
-  const handleBulkDelete = async () => {
+  const handleBulkDeleteStudents = () => {
     if (selectedStudents.length === 0) {
       showToast('error', 'Please select students to delete');
       return;
     }
+    setDeleteType('bulk_students');
+    setShowDeleteConfirm(true);
+  };
 
-    if (!confirm(`Are you sure you want to delete ${selectedStudents.length} student(s)?`)) return;
-
+  const confirmBulkDeleteStudents = async () => {
     setDeleting(true);
     try {
       await supabase
@@ -661,6 +743,7 @@ function FeesManagement() {
       showToast('error', '❌ Error deleting students: ' + error.message);
     } finally {
       setDeleting(false);
+      setShowDeleteConfirm(false);
     }
   };
 
@@ -768,6 +851,13 @@ function FeesManagement() {
     }
   };
 
+  const openIntervalDetails = (interval, student) => {
+    setSelectedInterval(interval);
+    setSelectedStudentId(student.id);
+    setSelectedStudent(student);
+    setShowIntervalDetails(true);
+  };
+
   const totalStudents = students.length;
   const totalDueAmount = Object.values(studentIntervals).reduce((sum, intervals) => {
     return sum + intervals.reduce((s, i) => s + (Number(i.due_amount) || 0), 0);
@@ -798,6 +888,8 @@ function FeesManagement() {
     );
   }
 
+  const totalIntervals = Object.values(studentIntervals).reduce((sum, intervals) => sum + intervals.length, 0);
+
   return (
     <div className="min-h-screen bg-slate-900">
       {/* Toast Notification */}
@@ -814,10 +906,10 @@ function FeesManagement() {
         </div>
       )}
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
-        {/* Header - Same as before */}
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 py-4 lg:py-10">
+        {/* Header */}
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <button onClick={handleBack} className="p-2 text-slate-400 hover:text-blue-400 rounded-xl hover:bg-slate-800 border border-slate-700">
               <ArrowLeft size={20} />
             </button>
@@ -827,208 +919,185 @@ function FeesManagement() {
                   <CreditCard className="text-white" size={24} />
                 </div>
                 <div>
-                  <h1 className="text-2xl lg:text-3xl font-bold text-white">Fees Management</h1>
-                  <p className="text-slate-400 text-sm mt-1">Manage student fees, intervals & due dates</p>
+                  <h1 className="text-xl lg:text-3xl font-bold text-white">Fees Management</h1>
+                  <p className="text-slate-400 text-xs lg:text-sm mt-1 hidden sm:block">Manage student fees, intervals & due dates</p>
                 </div>
               </div>
             </div>
           </div>
           
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-2 w-full lg:w-auto">
             <button
               onClick={() => setShowBulkAssignModal(true)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-purple-600/20 border border-purple-500 rounded-xl text-purple-400 hover:bg-purple-600/30 transition-all"
+              className="flex items-center gap-2 px-3 py-2 lg:px-4 lg:py-2.5 bg-purple-600/20 border border-purple-500 rounded-xl text-purple-400 hover:bg-purple-600/30 transition-all text-sm lg:text-base"
             >
               <CalendarPlus size={18} />
-              <span>Bulk Assign Intervals</span>
+              <span className="hidden sm:inline">Bulk Assign</span>
+              <span className="sm:hidden">Bulk</span>
             </button>
             {selectedStudents.length > 0 && (
-              <button onClick={handleBulkDelete} className="flex items-center gap-2 px-4 py-2.5 bg-red-950/50 border border-red-700 rounded-xl text-red-400 hover:bg-red-900/50">
+              <button onClick={handleBulkDeleteStudents} className="flex items-center gap-2 px-3 py-2 lg:px-4 lg:py-2.5 bg-red-950/50 border border-red-700 rounded-xl text-red-400 hover:bg-red-900/50 text-sm lg:text-base">
                 <Trash2 size={18} />
-                <span>Delete ({selectedStudents.length})</span>
+                <span>{selectedStudents.length}</span>
               </button>
             )}
-            <button onClick={exportToCSV} className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-slate-300 hover:bg-blue-600/20 hover:border-blue-500 hover:text-blue-400">
+            {selectedIntervals.length > 0 && (
+              <button onClick={handleBulkDeleteIntervals} className="flex items-center gap-2 px-3 py-2 lg:px-4 lg:py-2.5 bg-orange-950/50 border border-orange-700 rounded-xl text-orange-400 hover:bg-orange-900/50 text-sm lg:text-base">
+                <Trash2 size={18} />
+                <span>Delete {selectedIntervals.length} Intervals</span>
+              </button>
+            )}
+            <button onClick={exportToCSV} className="flex items-center gap-2 px-3 py-2 lg:px-4 lg:py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-slate-300 hover:bg-blue-600/20 hover:border-blue-500 hover:text-blue-400 transition-all text-sm lg:text-base">
               <Download size={18} />
-              <span>Export Report</span>
+              <span className="hidden sm:inline">Export</span>
             </button>
           </div>
         </div>
 
-        {/* Financial Summary Cards - Same as before */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <div className="bg-gradient-to-br from-slate-800 to-slate-800/50 rounded-2xl border border-slate-700 p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="p-2 bg-blue-600/20 rounded-xl">
-                <Wallet className="text-blue-400" size={20} />
+        {/* Financial Summary Cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 sm:gap-4 mb-4 sm:mb-6">
+          <div className="bg-slate-800/50 rounded-xl sm:rounded-2xl border border-slate-700 p-3 sm:p-5">
+            <div className="flex items-center justify-between mb-2 sm:mb-3">
+              <div className="p-1.5 sm:p-2 bg-blue-600/20 rounded-xl">
+                <Wallet className="text-blue-400" size={16} />
               </div>
-              <span className="text-xs font-medium text-blue-400 bg-blue-950/50 px-2 py-0.5 rounded-full">Total</span>
+              <span className="text-[10px] sm:text-xs font-medium text-blue-400 bg-blue-950/50 px-1.5 py-0.5 rounded-full border border-blue-800">Total</span>
             </div>
-            <h3 className="text-2xl font-bold text-white">{formatCurrency(financialSummary.total_fees)}</h3>
-            <p className="text-xs text-slate-400 mt-1">Total Fees Amount</p>
+            <h3 className="text-lg sm:text-2xl font-bold text-white">{formatCurrency(financialSummary.total_fees)}</h3>
+            <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1">Total Fees</p>
           </div>
 
-          <div className="bg-gradient-to-br from-emerald-900/30 to-slate-800/50 rounded-2xl border border-emerald-700/30 p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="p-2 bg-emerald-600/20 rounded-xl">
-                <CheckCircle className="text-emerald-400" size={20} />
+          <div className="bg-slate-800/50 rounded-xl sm:rounded-2xl border border-slate-700 p-3 sm:p-5">
+            <div className="flex items-center justify-between mb-2 sm:mb-3">
+              <div className="p-1.5 sm:p-2 bg-emerald-600/20 rounded-xl">
+                <CheckCircle className="text-emerald-400" size={16} />
               </div>
-              <span className="text-xs font-medium text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded-full">Collected</span>
+              <span className="text-[10px] sm:text-xs font-medium text-emerald-400 bg-emerald-950/50 px-1.5 py-0.5 rounded-full border border-emerald-800">Collected</span>
             </div>
-            <h3 className="text-2xl font-bold text-emerald-400">{formatCurrency(financialSummary.total_collected)}</h3>
-            <p className="text-xs text-slate-400 mt-1">Total Fees Collected</p>
+            <h3 className="text-lg sm:text-2xl font-bold text-emerald-400">{formatCurrency(financialSummary.total_collected)}</h3>
+            <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1">Fees Collected</p>
           </div>
 
-          <div className="bg-gradient-to-br from-orange-900/30 to-slate-800/50 rounded-2xl border border-orange-700/30 p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="p-2 bg-orange-600/20 rounded-xl">
-                <AlertCircle className="text-orange-400" size={20} />
+          <div className="bg-slate-800/50 rounded-xl sm:rounded-2xl border border-slate-700 p-3 sm:p-5">
+            <div className="flex items-center justify-between mb-2 sm:mb-3">
+              <div className="p-1.5 sm:p-2 bg-orange-600/20 rounded-xl">
+                <AlertCircle className="text-orange-400" size={16} />
               </div>
-              <span className="text-xs font-medium text-orange-400 bg-orange-950/50 px-2 py-0.5 rounded-full">Due</span>
+              <span className="text-[10px] sm:text-xs font-medium text-orange-400 bg-orange-950/50 px-1.5 py-0.5 rounded-full border border-orange-800">Due</span>
             </div>
-            <h3 className="text-2xl font-bold text-orange-400">{formatCurrency(financialSummary.total_due)}</h3>
-            <p className="text-xs text-slate-400 mt-1">Total Due Amount</p>
+            <h3 className="text-lg sm:text-2xl font-bold text-orange-400">{formatCurrency(financialSummary.total_due)}</h3>
+            <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1">Total Due</p>
           </div>
 
-          <div className="bg-gradient-to-br from-purple-900/30 to-slate-800/50 rounded-2xl border border-purple-700/30 p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="p-2 bg-purple-600/20 rounded-xl">
-                <TrendingUp className="text-purple-400" size={20} />
+          <div className="bg-slate-800/50 rounded-xl sm:rounded-2xl border border-slate-700 p-3 sm:p-5">
+            <div className="flex items-center justify-between mb-2 sm:mb-3">
+              <div className="p-1.5 sm:p-2 bg-purple-600/20 rounded-xl">
+                <TrendingUp className="text-purple-400" size={16} />
               </div>
-              <span className="text-xs font-medium text-purple-400 bg-purple-950/50 px-2 py-0.5 rounded-full">Collection Rate</span>
+              <span className="text-[10px] sm:text-xs font-medium text-purple-400 bg-purple-950/50 px-1.5 py-0.5 rounded-full border border-purple-800">Rate</span>
             </div>
-            <h3 className="text-2xl font-bold text-purple-400">{financialSummary.collection_rate.toFixed(1)}%</h3>
-            <p className="text-xs text-slate-400 mt-1">Overall Collection Rate</p>
-          </div>
-        </div>
-
-        {/* Additional Stats Row */}
-        <div className="grid grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
-          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-600 rounded-xl"><Users className="text-white" size={16} /></div>
-              <div>
-                <h3 className="text-xl font-bold text-white">{totalStudents}</h3>
-                <p className="text-xs text-slate-400">Total Students</p>
-              </div>
-            </div>
+            <h3 className="text-lg sm:text-2xl font-bold text-purple-400">{financialSummary.collection_rate.toFixed(1)}%</h3>
+            <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1">Collection Rate</p>
           </div>
 
-          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-emerald-600 rounded-xl"><CheckCircle className="text-white" size={16} /></div>
-              <div>
-                <h3 className="text-xl font-bold text-emerald-400">{activeStudents}</h3>
-                <p className="text-xs text-slate-400">Active Intervals</p>
+          <div className="bg-slate-800/50 rounded-xl sm:rounded-2xl border border-slate-700 p-3 sm:p-5">
+            <div className="flex items-center justify-between mb-2 sm:mb-3">
+              <div className="p-1.5 sm:p-2 bg-indigo-600/20 rounded-xl">
+                <Layers className="text-indigo-400" size={16} />
               </div>
+              <span className="text-[10px] sm:text-xs font-medium text-indigo-400 bg-indigo-950/50 px-1.5 py-0.5 rounded-full border border-indigo-800">Intervals</span>
             </div>
-          </div>
-
-          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-orange-600 rounded-xl"><AlertCircle className="text-white" size={16} /></div>
-              <div>
-                <h3 className="text-xl font-bold text-orange-400">{financialSummary.pending_count}</h3>
-                <p className="text-xs text-slate-400">Pending Fees</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-red-600 rounded-xl"><XCircle className="text-white" size={16} /></div>
-              <div>
-                <h3 className="text-xl font-bold text-red-400">{overdueCount}</h3>
-                <p className="text-xs text-slate-400">Overdue</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-purple-600 rounded-xl"><Layers className="text-white" size={16} /></div>
-              <div>
-                <h3 className="text-xl font-bold text-purple-400">{Object.keys(studentIntervals).length}</h3>
-                <p className="text-xs text-slate-400">With Intervals</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-slate-600 rounded-xl"><Calendar className="text-white" size={16} /></div>
-              <div>
-                <h3 className="text-xl font-bold text-slate-300">{noSubscriptionStudents}</h3>
-                <p className="text-xs text-slate-400">No Interval</p>
-              </div>
-            </div>
+            <h3 className="text-lg sm:text-2xl font-bold text-indigo-400">{totalIntervals}</h3>
+            <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1">Total Intervals</p>
           </div>
         </div>
 
         {/* Filters */}
-        <div className="bg-slate-800/50 rounded-2xl border border-slate-700 p-5 mb-6">
-          <div className="flex flex-col lg:flex-row gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-500" size={18} />
-              <input
-                type="text"
-                placeholder="Search by name, USN, or branch..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-11 pr-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200"
-              />
-            </div>
-            
-            <div className="flex flex-wrap gap-3">
-              <select
-                value={feeFilter}
-                onChange={(e) => setFeeFilter(e.target.value)}
-                className="px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-slate-200 cursor-pointer"
-              >
-                <option value="all">All Students</option>
-                <option value="due">Due Fees</option>
-                <option value="overdue">Overdue</option>
-                <option value="paid">Fees Paid</option>
-                <option value="active">Active Interval</option>
-                <option value="expired">Expired</option>
-                <option value="no-subscription">No Interval</option>
-              </select>
+        <div className="bg-slate-800/50 rounded-xl sm:rounded-2xl border border-slate-700 p-3 sm:p-5 mb-4 sm:mb-6">
+          <div className="space-y-3 sm:space-y-4">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500" size={16} />
+                <input
+                  type="text"
+                  placeholder="Search..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 sm:py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-blue-500 text-slate-200 text-sm"
+                />
+              </div>
+              
+              <div className="flex flex-wrap gap-2">
+                <select
+                  value={feeFilter}
+                  onChange={(e) => setFeeFilter(e.target.value)}
+                  className="flex-1 sm:flex-none px-3 py-2 sm:px-4 sm:py-3 bg-slate-900 border border-slate-700 rounded-xl text-slate-200 cursor-pointer text-sm"
+                >
+                  <option value="all">All</option>
+                  <option value="due">Due</option>
+                  <option value="overdue">Overdue</option>
+                  <option value="paid">Paid</option>
+                  <option value="active">Active</option>
+                  <option value="expired">Expired</option>
+                  <option value="no-subscription">No Interval</option>
+                </select>
 
-              <button
-                onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
-                className="px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-slate-400 hover:text-blue-400"
-              >
-                <Layers size={18} />
+                <button
+                  onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
+                  className="px-3 py-2 sm:px-4 sm:py-3 bg-slate-900 border border-slate-700 rounded-xl text-slate-400 hover:text-blue-400"
+                >
+                  <Layers size={18} />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-1.5 sm:gap-2 pt-2 sm:pt-3 border-t border-slate-700">
+              <span className="text-[10px] sm:text-xs font-medium text-slate-500 py-1">Filters:</span>
+              <button onClick={() => setFeeFilter('due')} className="px-2 sm:px-3 py-0.5 sm:py-1 bg-orange-950/50 text-orange-400 rounded-lg text-[10px] sm:text-xs border border-orange-800">
+                Due ({financialSummary.pending_count})
+              </button>
+              <button onClick={() => setFeeFilter('overdue')} className="px-2 sm:px-3 py-0.5 sm:py-1 bg-red-950/50 text-red-400 rounded-lg text-[10px] sm:text-xs border border-red-800">
+                Overdue ({overdueCount})
+              </button>
+              <button onClick={() => setFeeFilter('active')} className="px-2 sm:px-3 py-0.5 sm:py-1 bg-emerald-950/50 text-emerald-400 rounded-lg text-[10px] sm:text-xs border border-emerald-800">
+                Active ({activeStudents})
+              </button>
+              <button onClick={() => setFeeFilter('no-subscription')} className="px-2 sm:px-3 py-0.5 sm:py-1 bg-purple-950/50 text-purple-400 rounded-lg text-[10px] sm:text-xs border border-purple-800">
+                No Interval ({noSubscriptionStudents})
               </button>
             </div>
           </div>
+        </div>
 
-          <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-700">
-            <span className="text-xs font-medium text-slate-500 py-1">Quick filters:</span>
-            <button onClick={() => setFeeFilter('due')} className="px-3 py-1 bg-orange-950/50 text-orange-400 rounded-lg text-xs border border-orange-800">
-              Due Fees ({financialSummary.pending_count})
-            </button>
-            <button onClick={() => setFeeFilter('overdue')} className="px-3 py-1 bg-red-950/50 text-red-400 rounded-lg text-xs border border-red-800">
-              Overdue ({overdueCount})
-            </button>
-            <button onClick={() => setFeeFilter('paid')} className="px-3 py-1 bg-emerald-950/50 text-emerald-400 rounded-lg text-xs border border-emerald-800">
-              Paid ({students.filter(s => {
-                const intervals = studentIntervals[s.id] || [];
-                return intervals.length > 0 && intervals.every(i => Number(i.due_amount) === 0);
-              }).length})
-            </button>
-            <button onClick={() => setFeeFilter('active')} className="px-3 py-1 bg-emerald-950/50 text-emerald-400 rounded-lg text-xs border border-emerald-800">
-              Active ({activeStudents})
-            </button>
-            <button onClick={() => setFeeFilter('no-subscription')} className="px-3 py-1 bg-purple-950/50 text-purple-400 rounded-lg text-xs border border-purple-800">
-              No Interval ({noSubscriptionStudents})
-            </button>
+        {/* Results Count */}
+        <div className="bg-slate-800/50 rounded-xl border border-slate-700 px-3 sm:px-5 py-2 sm:py-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-4 sm:mb-6">
+          <p className="text-xs sm:text-sm text-slate-400">
+            Showing <span className="font-semibold text-white">{filteredStudents.length}</span> of{' '}
+            <span className="font-semibold text-white">{students.length}</span> students
+          </p>
+          <div className="flex items-center gap-4">
+            {viewMode === 'table' && filteredStudents.length > 0 && (
+              <label className="flex items-center gap-2 text-xs sm:text-sm text-slate-400 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={selectedStudents.length === filteredStudents.length && filteredStudents.length > 0}
+                  onChange={selectAllStudents}
+                  className="w-3 h-3 sm:w-4 sm:h-4 rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-0"
+                />
+                Select All
+              </label>
+            )}
+            {selectedIntervals.length > 0 && (
+              <span className="text-xs text-orange-400">
+                {selectedIntervals.length} interval(s) selected
+              </span>
+            )}
           </div>
         </div>
 
         {/* Grid View */}
         {viewMode === 'grid' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5">
             {filteredStudents.map((student) => {
               const intervals = studentIntervals[student.id] || [];
               const totalFees = intervals.reduce((sum, i) => sum + (i.total_fees || 0), 0);
@@ -1039,86 +1108,103 @@ function FeesManagement() {
               const paidPercentage = totalFees > 0 ? (paidAmount / totalFees) * 100 : 0;
               
               return (
-                <div key={student.id} className="bg-slate-800/50 rounded-2xl border border-slate-700 hover:border-blue-500/30 transition-all overflow-hidden">
+                <div key={student.id} className="bg-slate-800/50 rounded-xl sm:rounded-2xl border border-slate-700 hover:border-blue-500/30 transition-all overflow-hidden">
                   <div className={`h-1 ${
                     dueAmount === 0 ? 'bg-emerald-500' :
                     dueStatus.text === 'Overdue' ? 'bg-red-500' :
                     'bg-orange-500'
                   }`}></div>
-                  <div className="p-5">
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center">
-                          <GraduationCap className="text-white" size={20} />
+                  <div className="p-3 sm:p-5">
+                    <div className="flex justify-between items-start mb-3 sm:mb-4">
+                      <div className="flex items-center gap-2 sm:gap-3">
+                        <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-600 rounded-xl flex items-center justify-center">
+                          <GraduationCap className="text-white" size={16} />
                         </div>
                         <div>
-                          <h3 className="font-semibold text-white">{student.full_name}</h3>
-                          <p className="text-xs text-slate-500">{student.usn || 'No USN'}</p>
+                          <h3 className="font-semibold text-white text-sm sm:text-base">{student.full_name}</h3>
+                          <p className="text-[10px] sm:text-xs text-slate-500">{student.usn || 'No USN'}</p>
                         </div>
                       </div>
-                      <div className="flex flex-col items-end gap-1">
-                        <span className={`px-2 py-1 text-xs font-semibold rounded-full border ${dueStatus.color}`}>
+                      <div className="flex flex-col items-end gap-0.5 sm:gap-1">
+                        <span className={`px-1.5 sm:px-2 py-0.5 text-[10px] sm:text-xs font-semibold rounded-full border ${dueStatus.color}`}>
                           {dueStatus.icon} {dueStatus.text}
                         </span>
-                        <span className={`px-2 py-0.5 text-xs rounded-full border ${busStatus.color}`}>
+                        <span className={`px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-xs rounded-full border ${busStatus.color}`}>
                           {busStatus.icon} {busStatus.text.split('(')[0].trim()}
                         </span>
                       </div>
                     </div>
 
-                    <div className="space-y-3 mb-4">
-                      <div className="flex items-center gap-2 text-sm">
-                        <BookOpen size={14} className="text-slate-500" />
+                    <div className="space-y-2 sm:space-y-3 mb-3 sm:mb-4">
+                      <div className="flex items-center gap-2 text-xs sm:text-sm">
+                        <BookOpen size={12} className="text-slate-500" />
                         <span className="text-slate-400">{student.branch || 'N/A'}</span>
                       </div>
                       
-                      {/* Intervals Info with Dropdown */}
-                      <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-700">
-                        <div className="flex items-center justify-between text-sm mb-2">
+                      {/* Intervals Info */}
+                      <div className="bg-slate-900/50 rounded-lg p-2 sm:p-3 border border-slate-700">
+                        <div className="flex items-center justify-between text-xs sm:text-sm mb-2">
                           <span className="text-slate-500">Intervals</span>
                           <div className="flex gap-1">
                             <button
                               onClick={() => openIntervalModal(student)}
-                              className="text-purple-400 hover:text-purple-300 text-xs flex items-center gap-1"
+                              className="text-purple-400 hover:text-purple-300 text-[10px] sm:text-xs flex items-center gap-1"
                             >
                               <Plus size={12} /> Add
                             </button>
                           </div>
                         </div>
                         <div className="flex items-center gap-2 text-slate-300">
-                          <Layers size={14} />
-                          <span className="text-sm">
+                          <Layers size={12} />
+                          <span className="text-xs sm:text-sm">
                             {intervals.length} interval{intervals.length !== 1 ? 's' : ''}
                           </span>
                         </div>
                         {intervals.length > 0 && (
-                          <div className="mt-2 pt-2 border-t border-slate-700 max-h-32 overflow-y-auto space-y-1">
+                          <div className="mt-2 pt-2 border-t border-slate-700 max-h-32 sm:max-h-40 overflow-y-auto space-y-1">
                             {intervals.map((interval) => (
-                              <div key={interval.id} className="flex items-center justify-between text-xs bg-slate-800/50 rounded px-2 py-1">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-slate-400">#{interval.interval_number}</span>
-                                  <span className="text-slate-300">
+                              <div 
+                                key={interval.id} 
+                                className={`flex items-center justify-between text-[10px] sm:text-xs bg-slate-800/50 rounded px-1.5 sm:px-2 py-1 cursor-pointer hover:bg-slate-700/50 transition-colors ${
+                                  selectedIntervalId === interval.id ? 'bg-blue-900/30 border border-blue-800' : ''
+                                }`}
+                                onClick={() => {
+                                  setSelectedIntervalId(interval.id);
+                                  openIntervalDetails(interval, student);
+                                }}
+                              >
+                                <div className="flex items-center gap-1.5 sm:gap-2 flex-1 min-w-0">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedIntervals.includes(interval.id)}
+                                    onChange={(e) => {
+                                      e.stopPropagation();
+                                      toggleIntervalSelection(interval.id);
+                                    }}
+                                    className="w-3 h-3 rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-blue-500"
+                                  />
+                                  <span className="text-slate-400 font-mono">#{interval.interval_number}</span>
+                                  <span className="text-slate-300 truncate">
                                     {formatDate(interval.start_date)} - {formatDate(interval.end_date)}
                                   </span>
-                                  <span className={`px-1.5 py-0.5 rounded text-xs ${
+                                  <span className={`px-1 py-0.5 rounded text-[8px] sm:text-[10px] whitespace-nowrap ${
                                     interval.status === 'paid' ? 'bg-emerald-900/50 text-emerald-400' :
                                     interval.status === 'partial' ? 'bg-amber-900/50 text-amber-400' :
                                     'bg-orange-900/50 text-orange-400'
                                   }`}>
                                     {interval.status || 'pending'}
                                   </span>
-                                  <span className="text-orange-400">₹{interval.due_amount || 0}</span>
+                                  <span className="text-orange-400 whitespace-nowrap">₹{interval.due_amount || 0}</span>
                                 </div>
                                 <button
-                                  onClick={() => {
-                                    if (confirm(`Delete interval #${interval.interval_number}?`)) {
-                                      handleDeleteInterval(interval.id);
-                                    }
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteInterval(interval.id);
                                   }}
-                                  className="p-1 text-red-400 hover:bg-red-600/20 rounded transition-colors"
+                                  className="p-1 text-red-400 hover:bg-red-600/20 rounded transition-colors flex-shrink-0"
                                   title="Delete Interval"
                                 >
-                                  <Trash2 size={12} />
+                                  <Trash2 size={10} />
                                 </button>
                               </div>
                             ))}
@@ -1127,33 +1213,33 @@ function FeesManagement() {
                       </div>
                       
                       {/* Fees Status */}
-                      <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-700">
-                        <div className="flex justify-between text-sm mb-1">
+                      <div className="bg-slate-900/50 rounded-lg p-2 sm:p-3 border border-slate-700">
+                        <div className="flex justify-between text-xs sm:text-sm mb-1">
                           <span className="text-slate-500">Fees Status</span>
                           <div className="flex gap-1">
                             <button
                               onClick={() => openPaymentModal(student)}
-                              className="text-emerald-400 hover:text-emerald-300 text-xs flex items-center gap-1"
+                              className="text-emerald-400 hover:text-emerald-300 text-[10px] sm:text-xs flex items-center gap-1"
                             >
                               <DollarSign size={12} /> Pay
                             </button>
                             <button
                               onClick={() => openDueDateModal(student)}
-                              className="text-purple-400 hover:text-purple-300 text-xs flex items-center gap-1"
+                              className="text-purple-400 hover:text-purple-300 text-[10px] sm:text-xs flex items-center gap-1"
                             >
-                              <Calendar size={12} /> Set Due
+                              <Calendar size={12} /> Due
                             </button>
                           </div>
                         </div>
-                        <div className="w-full bg-slate-700 rounded-full h-1.5 mb-2">
+                        <div className="w-full bg-slate-700 rounded-full h-1 sm:h-1.5 mb-1.5 sm:mb-2">
                           <div 
-                            className={`h-1.5 rounded-full transition-all ${
+                            className={`h-1 sm:h-1.5 rounded-full transition-all ${
                               dueAmount === 0 ? 'bg-emerald-500' : 'bg-orange-500'
                             }`}
                             style={{ width: `${paidPercentage}%` }}
                           ></div>
                         </div>
-                        <div className="flex justify-between text-xs">
+                        <div className="flex justify-between text-[10px] sm:text-xs">
                           <span className="text-emerald-400">Paid: {formatCurrency(paidAmount)}</span>
                           <span className="text-orange-400">Due: {formatCurrency(dueAmount)}</span>
                           <span className="text-slate-400">Total: {formatCurrency(totalFees)}</span>
@@ -1161,22 +1247,22 @@ function FeesManagement() {
                       </div>
                     </div>
 
-                    <div className="flex justify-end gap-2 pt-3 border-t border-slate-700">
+                    <div className="flex flex-wrap justify-end gap-1.5 sm:gap-2 pt-2 sm:pt-3 border-t border-slate-700">
                       <button
                         onClick={() => openPaymentModal(student)}
-                        className="px-3 py-1.5 bg-emerald-600/20 text-emerald-400 rounded-lg text-xs hover:bg-emerald-600/30 transition-colors flex items-center gap-1"
+                        className="px-2 sm:px-3 py-1 sm:py-1.5 bg-emerald-600/20 text-emerald-400 rounded-lg text-[10px] sm:text-xs hover:bg-emerald-600/30 transition-colors flex items-center gap-1"
                       >
                         <DollarSign size={12} /> Pay
                       </button>
                       <button
                         onClick={() => openIntervalModal(student)}
-                        className="px-3 py-1.5 bg-purple-600/20 text-purple-400 rounded-lg text-xs hover:bg-purple-600/30 transition-colors flex items-center gap-1"
+                        className="px-2 sm:px-3 py-1 sm:py-1.5 bg-purple-600/20 text-purple-400 rounded-lg text-[10px] sm:text-xs hover:bg-purple-600/30 transition-colors flex items-center gap-1"
                       >
-                        <Layers size={12} /> Add Interval
+                        <Layers size={12} /> Add
                       </button>
                       <button
                         onClick={() => handleDeleteStudent(student)}
-                        className="p-1.5 text-red-400 hover:bg-red-600/20 rounded-lg transition-colors"
+                        className="p-1 sm:p-1.5 text-red-400 hover:bg-red-600/20 rounded-lg transition-colors"
                         title="Delete Student"
                       >
                         <Trash2 size={14} />
@@ -1188,22 +1274,22 @@ function FeesManagement() {
             })}
           </div>
         ) : (
-          <div className="bg-slate-800/50 rounded-2xl border border-slate-700 overflow-hidden">
+          <div className="bg-slate-800/50 rounded-xl sm:rounded-2xl border border-slate-700 overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="w-full text-xs sm:text-sm">
                 <thead>
                   <tr className="bg-slate-900 border-b border-slate-700">
-                    <th className="px-5 py-3 text-left">
+                    <th className="px-2 sm:px-5 py-2 sm:py-3 text-left">
                       <input type="checkbox" checked={selectedStudents.length === filteredStudents.length && filteredStudents.length > 0} onChange={selectAllStudents} className="rounded" />
                     </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400">Student</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400">Branch</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400">Intervals</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400">Total Fees</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400">Paid</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400">Due</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400">Status</th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold text-slate-400">Actions</th>
+                    <th className="px-2 sm:px-5 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-semibold text-slate-400">Student</th>
+                    <th className="px-2 sm:px-5 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-semibold text-slate-400">Branch</th>
+                    <th className="px-2 sm:px-5 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-semibold text-slate-400">Int.</th>
+                    <th className="px-2 sm:px-5 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-semibold text-slate-400">Fees</th>
+                    <th className="px-2 sm:px-5 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-semibold text-slate-400">Paid</th>
+                    <th className="px-2 sm:px-5 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-semibold text-slate-400">Due</th>
+                    <th className="px-2 sm:px-5 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-semibold text-slate-400">Status</th>
+                    <th className="px-2 sm:px-5 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-semibold text-slate-400">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-700">
@@ -1216,55 +1302,47 @@ function FeesManagement() {
                     
                     return (
                       <tr key={student.id} className="hover:bg-slate-700/30">
-                        <td className="px-5 py-3">
+                        <td className="px-2 sm:px-5 py-2 sm:py-3">
                           <input type="checkbox" checked={selectedStudents.includes(student.id)} onChange={() => toggleStudentSelection(student.id)} className="rounded" />
                         </td>
-                        <td className="px-5 py-3">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-                              <GraduationCap className="text-white" size={14} />
+                        <td className="px-2 sm:px-5 py-2 sm:py-3">
+                          <div className="flex items-center gap-2 sm:gap-3">
+                            <div className="w-6 h-6 sm:w-8 sm:h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                              <GraduationCap className="text-white" size={12} />
                             </div>
                             <div>
-                              <p className="font-medium text-white">{student.full_name}</p>
-                              <p className="text-xs text-slate-500">{student.usn || 'No USN'}</p>
+                              <p className="font-medium text-white text-xs sm:text-sm">{student.full_name}</p>
+                              <p className="text-[10px] sm:text-xs text-slate-500">{student.usn || 'No USN'}</p>
                             </div>
                           </div>
                         </td>
-                        <td className="px-5 py-3 text-sm text-slate-400">{student.branch || 'N/A'}</td>
-                        <td className="px-5 py-3">
-                          <div className="flex items-center gap-2">
-                            <Layers size={14} className="text-purple-400" />
-                            <span className="text-sm text-slate-300">{intervals.length}</span>
-                            {intervals.length > 0 && (
-                              <button
-                                onClick={() => setSelectedStudent(student)}
-                                className="text-xs text-blue-400 hover:text-blue-300"
-                              >
-                                View
-                              </button>
-                            )}
+                        <td className="px-2 sm:px-5 py-2 sm:py-3 text-[10px] sm:text-sm text-slate-400">{student.branch || 'N/A'}</td>
+                        <td className="px-2 sm:px-5 py-2 sm:py-3">
+                          <div className="flex items-center gap-1 sm:gap-2">
+                            <Layers size={12} className="text-purple-400" />
+                            <span className="text-xs sm:text-sm text-slate-300">{intervals.length}</span>
                           </div>
                         </td>
-                        <td className="px-5 py-3 text-sm text-white">{formatCurrency(totalFees)}</td>
-                        <td className="px-5 py-3 text-sm text-emerald-400">{formatCurrency(paidAmount)}</td>
-                        <td className={`px-5 py-3 text-sm font-semibold ${dueAmount > 0 ? 'text-orange-400' : 'text-emerald-400'}`}>
+                        <td className="px-2 sm:px-5 py-2 sm:py-3 text-[10px] sm:text-sm text-white">{formatCurrency(totalFees)}</td>
+                        <td className="px-2 sm:px-5 py-2 sm:py-3 text-[10px] sm:text-sm text-emerald-400">{formatCurrency(paidAmount)}</td>
+                        <td className={`px-2 sm:px-5 py-2 sm:py-3 text-[10px] sm:text-sm font-semibold ${dueAmount > 0 ? 'text-orange-400' : 'text-emerald-400'}`}>
                           {formatCurrency(dueAmount)}
                         </td>
-                        <td className="px-5 py-3">
-                          <span className={`px-2 py-0.5 text-xs font-semibold rounded-full border ${dueStatus.color}`}>
-                            {dueStatus.icon} {dueStatus.text}
+                        <td className="px-2 sm:px-5 py-2 sm:py-3">
+                          <span className={`px-1.5 sm:px-2 py-0.5 text-[8px] sm:text-xs font-semibold rounded-full border ${dueStatus.color}`}>
+                            {dueStatus.icon} {dueStatus.text.split('(')[0].trim()}
                           </span>
                         </td>
-                        <td className="px-5 py-3">
-                          <div className="flex gap-1">
-                            <button onClick={() => openPaymentModal(student)} className="p-1.5 text-emerald-400 hover:bg-emerald-600/20 rounded" title="Record Payment">
-                              <DollarSign size={14} />
+                        <td className="px-2 sm:px-5 py-2 sm:py-3">
+                          <div className="flex gap-0.5 sm:gap-1">
+                            <button onClick={() => openPaymentModal(student)} className="p-1 sm:p-1.5 text-emerald-400 hover:bg-emerald-600/20 rounded" title="Pay">
+                              <DollarSign size={12} />
                             </button>
-                            <button onClick={() => openIntervalModal(student)} className="p-1.5 text-purple-400 hover:bg-purple-600/20 rounded" title="Add Interval">
-                              <Layers size={14} />
+                            <button onClick={() => openIntervalModal(student)} className="p-1 sm:p-1.5 text-purple-400 hover:bg-purple-600/20 rounded" title="Add Interval">
+                              <Layers size={12} />
                             </button>
-                            <button onClick={() => handleDeleteStudent(student)} className="p-1.5 text-red-400 hover:bg-red-600/20 rounded" title="Delete">
-                              <Trash2 size={14} />
+                            <button onClick={() => handleDeleteStudent(student)} className="p-1 sm:p-1.5 text-red-400 hover:bg-red-600/20 rounded" title="Delete">
+                              <Trash2 size={12} />
                             </button>
                           </div>
                         </td>
@@ -1279,18 +1357,122 @@ function FeesManagement() {
 
         {/* Empty State */}
         {filteredStudents.length === 0 && (
-          <div className="text-center py-12 bg-slate-800/50 rounded-2xl border border-slate-700">
-            <div className="w-20 h-20 bg-slate-700/50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <div className="text-center py-8 sm:py-12 bg-slate-800/50 rounded-xl sm:rounded-2xl border border-slate-700">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-slate-700/50 rounded-2xl flex items-center justify-center mx-auto mb-4">
               <CreditCard className="text-slate-500" size={32} />
             </div>
-            <h3 className="text-lg font-semibold text-white mb-2">No Students Found</h3>
-            <p className="text-slate-400 mb-4">Try adjusting your search or filter criteria</p>
-            <button onClick={() => { setSearchTerm(''); setFeeFilter('all'); }} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+            <h3 className="text-base sm:text-lg font-semibold text-white mb-2">No Students Found</h3>
+            <p className="text-xs sm:text-sm text-slate-400 mb-4">Try adjusting your search or filter criteria</p>
+            <button onClick={() => { setSearchTerm(''); setFeeFilter('all'); }} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
               Clear Filters
             </button>
           </div>
         )}
       </div>
+
+      {/* Interval Details Modal */}
+      {showIntervalDetails && selectedInterval && selectedStudent && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-slate-800 rounded-2xl border border-slate-700 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="px-6 py-4 border-b border-slate-700 flex justify-between items-center sticky top-0 bg-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-600 rounded-xl">
+                  <Info className="text-white" size={20} />
+                </div>
+                <h3 className="text-xl font-bold text-white">
+                  Interval #{selectedInterval.interval_number}
+                </h3>
+              </div>
+              <button 
+                onClick={() => {
+                  setShowIntervalDetails(false);
+                  setSelectedIntervalId(null);
+                }}
+                className="p-2 text-slate-400 hover:text-slate-300 hover:bg-slate-700 rounded-lg transition-all"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* Student Info */}
+              <div className="p-4 bg-slate-700/30 rounded-xl">
+                <p className="font-semibold text-white">{selectedStudent.full_name}</p>
+                <p className="text-sm text-slate-400">{selectedStudent.usn} • {selectedStudent.branch}</p>
+              </div>
+
+              {/* Interval Details */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs text-slate-500">Start Date</p>
+                  <p className="text-sm font-medium text-white">{formatDate(selectedInterval.start_date)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">End Date</p>
+                  <p className="text-sm font-medium text-white">{formatDate(selectedInterval.end_date)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">Status</p>
+                  <span className={`px-2 py-1 rounded text-xs font-medium inline-block ${
+                    selectedInterval.status === 'paid' ? 'bg-emerald-900/50 text-emerald-400' :
+                    selectedInterval.status === 'partial' ? 'bg-amber-900/50 text-amber-400' :
+                    'bg-orange-900/50 text-orange-400'
+                  }`}>
+                    {selectedInterval.status || 'pending'}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">Payment Mode</p>
+                  <p className="text-sm font-medium text-white">{selectedInterval.payment_mode || 'N/A'}</p>
+                </div>
+              </div>
+
+              {/* Amount Details */}
+              <div className="bg-slate-900/50 rounded-xl p-4 border border-slate-700">
+                <h4 className="text-sm font-semibold text-white mb-3">Amount Details</h4>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-400">Total Fees</span>
+                    <span className="text-white font-medium">{formatCurrency(selectedInterval.total_fees)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-400">Paid Amount</span>
+                    <span className="text-emerald-400 font-medium">{formatCurrency(selectedInterval.paid_amount)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm pt-2 border-t border-slate-700">
+                    <span className="text-slate-400">Due Amount</span>
+                    <span className={`font-medium ${selectedInterval.due_amount > 0 ? 'text-orange-400' : 'text-emerald-400'}`}>
+                      {formatCurrency(selectedInterval.due_amount)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-wrap gap-3 pt-4 border-t border-slate-700">
+                <button
+                  onClick={() => openPaymentModal(selectedStudent, selectedInterval.id)}
+                  className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-all font-medium flex items-center justify-center gap-2"
+                >
+                  <DollarSign size={16} /> Pay Now
+                </button>
+                <button
+                  onClick={() => openDueDateModal(selectedStudent, selectedInterval.id)}
+                  className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-all font-medium flex items-center justify-center gap-2"
+                >
+                  <Calendar size={16} /> Set Due Date
+                </button>
+                <button
+                  onClick={() => handleDeleteInterval(selectedInterval.id)}
+                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all font-medium flex items-center justify-center gap-2"
+                >
+                  <Trash2 size={16} /> Delete Interval
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Assign Interval Modal */}
       {showDateModal && dateModalData.student && (
@@ -1349,7 +1531,7 @@ function FeesManagement() {
         </div>
       )}
 
-      {/* Set Due Date Modal with Interval Dropdown */}
+      {/* Set Due Date Modal */}
       {showDueDateModal && dueDateData.student && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-slate-800 rounded-2xl border border-slate-700 max-w-md w-full">
@@ -1439,7 +1621,7 @@ function FeesManagement() {
         </div>
       )}
 
-      {/* Payment Modal with Interval Dropdown */}
+      {/* Payment Modal */}
       {showPaymentModal && paymentData.student && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-slate-800 rounded-2xl border border-slate-700 max-w-md w-full">
@@ -1471,7 +1653,14 @@ function FeesManagement() {
                   <select
                     value={paymentData.interval_id || ''}
                     onChange={(e) => {
-                      setPaymentData({...paymentData, interval_id: e.target.value || null});
+                      const intervals = studentIntervals[paymentData.student.id] || [];
+                      const selected = intervals.find(i => i.id === e.target.value);
+                      if (selected) {
+                        setPaymentData({
+                          ...paymentData,
+                          interval_id: selected.id
+                        });
+                      }
                     }}
                     className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:border-emerald-500 text-slate-200"
                   >
@@ -1748,20 +1937,138 @@ function FeesManagement() {
       )}
 
       {/* Delete Confirmation Modal */}
-      {showDeleteConfirm && studentToDelete && (
+      {showDeleteConfirm && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-800 rounded-2xl border border-slate-700 max-w-md w-full">
+          <div className="bg-slate-800 rounded-2xl border border-slate-700 max-w-md w-full shadow-2xl">
             <div className="p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-red-600 rounded-xl"><Trash2 className="text-white" size={24} /></div>
-                <h3 className="text-xl font-bold text-white">Delete Student</h3>
+              <div className="flex items-center gap-4 mb-4">
+                <div className="p-3 bg-red-600/20 rounded-xl border border-red-600/30">
+                  <AlertTriangle className="text-red-500" size={28} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-white">
+                    {deleteType === 'student' ? 'Delete Student' : 
+                     deleteType === 'bulk_students' ? 'Delete Students' : 
+                     'Delete Interval'}
+                  </h3>
+                  <p className="text-slate-400 text-sm">
+                    {deleteType === 'student' ? 'This action cannot be undone.' :
+                     deleteType === 'bulk_students' ? `This will delete ${selectedStudents.length} students.` :
+                     'This action cannot be undone.'}
+                  </p>
+                </div>
               </div>
-              <p className="text-slate-300 mb-2">Are you sure you want to delete <span className="font-semibold text-white">{studentToDelete.full_name}</span>?</p>
-              <p className="text-slate-400 text-sm mb-6">This will also delete all associated intervals.</p>
+              
+              <div className="bg-slate-900/50 rounded-xl p-4 border border-slate-700 mb-6">
+                {deleteType === 'student' && studentToDelete && (
+                  <div>
+                    <p className="text-slate-400 text-sm">You are about to delete:</p>
+                    <p className="text-white font-semibold text-lg mt-1">{studentToDelete.full_name}</p>
+                    <p className="text-slate-500 text-sm">{studentToDelete.usn} • {studentToDelete.branch}</p>
+                  </div>
+                )}
+                {deleteType === 'interval' && intervalToDelete && (
+                  <div>
+                    <p className="text-slate-400 text-sm">You are about to delete:</p>
+                    <p className="text-white font-semibold text-lg mt-1">Interval #{intervalToDelete.interval_number}</p>
+                    <p className="text-slate-500 text-sm">
+                      {formatDate(intervalToDelete.start_date)} - {formatDate(intervalToDelete.end_date)}
+                    </p>
+                    <p className="text-orange-400 text-sm mt-1">Due Amount: {formatCurrency(intervalToDelete.due_amount)}</p>
+                  </div>
+                )}
+                {deleteType === 'bulk_students' && (
+                  <div>
+                    <p className="text-slate-400 text-sm">You are about to delete:</p>
+                    <p className="text-white font-semibold text-lg mt-1">{selectedStudents.length} Students</p>
+                  </div>
+                )}
+              </div>
+
               <div className="flex justify-end gap-3">
-                <button onClick={() => { setShowDeleteConfirm(false); setStudentToDelete(null); }} className="px-4 py-2 text-slate-300 bg-slate-700 rounded-lg">Cancel</button>
-                <button onClick={confirmDelete} disabled={deleting} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2">
-                  {deleting ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Deleting...</> : <><Trash2 size={16} />Delete Student</>}
+                <button
+                  onClick={() => {
+                    setShowDeleteConfirm(false);
+                    setStudentToDelete(null);
+                    setIntervalToDelete(null);
+                    setDeleteType('student');
+                  }}
+                  className="px-5 py-2.5 text-slate-300 bg-slate-700 rounded-xl hover:bg-slate-600 transition-all font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    if (deleteType === 'student') {
+                      confirmDeleteStudent();
+                    } else if (deleteType === 'interval') {
+                      confirmDeleteInterval();
+                    } else if (deleteType === 'bulk_students') {
+                      confirmBulkDeleteStudents();
+                    }
+                  }}
+                  disabled={deleting}
+                  className="px-5 py-2.5 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-all font-medium flex items-center gap-2 disabled:opacity-50"
+                >
+                  {deleting ? (
+                    <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Deleting...</>
+                  ) : (
+                    <><Trash2 size={16} /> Confirm Delete</>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Delete Intervals Modal */}
+      {showBulkDeleteModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-slate-800 rounded-2xl border border-slate-700 max-w-md w-full shadow-2xl">
+            <div className="p-6">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="p-3 bg-red-600/20 rounded-xl border border-red-600/30">
+                  <AlertTriangle className="text-red-500" size={28} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-white">Delete Intervals</h3>
+                  <p className="text-slate-400 text-sm">This will delete {bulkDeleteIntervals.length} interval(s).</p>
+                </div>
+              </div>
+              
+              <div className="bg-slate-900/50 rounded-xl p-4 border border-slate-700 mb-6 max-h-40 overflow-y-auto">
+                <p className="text-slate-400 text-sm mb-2">Selected intervals:</p>
+                {bulkDeleteIntervals.map((id, index) => {
+                  const interval = findIntervalById(id);
+                  return interval ? (
+                    <p key={id} className="text-white text-sm">
+                      #{index + 1}: Interval #{interval.interval_number} - {formatDate(interval.start_date)} to {formatDate(interval.end_date)}
+                    </p>
+                  ) : null;
+                })}
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => {
+                    setShowBulkDeleteModal(false);
+                    setBulkDeleteIntervals([]);
+                  }}
+                  className="px-5 py-2.5 text-slate-300 bg-slate-700 rounded-xl hover:bg-slate-600 transition-all font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmBulkDeleteIntervals}
+                  disabled={deleting}
+                  className="px-5 py-2.5 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-all font-medium flex items-center gap-2 disabled:opacity-50"
+                >
+                  {deleting ? (
+                    <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Deleting...</>
+                  ) : (
+                    <><Trash2 size={16} /> Delete All</>
+                  )}
                 </button>
               </div>
             </div>
