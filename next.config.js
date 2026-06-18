@@ -12,12 +12,6 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  
-  // Ignore linting errors from supabase/functions folder
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-  
   // Exclude supabase folder from webpack bundling
   webpack: (config, { isServer }) => {
     // Ignore the supabase/functions directory
