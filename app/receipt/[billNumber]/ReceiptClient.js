@@ -33,7 +33,7 @@ export default function ReceiptClient({ receiptData }) {
         <div className="receipt">
           {/* ===== HEADER WITH BIG LOGO ===== */}
           <div className="header">
-            <img src="/SGI.png" alt="SGI Logo" className="logo" />
+            <img src="https://hluezfgmmzrjamutofxw.supabase.co/storage/v1/object/public/logos/SGi%20logo.png" alt="SGI Logo" className="logo" />
             <div className="college-info">
               <h2>Shetty Group Of Institutions</h2>
               <p>Kalaburgi, Karnataka</p>
