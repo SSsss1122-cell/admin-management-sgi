@@ -1,18 +1,36 @@
 // app/bill/[billNumber]/page.js
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
-import { Download, Printer, ArrowLeft, CreditCard, Calendar, User, Hash, IndianRupee } from 'lucide-react';
+import { Download, Printer, ArrowLeft, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 
 export default function BillPage() {
   const params = useParams();
   const billNumber = params?.billNumber;
+  const billRef = useRef(null);
   
   const [billData, setBillData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [downloadLoading, setDownloadLoading] = useState(false);
   const [error, setError] = useState('');
+  const [librariesLoaded, setLibrariesLoaded] = useState(false);
+
+  // Load libraries on client side
+  useEffect(() => {
+    const loadLibraries = async () => {
+      try {
+        await import('dom-to-image');
+        await import('jspdf');
+        setLibrariesLoaded(true);
+      } catch (err) {
+        console.error('Failed to load PDF libraries:', err);
+        setLibrariesLoaded(false);
+      }
+    };
+    loadLibraries();
+  }, []);
 
   useEffect(() => {
     if (billNumber) {
@@ -41,8 +59,72 @@ export default function BillPage() {
     window.print();
   };
 
-  const handleDownload = () => {
-    window.print();
+  const handleDownloadPDF = async () => {
+    if (!billRef.current) {
+      alert('Bill content not ready');
+      return;
+    }
+
+    if (!librariesLoaded) {
+      alert('PDF library is loading. Please try again in a moment.');
+      return;
+    }
+
+    setDownloadLoading(true);
+
+    try {
+      // Dynamic imports
+      const domToImage = (await import('dom-to-image')).default;
+      const jsPDF = (await import('jspdf')).default;
+
+      const element = billRef.current;
+      
+      // Generate image using dom-to-image (more reliable than html2canvas)
+      const dataUrl = await domToImage.toJpeg(element, {
+        quality: 0.95,
+        bgcolor: '#ffffff',
+        width: element.scrollWidth,
+        height: element.scrollHeight,
+        style: {
+          transform: 'scale(1)',
+          transformOrigin: 'top left',
+        },
+      });
+
+      // Create PDF
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      });
+
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (element.scrollHeight * pdfWidth) / element.scrollWidth;
+
+      // Add image to PDF
+      pdf.addImage(dataUrl, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+
+      // If content is taller than one page, add more pages
+      let heightLeft = pdfHeight - pdf.internal.pageSize.getHeight();
+      let position = -pdf.internal.pageSize.getHeight();
+
+      while (heightLeft > 0) {
+        position -= pdf.internal.pageSize.getHeight();
+        pdf.addPage();
+        pdf.addImage(dataUrl, 'JPEG', 0, position, pdfWidth, pdfHeight);
+        heightLeft -= pdf.internal.pageSize.getHeight();
+      }
+
+      // Save PDF
+      pdf.save(`${billData.bill_number}.pdf`);
+
+    } catch (error) {
+      console.error('PDF generation error:', error);
+      // Fallback: use print dialog
+      alert('PDF download failed. Please use the Print button and select "Save as PDF".');
+    } finally {
+      setDownloadLoading(false);
+    }
   };
 
   if (loading) {
@@ -71,8 +153,8 @@ export default function BillPage() {
   return (
     <div className="min-h-screen bg-slate-900 py-8 px-4">
       <div className="max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-6 no-print">
+        {/* Header - Hidden in print */}
+        <div className="flex flex-wrap justify-between items-center gap-3 mb-6 no-print">
           <Link href="/" className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors">
             <ArrowLeft size={20} /> Back to Home
           </Link>
@@ -84,19 +166,26 @@ export default function BillPage() {
               <Printer size={18} /> Print
             </button>
             <button
-              onClick={handleDownload}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all"
+              onClick={handleDownloadPDF}
+              disabled={downloadLoading || !librariesLoaded}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all disabled:opacity-50"
             >
-              <Download size={18} /> Download PDF
+              {downloadLoading ? (
+                <><Loader2 size={18} className="animate-spin" /> Generating...</>
+              ) : !librariesLoaded ? (
+                <><Loader2 size={18} className="animate-spin" /> Loading Libraries...</>
+              ) : (
+                <><Download size={18} /> Download PDF</>
+              )}
             </button>
           </div>
         </div>
 
-        {/* Bill Card */}
-        <div className="bg-white rounded-2xl shadow-2xl overflow-hidden" id="bill-content">
-          {/* Bill Header */}
-          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-8 text-white">
-            <div className="flex justify-between items-center">
+        {/* Bill Content */}
+        <div ref={billRef} className="bg-white rounded-2xl shadow-2xl overflow-hidden" id="bill-content">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-8 text-white print:py-4">
+            <div className="flex justify-between items-center flex-wrap gap-4">
               <div>
                 <h1 className="text-3xl font-bold">🧾 Fee Bill</h1>
                 <p className="text-blue-100 mt-1">Shetty Group of Institutions</p>
@@ -108,8 +197,8 @@ export default function BillPage() {
             </div>
           </div>
 
-          {/* Bill Body */}
-          <div className="p-6 space-y-6">
+          {/* Body */}
+          <div className="p-6 space-y-6 print:p-4">
             {/* Student Info */}
             <div className="grid grid-cols-2 gap-4 border-b border-slate-200 pb-4">
               <div>
@@ -163,7 +252,7 @@ export default function BillPage() {
               </span>
             </div>
 
-            {/* Payment Details */}
+            {/* Payment Date */}
             {billData.payment_date && (
               <div className="flex justify-between items-center bg-slate-50 rounded-xl p-4">
                 <span className="text-slate-600">Payment Date</span>
@@ -195,10 +284,19 @@ export default function BillPage() {
             box-shadow: none !important;
             border-radius: 0 !important;
             margin: 0 !important;
-            padding: 20px !important;
+            padding: 0 !important;
           }
           body {
             background: white !important;
+          }
+          .bg-slate-50 {
+            background: #f8fafc !important;
+          }
+          .bg-gradient-to-r {
+            background: #2563eb !important;
+            background-image: linear-gradient(to right, #2563eb, #4f46e5) !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
         }
       `}</style>
