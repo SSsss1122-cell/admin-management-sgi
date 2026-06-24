@@ -5,6 +5,34 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { Download, Printer, ArrowLeft, Loader2 } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
+
+// Helper: convert number to Indian English words
+function numberToWords(num) {
+  if (num === 0) return 'Zero';
+  const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
+    'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+  const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+  const crore = Math.floor(num / 10000000);
+  const lakh = Math.floor((num % 10000000) / 100000);
+  const thousand = Math.floor((num % 100000) / 1000);
+  const remainder = Math.floor(num % 1000);
+
+  let words = '';
+  if (crore > 0) words += ones[crore] + ' Crore ';
+  if (lakh > 0) words += ones[lakh] + ' Lakh ';
+  if (thousand > 0) words += ones[thousand] + ' Thousand ';
+  if (remainder > 0) {
+    if (remainder < 20) words += ones[remainder];
+    else {
+      const ten = Math.floor(remainder / 10);
+      const one = remainder % 10;
+      words += tens[ten];
+      if (one > 0) words += ' ' + ones[one];
+    }
+  }
+  return words.trim() + ' Rupees Only';
+}
 
 export default function BillPage() {
   const params = useParams();
@@ -73,13 +101,10 @@ export default function BillPage() {
     setDownloadLoading(true);
 
     try {
-      // Dynamic imports
       const domToImage = (await import('dom-to-image')).default;
       const jsPDF = (await import('jspdf')).default;
 
       const element = billRef.current;
-      
-      // Generate image using dom-to-image (more reliable than html2canvas)
       const dataUrl = await domToImage.toJpeg(element, {
         quality: 0.95,
         bgcolor: '#ffffff',
@@ -91,7 +116,6 @@ export default function BillPage() {
         },
       });
 
-      // Create PDF
       const pdf = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
@@ -101,10 +125,8 @@ export default function BillPage() {
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (element.scrollHeight * pdfWidth) / element.scrollWidth;
 
-      // Add image to PDF
       pdf.addImage(dataUrl, 'JPEG', 0, 0, pdfWidth, pdfHeight);
 
-      // If content is taller than one page, add more pages
       let heightLeft = pdfHeight - pdf.internal.pageSize.getHeight();
       let position = -pdf.internal.pageSize.getHeight();
 
@@ -115,12 +137,10 @@ export default function BillPage() {
         heightLeft -= pdf.internal.pageSize.getHeight();
       }
 
-      // Save PDF
       pdf.save(`${billData.bill_number}.pdf`);
 
     } catch (error) {
       console.error('PDF generation error:', error);
-      // Fallback: use print dialog
       alert('PDF download failed. Please use the Print button and select "Save as PDF".');
     } finally {
       setDownloadLoading(false);
@@ -149,6 +169,22 @@ export default function BillPage() {
       </div>
     );
   }
+
+  // Map API fields to receipt fields (use fallbacks if missing)
+  const receipt = {
+    receiptNo: billData.bill_number || 'N/A',
+    parentName: billData.parent_name || billData.student_name || 'N/A',
+    transactionId: billData.transaction_id || 'N/A',
+    transactionDate: billData.transaction_date || billData.payment_date || 'N/A',
+    modeOfPayment: billData.mode_of_payment || 'N/A',
+    studentName: billData.student_name || 'N/A',
+    department: billData.department || billData.branch || 'N/A',
+    admissionNumber: billData.admission_number || billData.student_usn || 'N/A',
+    academicYear: billData.academic_year || billData.period || 'N/A',
+    amount: billData.total_fees || 0,
+  };
+
+  const amountInWords = numberToWords(receipt.amount);
 
   return (
     <div className="min-h-screen bg-slate-900 py-8 px-4">
@@ -181,95 +217,94 @@ export default function BillPage() {
           </div>
         </div>
 
-        {/* Bill Content */}
-        <div ref={billRef} className="bg-white rounded-2xl shadow-2xl overflow-hidden" id="bill-content">
-          {/* Header */}
-          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-8 text-white print:py-4">
-            <div className="flex justify-between items-center flex-wrap gap-4">
-              <div>
-                <h1 className="text-3xl font-bold">🧾 Fee Bill</h1>
-                <p className="text-blue-100 mt-1">Shetty Group of Institutions</p>
+        {/* Bill Content - Receipt with explicit white background and black text */}
+        <div 
+          ref={billRef} 
+          className="rounded-2xl shadow-2xl overflow-hidden" 
+          id="bill-content"
+          style={{ backgroundColor: '#ffffff', color: '#000000' }}
+        >
+          <div className="p-6 md:p-8 print:p-6">
+            {/* Header with Logo */}
+            <div className="flex items-center gap-4 border-b border-gray-300 pb-4 mb-4">
+              <div className="flex-shrink-0">
+                <Image
+                  src="/SGI.png"
+                  alt="Shetty Group of Institutions"
+                  width={200}
+                  height={100}
+                  className="object-contain"
+                />
               </div>
-              <div className="text-right">
-                <p className="text-sm text-blue-100">Bill Number</p>
-                <p className="text-xl font-bold">{billData.bill_number}</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Body */}
-          <div className="p-6 space-y-6 print:p-4">
-            {/* Student Info */}
-            <div className="grid grid-cols-2 gap-4 border-b border-slate-200 pb-4">
-              <div>
-                <p className="text-sm text-slate-500">Student Name</p>
-                <p className="font-semibold text-slate-800">{billData.student_name}</p>
-              </div>
-              <div>
-                <p className="text-sm text-slate-500">USN</p>
-                <p className="font-semibold text-slate-800">{billData.student_usn || 'N/A'}</p>
-              </div>
-              <div>
-                <p className="text-sm text-slate-500">Branch</p>
-                <p className="font-semibold text-slate-800">{billData.branch || 'N/A'}</p>
-              </div>
-              <div>
-                <p className="text-sm text-slate-500">Period</p>
-                <p className="font-semibold text-slate-800">{billData.period || 'N/A'}</p>
+              <div className="flex-1 text-center">
+                <h1 className="text-2xl md:text-3xl font-bold" style={{ color: '#000000' }}>Shetty Group Of Institutions</h1>
+                <p className="text-sm" style={{ color: '#333333' }}>Kalaburgi, Karnataka</p>
               </div>
             </div>
 
-            {/* Amount Details */}
-            <div>
-              <h3 className="font-semibold text-slate-800 mb-3">Amount Details</h3>
-              <div className="bg-slate-50 rounded-xl p-4 space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">Total Fees</span>
-                  <span className="font-medium text-slate-800">₹{billData.total_fees?.toLocaleString() || 0}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">Amount Paid</span>
-                  <span className="font-medium text-emerald-600">₹{billData.paid_amount?.toLocaleString() || 0}</span>
-                </div>
-                <div className="flex justify-between text-sm border-t border-slate-200 pt-2">
-                  <span className="text-slate-600">Balance</span>
-                  <span className={`font-bold ${billData.due_amount > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                    ₹{billData.due_amount?.toLocaleString() || 0}
-                  </span>
-                </div>
-              </div>
+            {/* Receipt Title */}
+            <h2 className="text-xl md:text-2xl font-bold text-center mb-4" style={{ color: '#000000' }}>FEE RECEIPT</h2>
+
+            {/* Receipt Details - line by line */}
+            <div className="text-sm space-y-1 mb-4" style={{ color: '#000000' }}>
+              <div><span className="font-semibold">Receipt No:</span> {receipt.receiptNo}</div>
+              <div><span className="font-semibold">Transaction ID:</span> {receipt.transactionId}</div>
+              <div><span className="font-semibold">Parent Name:</span> {receipt.parentName}</div>
+              <div><span className="font-semibold">Transaction Date:</span> {receipt.transactionDate}</div>
+              <div><span className="font-semibold">Mode of Payment:</span> {receipt.modeOfPayment}</div>
             </div>
 
-            {/* Status */}
-            <div className="flex justify-between items-center bg-slate-50 rounded-xl p-4">
-              <span className="text-slate-600">Status</span>
-              <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                billData.status === 'Paid' ? 'bg-emerald-100 text-emerald-700' :
-                billData.status === 'Partial' ? 'bg-amber-100 text-amber-700' :
-                'bg-red-100 text-red-700'
-              }`}>
-                {billData.status}
-              </span>
+            {/* Student Info Table */}
+            <div className="mb-4">
+              <table className="w-full border border-gray-300 text-sm" style={{ color: '#000000' }}>
+                <tbody>
+                  <tr>
+                    <td className="border border-gray-300 px-3 py-1.5 font-semibold bg-gray-50 w-1/3" style={{ color: '#000000' }}>Student Name</td>
+                    <td className="border border-gray-300 px-3 py-1.5" style={{ color: '#000000' }}>{receipt.studentName}</td>
+                    <td className="border border-gray-300 px-3 py-1.5 font-semibold bg-gray-50 w-1/3" style={{ color: '#000000' }}>Department</td>
+                    <td className="border border-gray-300 px-3 py-1.5" style={{ color: '#000000' }}>{receipt.department}</td>
+                  </tr>
+                  <tr>
+                    <td className="border border-gray-300 px-3 py-1.5 font-semibold bg-gray-50" style={{ color: '#000000' }}>Admission Number</td>
+                    <td className="border border-gray-300 px-3 py-1.5" style={{ color: '#000000' }}>{receipt.admissionNumber}</td>
+                    <td className="border border-gray-300 px-3 py-1.5 font-semibold bg-gray-50" style={{ color: '#000000' }}>Academic Year</td>
+                    <td className="border border-gray-300 px-3 py-1.5" style={{ color: '#000000' }}>{receipt.academicYear}</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
 
-            {/* Payment Date */}
-            {billData.payment_date && (
-              <div className="flex justify-between items-center bg-slate-50 rounded-xl p-4">
-                <span className="text-slate-600">Payment Date</span>
-                <span className="font-medium text-slate-800">
-                  {new Date(billData.payment_date).toLocaleDateString('en-IN', {
-                    day: 'numeric',
-                    month: 'long',
-                    year: 'numeric'
-                  })}
-                </span>
+            {/* Particulars Table */}
+            <div className="mb-4">
+              <table className="w-full border border-gray-300 text-sm" style={{ color: '#000000' }}>
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="border border-gray-300 px-3 py-1.5 text-left" style={{ color: '#000000' }}>SI.No</th>
+                    <th className="border border-gray-300 px-3 py-1.5 text-left" style={{ color: '#000000' }}>Particulars</th>
+                    <th className="border border-gray-300 px-3 py-1.5 text-right" style={{ color: '#000000' }}>Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="border border-gray-300 px-3 py-1.5" style={{ color: '#000000' }}>1</td>
+                    <td className="border border-gray-300 px-3 py-1.5" style={{ color: '#000000' }}>Bus Fee</td>
+                    <td className="border border-gray-300 px-3 py-1.5 text-right" style={{ color: '#000000' }}>₹{receipt.amount.toFixed(2)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {/* Total */}
+            <div className="flex justify-between items-center border-t-2 border-gray-300 pt-3 mt-2">
+              <div className="text-sm" style={{ color: '#000000' }}>
+                <span className="font-semibold">Total:</span> {amountInWords}
               </div>
-            )}
+              <div className="text-lg font-bold" style={{ color: '#000000' }}>₹{receipt.amount.toFixed(2)}</div>
+            </div>
 
             {/* Footer */}
-            <div className="border-t border-slate-200 pt-4 text-center text-sm text-slate-500">
-              <p>This is a computer-generated bill. Thank you for your payment.</p>
-              <p className="mt-1">© {new Date().getFullYear()} Shetty Group of Institutions</p>
+            <div className="mt-6 pt-4 border-t border-gray-200 text-center text-xs" style={{ color: '#555555' }}>
+              <p>This is a system generated receipt. No signature required.</p>
             </div>
           </div>
         </div>
@@ -285,18 +320,32 @@ export default function BillPage() {
             border-radius: 0 !important;
             margin: 0 !important;
             padding: 0 !important;
+            background-color: white !important;
+            color: black !important;
           }
           body {
             background: white !important;
           }
-          .bg-slate-50 {
-            background: #f8fafc !important;
+          /* Ensure borders and background colors print */
+          .border,
+          .border-gray-300,
+          .border-gray-400,
+          .border-t-2,
+          .border-b {
+            border-color: #000 !important;
           }
-          .bg-gradient-to-r {
-            background: #2563eb !important;
-            background-image: linear-gradient(to right, #2563eb, #4f46e5) !important;
+          .bg-gray-50,
+          .bg-gray-100 {
+            background: #f3f4f6 !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
+          }
+          /* Force all text inside bill-content to be black */
+          #bill-content * {
+            color: #000 !important;
+          }
+          #bill-content .text-gray-500 {
+            color: #555 !important;
           }
         }
       `}</style>
