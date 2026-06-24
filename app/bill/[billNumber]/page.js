@@ -1,4 +1,5 @@
 // app/bill/[billNumber]/page.js
+// Updated receipt on 2026-06-24
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
