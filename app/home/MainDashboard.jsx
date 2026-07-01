@@ -1,3 +1,4 @@
+// app/home/page.js
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -5,7 +6,7 @@ import Link from 'next/link';
 import withAuth from '../../components/withAuth';
 import { useRouter } from 'next/navigation';
 import {
-  Users, MapPin, CreditCard, AlertTriangle, Megaphone, Bell,
+  Users, MapPin, CreditCard, AlertTriangle, Megaphone,
   School, Bus, LogOut, Truck, ChevronRight,
   RefreshCw, Navigation, BookOpen, Map, Home, Award, Shield, User
 } from 'lucide-react';
@@ -41,13 +42,12 @@ function HomePage() {
 
   const fetchDashboardData = async () => {
     try {
-      const [studentsData, busesData, complaintsData, driversData, announcementsData, noticesData, feesData, busLocationsData, tripsData] = await Promise.all([
+      const [studentsData, busesData, complaintsData, driversData, announcementsData, feesData, busLocationsData, tripsData] = await Promise.all([
         supabase.from('students').select('id', { count: 'exact', head: true }),
         supabase.from('buses').select('id, bus_number, puc_expiry, insurance_expiry, fitness_expiry, permit_expiry'),
         supabase.from('complaints').select('id, created_at, title, description, status, student_id').order('created_at', { ascending: false }).limit(200),
         supabase.from('drivers_new').select('id, name, bus_id', { count: 'exact' }),
         supabase.from('announcements').select('*').order('created_at', { ascending: false }).limit(3),
-        supabase.from('notices').select('*').order('created_at', { ascending: false }).limit(3),
         supabase.from('fees').select('id, amount, student_id, payment_date', { count: 'exact', head: false }).limit(5),
         supabase.from('bus_locations').select('bus_id, updated_at').gte('updated_at', new Date(Date.now() - 5 * 60000).toISOString()),
         supabase.from('driver_trips').select('id, start_time, end_time, trip_type, driver_id, bus_id').order('start_time', { ascending: false })
@@ -115,13 +115,11 @@ function HomePage() {
     { id: 'bus-locations',     name: 'Live Tracking', desc: 'Real-time GPS & routes',             icon: Navigation,    href: '/bus-locations',     metrics: `${stats.liveBuses} live`,            tag: 'Live',     live: stats.liveBuses > 0, color: 'from-red-600 to-rose-600' },
     { id: 'complaints',        name: 'Complaints',    desc: 'Issues, status & resolution',        icon: AlertTriangle, href: '/complaints',        metrics: `${stats.dailyComplaints} today`,     tag: 'Support', color: 'from-fuchsia-600 to-purple-600' },
     { id: 'announcements',     name: 'Announcements', desc: 'Broadcast to students & staff',      icon: Megaphone,     href: '/announcements',     metrics: 'Manage',                             tag: 'Comms', color: 'from-teal-600 to-emerald-600' },
-    { id: 'notices',           name: 'Notices',       desc: 'Circulars & official updates',       icon: Bell,          href: '/notices',           metrics: 'View all',                           tag: 'Comms', color: 'from-indigo-600 to-blue-600' },
     { id: 'bus-details',       name: 'Bus Details',   desc: 'Specs, routes & information',        icon: Bus,           href: '/bus-details',       metrics: `${stats.totalBuses} buses`,          tag: 'Info', color: 'from-gray-600 to-gray-700' },
   ];
 
   const quickActions = [
     { label: 'Announcement', icon: Megaphone,     href: '/announcements', color: 'from-teal-600 to-emerald-600' },
-    { label: 'Notice',        icon: Bell,          href: '/notices', color: 'from-indigo-600 to-blue-600' },
     { label: 'Add Student',   icon: Users,         href: '/dashboard', color: 'from-blue-600 to-cyan-600' },
     { label: 'Add Bus',       icon: Bus,           href: '/buses', color: 'from-emerald-600 to-teal-600' },
     { label: 'Add Driver',    icon: Truck,         href: '/drivers', color: 'from-purple-600 to-pink-600' },
@@ -342,7 +340,7 @@ function HomePage() {
             </div>
           </div>
 
-          {/* Management Modules - Fixed CSS */}
+          {/* Management Modules */}
           <div>
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-lg font-semibold text-white">Management Modules</h2>
