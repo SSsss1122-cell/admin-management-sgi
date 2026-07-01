@@ -178,17 +178,27 @@ function Announcements() {
           body = template.body_text;
         }
         
-        // Extract variables
+        // Extract variables from template.variables or from components
         let variables = [];
-        if (template.variables && Array.isArray(template.variables)) {
+        if (template.variables && Array.isArray(template.variables) && template.variables.length > 0) {
           variables = template.variables;
         } else if (template.components) {
           const bodyComponent = template.components.find(c => c.type === 'BODY');
           if (bodyComponent && bodyComponent.example && bodyComponent.example.body_text) {
             const example = bodyComponent.example.body_text;
             if (Array.isArray(example)) {
+              // Extract variable names from example
               variables = example.map((_, i) => `variable_${i + 1}`);
             }
+          }
+        }
+        
+        // If no variables found, check body for placeholders
+        if (variables.length === 0 && body) {
+          const matches = body.match(/\{\{(\d+)\}\}/g);
+          if (matches) {
+            const maxPlaceholder = Math.max(...matches.map(m => parseInt(m.match(/\d+/)[0])));
+            variables = Array.from({ length: maxPlaceholder }, (_, i) => `variable_${i + 1}`);
           }
         }
         
@@ -226,7 +236,7 @@ function Announcements() {
 
     setSelectedTemplate(template);
     
-    // Initialize variables with empty values
+    // Initialize variables with empty values - IMPORTANT: Use all variables
     const initialValues = {};
     if (template.variables && template.variables.length > 0) {
       template.variables.forEach(v => {
@@ -296,20 +306,26 @@ function Announcements() {
     }
   };
 
-  // Generate preview
+  // Generate preview - FIXED to properly replace all variables
   const generatePreview = () => {
     if (!selectedTemplate) return 'No template selected';
     let preview = selectedTemplate.body || '';
     const vars = selectedTemplate.variables || [];
+    console.log('Generating preview with vars:', vars);
+    console.log('Current variable values:', variableValues);
+    
+    // Replace each variable placeholder
     vars.forEach((v, i) => {
       const regex = new RegExp(`{{${i + 1}}}`, 'g');
       const value = variableValues[v] || `[${v}]`;
       preview = preview.replace(regex, value);
     });
+    
+    console.log('Generated preview:', preview);
     return preview;
   };
 
-  // Send messages
+  // Send messages - FIXED with better error handling
   const sendWhatsAppMessages = async () => {
     const recipients = getRecipients();
     if (recipients.length === 0) {
@@ -318,9 +334,19 @@ function Announcements() {
     }
 
     const vars = selectedTemplate.variables || [];
-    const emptyVars = vars.filter(v => !variableValues[v]);
+    const emptyVars = vars.filter(v => !variableValues[v] || variableValues[v].trim() === '');
     if (emptyVars.length > 0) {
-      alert(`Please fill: ${emptyVars.join(', ')}`);
+      alert(`Please fill all variables: ${emptyVars.join(', ')}`);
+      return;
+    }
+
+    if (!PHONE_NUMBER_ID) {
+      alert('WhatsApp phone number ID not configured');
+      return;
+    }
+
+    if (!API_KEY) {
+      alert('ViralBoost API key not configured');
       return;
     }
 
@@ -338,6 +364,7 @@ function Announcements() {
         const batch = recipients.slice(i, i + BATCH_SIZE);
         const batchPromises = batch.map(async (student) => {
           try {
+            // Prepare body parameters
             const bodyParams = selectedTemplate.variables.map(v => {
               if (v === 'student_name') return student.full_name;
               if (v === 'usn') return student.usn || '';
@@ -356,6 +383,8 @@ function Announcements() {
               bodyParams: bodyParams
             };
 
+            console.log(`📤 Sending to ${student.full_name}:`, payload);
+
             const response = await fetch('https://app.viralboostup.in/api/v2/whatsapp-business/messages', {
               method: 'POST',
               headers: {
@@ -366,12 +395,19 @@ function Announcements() {
             });
 
             const data = await response.json();
+            console.log(`📥 Response for ${student.full_name}:`, data);
+
+            if (!response.ok) {
+              throw new Error(data.error || data.message || 'Failed to send');
+            }
+
             return {
               student,
-              success: response.ok,
-              error: response.ok ? null : data.error || 'Failed'
+              success: true,
+              error: null
             };
           } catch (error) {
+            console.error(`❌ Failed to send to ${student.full_name}:`, error.message);
             return {
               student,
               success: false,
@@ -402,9 +438,20 @@ function Announcements() {
         }
       }
 
-      setSendStatus({ success: successCount, failed: failedCount, total: recipients.length, results });
+      setSendStatus({ 
+        success: successCount, 
+        failed: failedCount, 
+        total: recipients.length, 
+        results 
+      });
     } catch (error) {
-      setSendStatus({ success: 0, failed: recipients.length, total: recipients.length, error: error.message });
+      console.error('Error sending messages:', error);
+      setSendStatus({ 
+        success: 0, 
+        failed: recipients.length, 
+        total: recipients.length, 
+        error: error.message 
+      });
     } finally {
       setSending(false);
     }
@@ -483,7 +530,7 @@ function Announcements() {
           <div className="mb-6 p-4 bg-red-950/50 border border-red-800 rounded-xl text-red-400 flex items-center gap-3">
             <AlertCircle size={20} />
             <span>{error}</span>
-            <button onClick={fetchTemplates} className="ml-auto text-blue-400 hover:text-blue-300 text-sm">Retry</button>
+            <button onClick={() => setError('')} className="ml-auto text-blue-400 hover:text-blue-300 text-sm">Dismiss</button>
           </div>
         )}
 
@@ -604,7 +651,7 @@ function Announcements() {
             </div>
 
             <div className="p-6 space-y-6">
-              {/* Variables */}
+              {/* Variables - FIXED to show all variables */}
               <div>
                 <h4 className="text-sm font-medium text-white mb-3 flex items-center gap-2">
                   <Edit size={16} className="text-blue-400" /> Fill Variables
@@ -731,7 +778,7 @@ function Announcements() {
                 )}
               </div>
 
-              {/* Preview */}
+              {/* Preview - FIXED to show updated preview */}
               <div>
                 <h4 className="text-sm font-medium text-white mb-2 flex items-center gap-2">
                   <Eye size={16} className="text-blue-400" /> Preview
@@ -747,6 +794,9 @@ function Announcements() {
                   <p className="text-sm font-medium text-white">
                     ✅ Sent: {sendStatus.success} | ❌ Failed: {sendStatus.failed}
                   </p>
+                  {sendStatus.error && (
+                    <p className="text-xs text-red-400 mt-1">Error: {sendStatus.error}</p>
+                  )}
                   {sendStatus.results?.slice(0, 5).map((r, i) => (
                     <div key={i} className="text-xs text-slate-400 mt-1">
                       {r.name}: {r.status === 'sent' ? '✅' : '❌'} {r.error || ''}
